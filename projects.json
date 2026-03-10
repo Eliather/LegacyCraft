@@ -46,6 +46,13 @@
       "url": "https://github.com/ASAOddball1/Java-to-MLCE-Texture-Pack-Converter/tree/main",
       "priority": 7,
       "tag": "converter"
+    },
+        {
+      "name": "OxyZin / LegacyConsoleLauncher",
+      "url": "https://github.com/OxyZin/LegacyConsoleLauncher",
+      "priority": 8,
+      "tag": "launcher",
+      "mirror": "https://github.com/OxyZin/LegacyConsoleLauncher/releases/download/v1.4.0/LegacyConsoleLauncher-Setup-v1.4.0.exe"
     }
   ]
 }
