@@ -5,6 +5,7 @@ DLCFile::DLCFile(DLCManager::EDLCType type, const wstring &path)
 {
 	m_type = type;
 	m_path = path;
+	m_parentPack = NULL;
 
 	// store the id
 	bool dlcSkin = path.substr(0,3).compare(L"dlc") == 0;

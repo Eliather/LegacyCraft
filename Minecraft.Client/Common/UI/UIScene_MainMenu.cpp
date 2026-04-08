@@ -65,36 +65,8 @@ namespace
 		eCMB_Exit,
 	};
 
-	bool ShouldUseAsciiFallbackForCustomLabels()
-	{
-		switch(XGetLanguage())
-		{
-		case XC_LANGUAGE_JAPANESE:
-		case XC_LANGUAGE_KOREAN:
-		case XC_LANGUAGE_SCHINESE:
-		case XC_LANGUAGE_TCHINESE:
-			return true;
-		default:
-			return false;
-		}
-	}
-
 	const wchar_t *GetCustomMainMenuButtonLabel(ECustomMenuButton button)
 	{
-		if(ShouldUseAsciiFallbackForCustomLabels())
-		{
-			switch(button)
-			{
-			case eCMB_PlayGame:       return L"Play Game";
-			case eCMB_Leaderboards:   return L"Leaderboards";
-			case eCMB_Achievements:   return L"Achievements";
-			case eCMB_HelpAndOptions: return L"Help & Options";
-			case eCMB_ChangeSkin:     return L"Change Skin";
-			case eCMB_Exit:           return L"Exit Game";
-			default:                  return L"";
-			}
-		}
-
 		switch(button)
 		{
 		case eCMB_PlayGame:       return app.GetString(IDS_PLAY_GAME);
@@ -107,19 +79,19 @@ namespace
 		}
 	}
 
-	const wchar_t *GetAsciiSafeChangeNameFallback()
+	const wchar_t *GetLocalizedChangeNameFallback()
 	{
 		switch(XGetLanguage())
 		{
 		case XC_LANGUAGE_JAPANESE:
-			return L"Namae Henkou";
+			return L"\u540D\u524D\u3092\u5909\u66F4";
 		case XC_LANGUAGE_KOREAN:
-			return L"Ireum Byeongyeong";
+			return L"\uC774\uB984 \uBCC0\uACBD";
 		case XC_LANGUAGE_SCHINESE:
 		case XC_LANGUAGE_TCHINESE:
-			return L"Genggai Mingcheng";
+			return L"\u66F4\u6539\u540D\u7A31";
 		case XC_LANGUAGE_GERMAN:
-			return L"Namen aendern";
+			return L"Namen \u00E4ndern";
 		case XC_LANGUAGE_FRENCH:
 			return L"Changer de nom";
 		case XC_LANGUAGE_SPANISH:
@@ -179,11 +151,11 @@ namespace
 	wstring GetMainMenuChangeNameButtonLabel()
 	{
 		LPCWSTR buttonLabel = app.GetString(IDS_CHANGE_NAME_BUTTON);
-		if(buttonLabel != NULL && buttonLabel[0] != 0 && !ShouldUseAsciiFallbackForCustomLabels())
+		if(buttonLabel != NULL && buttonLabel[0] != 0)
 		{
 			return buttonLabel;
 		}
-		return GetAsciiSafeChangeNameFallback();
+		return GetLocalizedChangeNameFallback();
 	}
 
 	void EnsureMainMenuLogoTexture(Minecraft *minecraft)

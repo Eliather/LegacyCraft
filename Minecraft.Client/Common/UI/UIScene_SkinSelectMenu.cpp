@@ -1249,7 +1249,7 @@ void UIScene_SkinSelectMenu::updatePackDisplay()
 	if(m_packIndex >= SKIN_SELECT_MAX_DEFAULTS)
 	{
 		DLCPack *thisPack = app.m_dlcManager.getPack(m_packIndex - SKIN_SELECT_MAX_DEFAULTS, DLCManager::e_DLCType_Skin);
-		setCentreLabel(thisPack->getName().c_str());
+		setCentreLabel(thisPack->getLocalizedName());
 	}
 	else
 	{
@@ -1268,7 +1268,7 @@ void UIScene_SkinSelectMenu::updatePackDisplay()
 	if(nextPackIndex >= SKIN_SELECT_MAX_DEFAULTS)
 	{
 		DLCPack *thisPack = app.m_dlcManager.getPack(nextPackIndex - SKIN_SELECT_MAX_DEFAULTS, DLCManager::e_DLCType_Skin);
-		setRightLabel(thisPack->getName().c_str());
+		setRightLabel(thisPack->getLocalizedName());
 	}
 	else
 	{
@@ -1287,7 +1287,7 @@ void UIScene_SkinSelectMenu::updatePackDisplay()
 	if(previousPackIndex >= SKIN_SELECT_MAX_DEFAULTS)
 	{
 		DLCPack *thisPack = app.m_dlcManager.getPack(previousPackIndex - SKIN_SELECT_MAX_DEFAULTS, DLCManager::e_DLCType_Skin);
-		setLeftLabel(thisPack->getName().c_str());
+		setLeftLabel(thisPack->getLocalizedName());
 	}
 	else
 	{

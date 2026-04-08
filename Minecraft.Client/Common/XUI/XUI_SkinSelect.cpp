@@ -1059,7 +1059,7 @@ void CScene_SkinSelect::updatePackDisplay()
 	if(m_packIndex >= SKIN_SELECT_MAX_DEFAULTS)
 	{
 		DLCPack *thisPack = app.m_dlcManager.getPack(m_packIndex - SKIN_SELECT_MAX_DEFAULTS, DLCManager::e_DLCType_Skin);
-		m_packCenter.SetText(thisPack->getName().c_str());
+		m_packCenter.SetText(thisPack->getLocalizedName().c_str());
 	}
 	else
 	{
@@ -1078,7 +1078,7 @@ void CScene_SkinSelect::updatePackDisplay()
 	if(nextPackIndex >= SKIN_SELECT_MAX_DEFAULTS)
 	{
 		DLCPack *thisPack = app.m_dlcManager.getPack(nextPackIndex - SKIN_SELECT_MAX_DEFAULTS, DLCManager::e_DLCType_Skin);
-		m_packRight.SetText(thisPack->getName().c_str());
+		m_packRight.SetText(thisPack->getLocalizedName().c_str());
 	}
 	else
 	{
@@ -1097,7 +1097,7 @@ void CScene_SkinSelect::updatePackDisplay()
 	if(previousPackIndex >= SKIN_SELECT_MAX_DEFAULTS)
 	{
 		DLCPack *thisPack = app.m_dlcManager.getPack(previousPackIndex - SKIN_SELECT_MAX_DEFAULTS, DLCManager::e_DLCType_Skin);
-		m_packLeft.SetText(thisPack->getName().c_str());
+		m_packLeft.SetText(thisPack->getLocalizedName().c_str());
 	}
 	else
 	{

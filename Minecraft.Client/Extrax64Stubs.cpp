@@ -377,11 +377,26 @@ DWORD XGetLanguage() {
 	unsigned char savedLang = UserData_Info::GetLanguageId();
 	if (savedLang != MINECRAFT_LANGUAGE_DEFAULT)
 	{
+		if (savedLang == MINECRAFT_LANGUAGE_BRAZILIAN)
+		{
+			return XC_LANGUAGE_PORTUGUESE;
+		}
 		return (DWORD)savedLang;
 	}
 	return XC_LANGUAGE_SPANISH; 
 }
-DWORD XGetLocale() { return XC_LOCALE_SPAIN; }
+DWORD XGetLocale() {
+	unsigned char savedLang = UserData_Info::GetLanguageId();
+	if (savedLang == MINECRAFT_LANGUAGE_BRAZILIAN)
+	{
+		return XC_LOCALE_BRAZIL;
+	}
+	if (savedLang == MINECRAFT_LANGUAGE_PORTUGUESE)
+	{
+		return XC_LOCALE_PORTUGAL;
+	}
+	return XC_LOCALE_SPAIN;
+}
 DWORD XEnableGuestSignin(BOOL fEnable) { return 0; }
 #endif
 

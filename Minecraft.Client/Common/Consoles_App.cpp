@@ -9102,6 +9102,10 @@ if (dwSystemLanguage == MINECRAFT_LANGUAGE_DEFAULT)
 		}
 		locales.push_back(eMCLang_ptPT);
 		break;
+	case MINECRAFT_LANGUAGE_BRAZILIAN   :
+		locales.push_back(eMCLang_ptBR);
+		locales.push_back(eMCLang_ptPT);
+		break;
 	case XC_LANGUAGE_JAPANESE           :
 		locales.push_back(eMCLang_jaJP);
 		break;
@@ -9216,6 +9220,10 @@ if (dwSystemLanguage == MINECRAFT_LANGUAGE_DEFAULT)
 		{
 			locales.push_back(eMCLang_ptBR);
 		}
+		locales.push_back(eMCLang_ptPT);
+		break;
+	case MINECRAFT_LANGUAGE_BRAZILIAN   :
+		locales.push_back(eMCLang_ptBR);
 		locales.push_back(eMCLang_ptPT);
 		break;
 	case XC_LANGUAGE_POLISH             :

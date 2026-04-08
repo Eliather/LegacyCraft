@@ -7,6 +7,9 @@ class Font
 {
 private:
 	int *charWidths;
+	unsigned char *m_unicodeWidth;
+	int *m_unicodeTexID;
+	bool *m_unicodePageLoaded;
 public:
 	int fontTexture;
 	Random *random;
@@ -18,6 +21,8 @@ private:
 
 	float xPos;
 	float yPos;
+	bool m_unicodeTextureBound;
+	int m_lastUnicodePage;
 
 	bool enforceUnicodeSheet; // use unicode sheet for ascii
 	bool bidirectional; // use bidi to flip strings
@@ -39,6 +44,12 @@ public:
 
 private:
 	void renderCharacter(wchar_t c); // 4J added
+	void renderUnicodeCharacter(wchar_t c);
+	void loadUnicodePage(int page);
+	bool HasMappedCharacter(wchar_t c);
+	bool HasUnicodeCharacter(wchar_t c);
+	bool ShouldUseUnicodeCharacter(wchar_t c);
+	int GetCharacterAdvance(wchar_t c);
 
 public:
     void drawShadow(const wstring& str, int x, int y, int color);

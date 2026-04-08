@@ -36,10 +36,10 @@ namespace
 		{ MINECRAFT_LANGUAGE_FRENCH,    L"Fran\u00E7ais" },
 		{ MINECRAFT_LANGUAGE_SPANISH,   L"Espa\u00F1ol" },
 		{ MINECRAFT_LANGUAGE_ITALIAN,   L"Italiano" },
-		{ MINECRAFT_LANGUAGE_JAPANESE,  L"Nihongo" },
-		{ MINECRAFT_LANGUAGE_KOREAN,    L"Hangugeo" },
+		{ MINECRAFT_LANGUAGE_JAPANESE,  L"\u65E5\u672C\u8A9E" },
+		{ MINECRAFT_LANGUAGE_KOREAN,    L"\uD55C\uAD6D\uC5B4" },
 		{ MINECRAFT_LANGUAGE_BRAZILIAN, L"Portugu\u00EAs (BR)" },
-		{ MINECRAFT_LANGUAGE_TCHINESE,  L"Zhongwen (Trad.)" },
+		{ MINECRAFT_LANGUAGE_TCHINESE,  L"\u4E2D\u6587(\u7E41\u9AD4)" },
 	};
 
 	const int kHAOLanguageCount = sizeof(kHAOLanguageEntries) / sizeof(kHAOLanguageEntries[0]);
@@ -76,35 +76,8 @@ namespace
 #endif
 	}
 
-	bool ShouldUseAsciiFallbackForCustomLabels()
-	{
-		switch(XGetLanguage())
-		{
-		case XC_LANGUAGE_JAPANESE:
-		case XC_LANGUAGE_KOREAN:
-		case XC_LANGUAGE_SCHINESE:
-		case XC_LANGUAGE_TCHINESE:
-			return true;
-		default:
-			return false;
-		}
-	}
-
 	const wchar_t *GetHAOCustomButtonLabel(EHAOButton button)
 	{
-		if(ShouldUseAsciiFallbackForCustomLabels())
-		{
-			switch(button)
-			{
-			case eHAO_HowToPlay: return L"How to Play";
-			case eHAO_Controls:  return L"Controls";
-			case eHAO_Settings:  return L"Settings";
-			case eHAO_Credits:   return L"Credits";
-			case eHAO_Debug:     return L"Debug";
-			default:             return L"";
-			}
-		}
-
 		switch(button)
 		{
 		case eHAO_HowToPlay: return app.GetString(IDS_HOW_TO_PLAY);
@@ -145,11 +118,11 @@ namespace
 		case MINECRAFT_LANGUAGE_BRAZILIAN:
 			return L"Idioma";
 		case XC_LANGUAGE_JAPANESE:
-			return L"Gengo";
+			return L"\u8A00\u8A9E";
 		case XC_LANGUAGE_KOREAN:
-			return L"Eoneo";
+			return L"\uC5B8\uC5B4";
 		case XC_LANGUAGE_TCHINESE:
-			return L"Yuyan";
+			return L"\u8A9E\u8A00";
 		default:
 			return L"Language";
 		}

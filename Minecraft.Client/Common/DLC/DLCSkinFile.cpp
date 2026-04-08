@@ -1,6 +1,7 @@
 #include "stdafx.h"
 #include "DLCManager.h"
 #include "DLCSkinFile.h"
+#include "DLCPack.h"
 #include "..\..\ModelPart.h"
 #include "..\..\EntityRenderer.h"
 #include "..\..\EntityRenderDispatcher.h"
@@ -190,9 +191,9 @@ wstring DLCSkinFile::getParameterAsString(DLCManager::EDLCParameterType type)
 	switch(type)
 	{
 	case DLCManager::e_DLCParamType_DisplayName:
-		return m_displayName;
+		return m_parentPack != NULL ? m_parentPack->resolveLocalisedString(m_displayName) : m_displayName;
 	case DLCManager::e_DLCParamType_ThemeName:
-		return m_themeName;
+		return m_parentPack != NULL ? m_parentPack->resolveLocalisedString(m_themeName) : m_themeName;
 	case DLCManager::e_DLCParamType_Cape:
 		return m_cape;
 	default:

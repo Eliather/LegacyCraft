@@ -4,6 +4,7 @@ using namespace std;
 
 class DLCFile;
 class DLCSkinFile;
+class StringTable;
 
 class DLCPack
 {
@@ -68,11 +69,15 @@ public:
 	DWORD getLicenseMask( ) { return m_dwLicenseMask; }
 	
 	wstring getName() { return m_packName; }
+	wstring getLocalizedName();
 #ifdef _XBOX_ONE
 	wstring getPurchaseOfferId() { return m_wsProductId; }
 #else
 	ULONGLONG getPurchaseOfferId() { return m_ullFullOfferId; }
 #endif
+
+	StringTable *getLocalisationStringTable();
+	wstring resolveLocalisedString(const wstring &value);
 
 	DLCFile *addFile(DLCManager::EDLCType type, const wstring &path);
 	DLCFile *getFile(DLCManager::EDLCType type, DWORD index);

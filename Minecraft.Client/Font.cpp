@@ -3,6 +3,7 @@
 #include "Font.h"
 #include "Options.h"
 #include "Tesselator.h"
+#include "BufferedImage.h"
 #include "..\Minecraft.World\IntBuffer.h"
 #include "..\Minecraft.World\net.minecraft.h"
 #include "..\Minecraft.World\StringHelpers.h"
@@ -13,13 +14,24 @@ Font::Font(Options *options, const wstring& name, Textures* textures, bool enfor
 	int charC = cols * rows; // Number of characters in the font
 
 	charWidths = new int[charC];
+	m_unicodeWidth = new unsigned char[65536];
+	m_unicodeTexID = new int[256];
+	m_unicodePageLoaded = new bool[256];
 
 	// 4J - added initialisers
-	memset(charWidths, 0, charC);
+	memset(charWidths, 0, sizeof(int) * charC);
+	memset(m_unicodeWidth, 0, 65536);
+	for(int i = 0; i < 256; ++i)
+	{
+		m_unicodeTexID[i] = 0;
+		m_unicodePageLoaded[i] = false;
+	}
 
-	enforceUnicodeSheet = false;
+	enforceUnicodeSheet = enforceUnicode;
 	bidirectional = false;
 	xPos = yPos = 0.0f;
+	m_unicodeTextureBound = false;
+	m_lastUnicodePage = -1;
 
 	// Set up member variables
 	m_cols = cols;
@@ -122,11 +134,21 @@ Font::Font(Options *options, const wstring& name, Textures* textures, bool enfor
 Font::~Font()
 {
 	delete[] charWidths;
+	delete[] m_unicodeWidth;
+	delete[] m_unicodeTexID;
+	delete[] m_unicodePageLoaded;
 }
 #endif
 
 void Font::renderCharacter(wchar_t c)
 {	
+	if(m_unicodeTextureBound)
+	{
+		textures->bindTexture(m_textureName);
+		m_unicodeTextureBound = false;
+		m_lastUnicodePage = -1;
+	}
+
 	float xOff = c % m_cols * m_charWidth;
 	float yOff = c / m_cols * m_charWidth;
 
@@ -169,6 +191,174 @@ void Font::renderCharacter(wchar_t c)
 	xPos += (float) charWidths[c];
 }
 
+void Font::loadUnicodePage(int page)
+{
+	if(page < 0 || page >= 256 || m_unicodePageLoaded[page])
+	{
+		return;
+	}
+
+	m_unicodePageLoaded[page] = true;
+
+	wchar_t fileName[32];
+	_snwprintf_s(fileName, _countof(fileName), _TRUNCATE, L"/1_2_2/font/glyph_%02X.png", page);
+
+	BufferedImage *image = new BufferedImage(fileName);
+	if(image == NULL || image->getData() == NULL || image->getWidth() <= 0 || image->getHeight() <= 0)
+	{
+		delete image;
+		return;
+	}
+
+	const int imageWidth = image->getWidth();
+	const int imageHeight = image->getHeight();
+	intArray rawPixels(imageWidth * imageHeight);
+	image->getRGB(0, 0, imageWidth, imageHeight, rawPixels, 0, imageWidth);
+
+	const int glyphCellWidth = imageWidth / 16;
+	const int glyphCellHeight = imageHeight / 16;
+	const int baseCodepoint = page << 8;
+
+	for(int glyph = 0; glyph < 256; ++glyph)
+	{
+		const int baseX = (glyph % 16) * glyphCellWidth;
+		const int baseY = (glyph / 16) * glyphCellHeight;
+		int left = glyphCellWidth;
+		int right = -1;
+
+		for(int x = 0; x < glyphCellWidth; ++x)
+		{
+			bool hasPixel = false;
+			for(int y = 0; y < glyphCellHeight; ++y)
+			{
+				const int pixel = rawPixels[(baseY + y) * imageWidth + baseX + x];
+				if(((unsigned int)pixel >> 24) != 0)
+				{
+					hasPixel = true;
+					break;
+				}
+			}
+
+			if(hasPixel)
+			{
+				if(left > x)
+				{
+					left = x;
+				}
+				right = x;
+			}
+		}
+
+		if(right >= left)
+		{
+			int packedLeft = left;
+			int packedRight = right;
+			if(packedLeft < 0) packedLeft = 0;
+			if(packedLeft > 15) packedLeft = 15;
+			if(packedRight < 0) packedRight = 0;
+			if(packedRight > 15) packedRight = 15;
+			m_unicodeWidth[baseCodepoint + glyph] = (unsigned char)((packedLeft << 4) | packedRight);
+		}
+		else
+		{
+			m_unicodeWidth[baseCodepoint + glyph] = 0;
+		}
+	}
+
+	m_unicodeTexID[page] = textures->getTexture(image);
+	delete image;
+}
+
+bool Font::HasMappedCharacter(wchar_t c)
+{
+	if(!m_charMap.empty())
+	{
+		return c == L' ' || m_charMap.find(c) != m_charMap.end();
+	}
+
+	return c >= 0 && c < (m_rows * m_cols);
+}
+
+bool Font::HasUnicodeCharacter(wchar_t c)
+{
+	const unsigned int codepoint = (unsigned int)c;
+	if(codepoint > 0xFFFF)
+	{
+		return false;
+	}
+
+	loadUnicodePage((int)(codepoint >> 8));
+	return m_unicodeWidth[codepoint] != 0;
+}
+
+bool Font::ShouldUseUnicodeCharacter(wchar_t c)
+{
+	if(c == 0 || c == 167 || c == L' ')
+	{
+		return false;
+	}
+
+	if(enforceUnicodeSheet)
+	{
+		return HasUnicodeCharacter(c);
+	}
+
+	return !HasMappedCharacter(c) && HasUnicodeCharacter(c);
+}
+
+void Font::renderUnicodeCharacter(wchar_t c)
+{
+	const unsigned int codepoint = (unsigned int)c;
+	if(codepoint > 0xFFFF)
+	{
+		return;
+	}
+
+	const unsigned char glyphWidth = m_unicodeWidth[codepoint];
+	if(glyphWidth == 0)
+	{
+		return;
+	}
+
+	const int page = (int)(codepoint >> 8);
+	if(m_unicodeTexID[page] == 0)
+	{
+		return;
+	}
+
+	if(!m_unicodeTextureBound || m_lastUnicodePage != page)
+	{
+		glBindTexture(GL_TEXTURE_2D, m_unicodeTexID[page]);
+		m_unicodeTextureBound = true;
+		m_lastUnicodePage = page;
+	}
+
+	const int glyphIndex = (int)(codepoint & 0xFF);
+	const float left = (float)(glyphWidth >> 4);
+	const float right = (float)((glyphWidth & 0x0F) + 1);
+	const float xOff = (float)(glyphIndex % 16) * 16.0f + left;
+	const float yOff = (float)(glyphIndex / 16) * 16.0f;
+	const float width = right - left - 0.02f;
+	const float height = 7.99f;
+
+	Tesselator *t = Tesselator::getInstance();
+	t->begin();
+	t->tex(xOff / 256.0f, (yOff + 15.98f) / 256.0f);
+	t->vertex(xPos, yPos + height, 0.0f);
+
+	t->tex((xOff + width) / 256.0f, (yOff + 15.98f) / 256.0f);
+	t->vertex(xPos + width / 2.0f, yPos + height, 0.0f);
+
+	t->tex((xOff + width) / 256.0f, yOff / 256.0f);
+	t->vertex(xPos + width / 2.0f, yPos, 0.0f);
+
+	t->tex(xOff / 256.0f, yOff / 256.0f);
+	t->vertex(xPos, yPos, 0.0f);
+	t->end();
+
+	xPos += (right - left) / 2.0f + 1.0f;
+}
+
 void Font::drawShadow(const wstring& str, int x, int y, int color)
 {
     draw(str, x + 1, y + 1, color, true);
@@ -196,20 +386,21 @@ void Font::draw(const wstring &str, bool dropShadow)
 {
 	// Bind the texture
 	textures->bindTexture(m_textureName);
+	m_unicodeTextureBound = false;
+	m_lastUnicodePage = -1;
 
 	bool noise = false;
-	wstring cleanStr = sanitize(str);
 
-	for (int i = 0; i < (int)cleanStr.length(); ++i)
+	for (int i = 0; i < (int)str.length(); ++i)
 	{
 		// Map character
-		wchar_t c = cleanStr.at(i);
+		wchar_t c = str.at(i);
 
-		if (c == 167 && i + 1 < cleanStr.length())
+		if (c == 167 && i + 1 < str.length())
 		{
 			// 4J - following block was:
 			// int colorN = L"0123456789abcdefk".indexOf(str.toLowerCase().charAt(i + 1));
-			wchar_t ca = cleanStr[i+1];
+			wchar_t ca = str[i+1];
 			int colorN = 16;
 			if(( ca >= L'0' ) && (ca <= L'9')) colorN = ca - L'0';
 			else if(( ca >= L'a' ) && (ca <= L'f')) colorN = (ca - L'a') + 10;
@@ -239,14 +430,30 @@ void Font::draw(const wstring &str, bool dropShadow)
 		if (noise)
 		{
 			int newc;
+			int currentWidth = charWidths[0];
+			if(HasMappedCharacter(c))
+			{
+				currentWidth = charWidths[MapCharacter(c)];
+			}
 			do
 			{
 				newc = random->nextInt(SharedConstants::acceptableLetters.length());
-			} while (charWidths[c + 32] != charWidths[newc + 32]);
+			} while (currentWidth != charWidths[newc + 32]);
 			c = newc;
 		}		
 
-		renderCharacter(c);
+		if(ShouldUseUnicodeCharacter(c))
+		{
+			renderUnicodeCharacter(c);
+		}
+		else if(HasMappedCharacter(c))
+		{
+			renderCharacter((wchar_t)MapCharacter(c));
+		}
+		else
+		{
+			renderCharacter(0);
+		}
 	}
 }
 
@@ -270,14 +477,12 @@ void Font::draw(const wstring& str, int x, int y, int color, bool dropShadow)
 
 int Font::width(const wstring& str)
 {
-	wstring cleanStr = sanitize(str);
-
-	if (cleanStr == L"") return 0;	// 4J - was NULL comparison
+	if (str == L"") return 0;	// 4J - was NULL comparison
 	int len = 0;
 
-	for (int i = 0; i < cleanStr.length(); ++i)
+	for (int i = 0; i < str.length(); ++i)
 	{
-		wchar_t c = cleanStr.at(i);
+		wchar_t c = str.at(i);
 
 		if(c == 167)
 		{
@@ -286,7 +491,7 @@ int Font::width(const wstring& str)
 		}
 		else
 		{
-			len += charWidths[c];
+			len += GetCharacterAdvance(c);
 		}
 	}
 
@@ -299,7 +504,11 @@ wstring Font::sanitize(const wstring& str)
 
     for (unsigned int i = 0; i < sb.length(); i++)
 	{
-        if (CharacterExists(sb[i]))
+		if(ShouldUseUnicodeCharacter(sb[i]))
+		{
+			continue;
+		}
+        if (HasMappedCharacter(sb[i]))
 		{
 			sb[i] = MapCharacter(sb[i]);
 		}
@@ -317,7 +526,7 @@ int Font::MapCharacter(wchar_t c)
 	if (!m_charMap.empty())
 	{
 		// Don't map space character
-		return c == ' ' ? c : m_charMap[c];
+		return c == ' ' ? c : (m_charMap.find(c) != m_charMap.end() ? m_charMap[c] : 0);
 	}
 	else
 	{
@@ -327,14 +536,25 @@ int Font::MapCharacter(wchar_t c)
 
 bool Font::CharacterExists(wchar_t c)
 {
-	if (!m_charMap.empty())
+	return HasMappedCharacter(c) || HasUnicodeCharacter(c);
+}
+
+int Font::GetCharacterAdvance(wchar_t c)
+{
+	if(ShouldUseUnicodeCharacter(c))
 	{
-		return m_charMap.find(c) != m_charMap.end();
+		const unsigned char glyphWidth = m_unicodeWidth[(unsigned int)c];
+		const int left = glyphWidth >> 4;
+		const int right = glyphWidth & 0x0F;
+		return (right - left) / 2 + 1;
 	}
-	else
+
+	if(HasMappedCharacter(c))
 	{
-		return c >= 0 && c <= m_rows*m_cols;
+		return charWidths[MapCharacter(c)];
 	}
+
+	return charWidths[0];
 }
 
 void Font::drawWordWrap(const wstring &string, int x, int y, int w, int col, int h)
@@ -481,7 +701,7 @@ bool Font::AllCharactersValid(const wstring &str)
 
 		int index = SharedConstants::acceptableLetters.find(c);
 
-		if ((c != ' ') && !(index > 0 && !enforceUnicodeSheet))
+		if ((c != ' ') && !(index > 0 && !enforceUnicodeSheet) && !CharacterExists(c))
 		{					
 			return false;
 		}
@@ -613,4 +833,3 @@ void Font::renderUnicodeCharacter(wchar_t c)
 	xPos += (right - left) / 2 + 1;
 }
 */
-

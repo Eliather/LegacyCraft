@@ -10,6 +10,7 @@
 #include "DLCAudioFile.h"
 #include "DLCColourTableFile.h"
 #include "..\..\..\Minecraft.World\StringHelpers.h"
+#include "..\..\StringTable.h"
 
 DLCPack::DLCPack(const wstring &name,DWORD dwLicenseMask)
 {
@@ -117,6 +118,50 @@ void DLCPack::addChildPack(DLCPack *childPack)
 void DLCPack::setParentPack(DLCPack *parentPack)
 {
 	m_parentPack = parentPack;
+}
+
+StringTable *DLCPack::getLocalisationStringTable()
+{
+	if(doesPackContainFile(DLCManager::e_DLCType_LocalisationData, L"languages.loc"))
+	{
+		DLCLocalisationFile *localisationFile = (DLCLocalisationFile *)getFile(DLCManager::e_DLCType_LocalisationData, L"languages.loc");
+		if(localisationFile != NULL)
+		{
+			return localisationFile->getStringTable();
+		}
+	}
+
+	if(m_parentPack != NULL)
+	{
+		return m_parentPack->getLocalisationStringTable();
+	}
+
+	return NULL;
+}
+
+wstring DLCPack::resolveLocalisedString(const wstring &value)
+{
+	if(value.empty())
+	{
+		return value;
+	}
+
+	StringTable *stringTable = getLocalisationStringTable();
+	if(stringTable != NULL)
+	{
+		LPCWSTR localised = stringTable->getString(value);
+		if(localised != NULL && localised[0] != L'\0')
+		{
+			return localised;
+		}
+	}
+
+	return value;
+}
+
+wstring DLCPack::getLocalizedName()
+{
+	return resolveLocalisedString(m_packName);
 }
 
 void DLCPack::addParameter(DLCManager::EDLCParameterType type, const wstring &value)
@@ -241,6 +286,7 @@ DLCFile *DLCPack::addFile(DLCManager::EDLCType type, const wstring &path)
 
 	if( newFile != NULL )
 	{
+		newFile->setParentPack(this);
 		m_files[newFile->getType()].push_back(newFile);
 	}
 
