@@ -420,7 +420,12 @@ bool UILayer::NavigateToScene(int iPad, EUIScene scene, void *initData)
 	m_sceneStack.push_back(newScene);
 	
 	updateFocusState();
-	
+
+#if defined(_WINDOWS64)
+	// Prevent the click that opened this scene from leaking into its first tick.
+	Mouse::clearPressedButtons();
+#endif
+
 	newScene->tick();
 
 	return true;

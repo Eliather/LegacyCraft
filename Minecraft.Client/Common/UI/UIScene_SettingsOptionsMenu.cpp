@@ -20,7 +20,6 @@ int UIScene_SettingsOptionsMenu::m_iDifficultyTitleSettingA[4]=
 
 UIScene_SettingsOptionsMenu::UIScene_SettingsOptionsMenu(int iPad, void *initData, UILayer *parentLayer) : UIScene(iPad, parentLayer)
 {
-	// Setup all the Iggy references we need for this scene
 	initialiseMovie();
 	
 	m_bNotInGame=(Minecraft::GetInstance()->level==NULL);
@@ -30,16 +29,13 @@ UIScene_SettingsOptionsMenu::UIScene_SettingsOptionsMenu(int iPad, void *initDat
 	m_checkboxShowTooltips.init(app.GetString(IDS_IN_GAME_TOOLTIPS),eControl_ShowTooltips,(app.GetGameSettings(m_iPad,eGameSetting_Tooltips)!=0));
 	m_checkboxInGameGamertags.init(app.GetString(IDS_IN_GAME_GAMERTAGS),eControl_InGameGamertags,(app.GetGameSettings(m_iPad,eGameSetting_GamertagsVisible)!=0));
 
-	// check if we should display the mash-up option
 	if(m_bNotInGame && app.GetMashupPackWorlds(m_iPad)!=0xFFFFFFFF)
 	{
-		// the mash-up option is needed
 		m_bMashUpWorldsUnhideOption=true;
 		m_checkboxMashupWorlds.init(app.GetString(IDS_UNHIDE_MASHUP_WORLDS),eControl_ShowMashUpWorlds,false);
 	}
 	else
 	{
-		//m_checkboxMashupWorlds.init(L"",eControl_ShowMashUpWorlds,false);
 		removeControl(&m_checkboxMashupWorlds, true);
 		m_bMashUpWorldsUnhideOption=false;
 	}
@@ -87,8 +83,6 @@ UIScene_SettingsOptionsMenu::UIScene_SettingsOptionsMenu(int iPad, void *initDat
 
 	m_labelDifficultyText.init(wsText);
 
-	// If you are in-game, only the game host can change in-game gamertags, and you can't change difficulty
-	// only the primary player gets to change the autosave and difficulty settings
 	bool bRemoveDifficulty=false;
 	bool bRemoveAutosave=false;
 	bool bRemoveInGameGamertags=false;
@@ -103,7 +97,7 @@ UIScene_SettingsOptionsMenu::UIScene_SettingsOptionsMenu(int iPad, void *initDat
 		bRemoveInGameGamertags=true;
 	}
 
-	if(!bNotInGame) // in the game
+	if(!bNotInGame)
 	{ 
 		bRemoveDifficulty=true;
 		if(!g_NetworkManager.IsHost())
@@ -185,21 +179,15 @@ void UIScene_SettingsOptionsMenu::handleInput(int iPad, int key, bool repeat, bo
 	case ACTION_MENU_CANCEL:
 		if(pressed)
 		{
-			// check the checkboxes
 			app.SetGameSettings(m_iPad,eGameSetting_ViewBob,m_checkboxViewBob.IsChecked()?1:0);
 			app.SetGameSettings(m_iPad,eGameSetting_GamertagsVisible,m_checkboxInGameGamertags.IsChecked()?1:0);
 			app.SetGameSettings(m_iPad,eGameSetting_Hints,m_checkboxShowHints.IsChecked()?1:0);
 			app.SetGameSettings(m_iPad,eGameSetting_Tooltips,m_checkboxShowTooltips.IsChecked()?1:0);
 
-			// the mashup option will only be shown if some worlds have been previously hidden
 			if(m_bMashUpWorldsUnhideOption && m_checkboxMashupWorlds.IsChecked())
 			{
-				// unhide all worlds
 				app.EnableMashupPackWorlds(m_iPad);
 			}
-
-			// 4J-PB - don't action changes here or we might write to the profile on backing out here and then get a change in the settings all, and write again on backing out there
-			//app.CheckGameSettingsChanged(true,pInputData->UserIndex);
 
 			navigateBack();
 		}
@@ -229,7 +217,6 @@ void UIScene_SettingsOptionsMenu::handleSliderMove(F64 sliderId, F64 currentValu
 		m_sliderAutosave.handleSliderMove(value);
 
 		app.SetGameSettings(m_iPad,eGameSetting_Autosave,value);
-		// Update the autosave timer
 		app.SetAutosaveTimerTime();
 
 		break;

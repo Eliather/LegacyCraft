@@ -4464,4 +4464,6 @@ Tous les coffres du Néant d'un monde sont liés. Les objets placés dans un cof
   </data>
 <data name="IDS_SAVE_TRANSFER_UPLOADFAILED"><value>Échec du chargement. Veuillez réessayer ultérieurement.</value>
   </data>
+<data name="IDS_CHANGE_NAME_BUTTON"><value>Changer de nom</value>
+  </data>
 </root>

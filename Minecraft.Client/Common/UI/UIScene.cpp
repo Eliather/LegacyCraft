@@ -37,7 +37,11 @@ UIScene::UIScene(int iPad, UILayer *parentLayer)
 UIScene::~UIScene()
 {
 	/* Destroy the Iggy player. */
-	IggyPlayerDestroy( swf );
+	if(swf)
+	{
+		IggyPlayerDestroy( swf );
+		swf = NULL;
+	}
 
 	for(AUTO_VAR(it,m_registeredTextures.begin()); it != m_registeredTextures.end(); ++it)
 	{
@@ -55,8 +59,11 @@ UIScene::~UIScene()
 void UIScene::destroyMovie()
 {
 	/* Destroy the Iggy player. */
-	IggyPlayerDestroy( swf );
-	swf = NULL;
+	if(swf)
+	{
+		IggyPlayerDestroy( swf );
+		swf = NULL;
+	}
 
 	// Clear out the controls collection (doesn't delete the controls, and they get re-setup later)
 	m_controls.clear();
@@ -434,14 +441,24 @@ void UIScene::tick()
 {
 	if(m_bIsReloading) return;
 	if(m_hasTickedOnce) m_bCanHandleInput = true;
-	while(IggyPlayerReadyToTick( swf ))
+	
+	if(swf)
 	{
-		tickTimers();
-		for(AUTO_VAR(it, m_controls.begin()); it != m_controls.end(); ++it)
+		while(IggyPlayerReadyToTick( swf ))
 		{
-			(*it)->tick();
+			tickTimers();
+			for(AUTO_VAR(it, m_controls.begin()); it != m_controls.end(); ++it)
+			{
+				(*it)->tick();
+			}
+			IggyPlayerTickRS( swf );
+			m_hasTickedOnce = true;
 		}
-		IggyPlayerTickRS( swf );
+	}
+	else
+	{
+		// Support for custom scenes without Iggy UI
+		tickTimers();
 		m_hasTickedOnce = true;
 	}
 }
@@ -838,7 +855,7 @@ void UIScene::gainFocus()
 		updateTooltips();
 		updateComponents();
 
-		if(!m_bFocussedOnce)
+		if(!m_bFocussedOnce && getMovie())
 		{
 			IggyDataValue result;
 			IggyDataValue value[1];

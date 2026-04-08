@@ -46,12 +46,9 @@ public:
 	virtual void updateComponents();
 
 protected:
-	// TODO: This should be pure virtual in this class
 	virtual wstring getMoviePath();
 
 public:
-	// INPUT
 	virtual void handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled);
-
 	virtual void handleSliderMove(F64 sliderId, F64 currentValue);
 };

@@ -66,4 +66,7 @@ private:
 	// Hover state
 	bool m_hovered;
 	bool m_wasHovered;
+
+	// Click state (for single-click detection)
+	bool m_wasPressed;
 };

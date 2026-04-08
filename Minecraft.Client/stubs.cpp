@@ -300,6 +300,14 @@ bool Mouse::isButtonPressed(int button)
 	return button >= 0 && button < MAX_BUTTONS && m_bButtonPressed[button];
 }
 
+void Mouse::clearPressedButtons()
+{
+	for (int i = 0; i < MAX_BUTTONS; ++i)
+	{
+		m_bButtonPressed[i] = false;
+	}
+}
+
 bool Mouse::next()
 {
 	if (m_mouseEvents.empty())

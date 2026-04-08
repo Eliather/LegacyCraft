@@ -5,7 +5,6 @@
 
 UIScene_SettingsMenu::UIScene_SettingsMenu(int iPad, void *initData, UILayer *parentLayer) : UIScene(iPad, parentLayer)
 {
-	// Setup all the Iggy references we need for this scene
 	initialiseMovie();
 	
 	bool bNotInGame=(Minecraft::GetInstance()->level==NULL);
@@ -85,7 +84,6 @@ void UIScene_SettingsMenu::updateComponents()
 
 void UIScene_SettingsMenu::handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled)
 {
-	//app.DebugPrintf("UIScene_DebugOverlay handling input for pad %d, key %d, down- %s, pressed- %s, released- %s\n", iPad, key, down?"TRUE":"FALSE", pressed?"TRUE":"FALSE", released?"TRUE":"FALSE");
 	ui.AnimateKeyPress(m_iPad, key, repeat, pressed, released);
 
 	switch(key)
@@ -93,9 +91,6 @@ void UIScene_SettingsMenu::handleInput(int iPad, int key, bool repeat, bool pres
 	case ACTION_MENU_CANCEL:
 		if(pressed)
 		{
-			// if the profile data has been changed, then force a profile write
-			// It seems we're allowed to break the 5 minute rule if it's the result of a user action
-
 			app.CheckGameSettingsChanged(true,iPad);          
 			navigateBack();
 		}
@@ -115,7 +110,6 @@ void UIScene_SettingsMenu::handleInput(int iPad, int key, bool repeat, bool pres
 
 void UIScene_SettingsMenu::handlePress(F64 controlId, F64 childId)
 {
-	//CD - Added for audio
 	ui.PlayUISFX(eSFX_Press);
 
 	switch((int)controlId)
@@ -137,7 +131,6 @@ void UIScene_SettingsMenu::handlePress(F64 controlId, F64 childId)
 		break;
 	case BUTTON_ALL_RESETTODEFAULTS:
 		{
-			// check they really want to do this
 			UINT uiIDA[2];
 			uiIDA[0]=IDS_CONFIRM_CANCEL;
 			uiIDA[1]=IDS_CONFIRM_OK;
@@ -152,7 +145,6 @@ int UIScene_SettingsMenu::ResetDefaultsDialogReturned(void *pParam,int iPad,C4JS
 {
 	UIScene_SettingsMenu* pClass = (UIScene_SettingsMenu*)pParam;
 
-	// results switched for this dialog
 	if(result==C4JStorage::EMessage_ResultDecline) 
 	{
 #if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO || defined __PSVITA__)
@@ -160,8 +152,6 @@ int UIScene_SettingsMenu::ResetDefaultsDialogReturned(void *pParam,int iPad,C4JS
 #else
 		app.SetDefaultOptions(ProfileManager.GetDashboardProfileSettings(pClass->m_iPad),pClass->m_iPad);
 #endif
-		// if the profile data has been changed, then force a profile write
-		// It seems we're allowed to break the 5 minute rule if it's the result of a user action
 		app.CheckGameSettingsChanged(true,iPad);
 	}
 	return 0;

@@ -4452,4 +4452,6 @@ Todos os Baús Ender em um mundo são vinculados; itens colocados em um Baú End
   </data>
 <data name="IDS_SAVE_TRANSFER_UPLOADFAILED"><value>Falha no carregamento. Tente novamente mais tarde.</value>
   </data>
+<data name="IDS_CHANGE_NAME_BUTTON"><value>Alterar Nome</value>
+  </data>
 </root>

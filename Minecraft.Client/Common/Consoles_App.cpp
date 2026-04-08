@@ -1638,11 +1638,7 @@ void CMinecraftApp::HideMashupPackWorld(int iPad, unsigned int iMashupPackID)
 
 void CMinecraftApp::SetMinecraftLanguage(int iPad, unsigned char ucLanguage)
 {
-#if defined(_WINDOWS64)
-	GameSettingsA[iPad]->ucLanguage = MINECRAFT_LANGUAGE_SPANISH; // force Spanish on Windows64
-#else
-	GameSettingsA[iPad]->ucLanguage = ucLanguage; 
-#endif
+	GameSettingsA[iPad]->ucLanguage = ucLanguage;
 	GameSettingsA[iPad]->bSettingsChanged = true;
 }
 
@@ -9079,11 +9075,7 @@ void CMinecraftApp::getLocale(vector<wstring> &vecWstrLocales)
 DWORD dwSystemLanguage = UserData_Info::GetLanguageId();
 if (dwSystemLanguage == MINECRAFT_LANGUAGE_DEFAULT)
 {
-	dwSystemLanguage = XGetLanguage( );
-#if defined(_WINDOWS64)
-	// Default to Spanish on Windows64 if no preference is set
 	dwSystemLanguage = XC_LANGUAGE_SPANISH;
-#endif
 }
 
 	// 4J-PB - restrict the 360 language until we're ready to have them in

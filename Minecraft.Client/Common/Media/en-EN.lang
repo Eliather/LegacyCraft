@@ -1,4 +1,4 @@
-﻿<root>
+<root>
 
 ﻿
    <data name="IDS_TIPS_GAMETIP_NEWDLC">
@@ -5767,6 +5767,12 @@ Would you like to install the mash-up pack or texture pack now?</value>
     <value>X</value>
   </data>
 
-﻿
+  <data name="IDS_AJUSTES">
+    <value>Settings</value>
+  </data>
+
+  <data name="IDS_CHANGE_NAME_BUTTON">
+    <value>Change Name</value>
+  </data>
 
 </root>

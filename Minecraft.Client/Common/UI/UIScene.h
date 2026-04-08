@@ -94,6 +94,10 @@ protected:
 	int m_iPad;
 	bool m_hasTickedOnce;
 
+	// Allow subclasses to enable input without calling UIScene::tick()
+	// (which runs IggyPlayerTickRS and can crash with removed SWF controls).
+	void enableInput() { m_bCanHandleInput = true; }
+
 public:
 	virtual Iggy *getMovie() { return swf; }
 	

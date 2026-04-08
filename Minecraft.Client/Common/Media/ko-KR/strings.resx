@@ -4462,4 +4462,6 @@ Ender에 들어서면 친구가 그들의 지도에서 요새 내부에 있는 E
   </data>
 <data name="IDS_SAVE_TRANSFER_UPLOADFAILED"><value>업로드하지 못했습니다. 나중에 다시 시도하십시오.</value>
   </data>
+<data name="IDS_CHANGE_NAME_BUTTON"><value>&#xC774;&#xB984; &#xBCC0;&#xACBD;</value>
+  </data>
 </root>

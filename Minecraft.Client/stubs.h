@@ -313,6 +313,7 @@ public:
 	static int getWheelDelta() { int delta = m_iWheelDelta; m_iWheelDelta = 0; return delta; }
 	static bool isButtonDown(int);
 	static bool isButtonPressed(int);
+	static void clearPressedButtons();
 	static bool next();
 	static int getEventX() { return m_iCurrentEventX; }
 	static int getEventY() { return m_iCurrentEventY; }

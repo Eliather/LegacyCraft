@@ -4458,4 +4458,6 @@ Tutti i forzieri di Ender presenti in un mondo sono collegati tra loro, quindi p
   </data>
 <data name="IDS_SAVE_TRANSFER_UPLOADFAILED"><value>Caricamento non riuscito. Riprova più tardi.</value>
   </data>
+<data name="IDS_CHANGE_NAME_BUTTON"><value>Cambia nome</value>
+  </data>
 </root>

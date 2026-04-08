@@ -6,6 +6,10 @@
 #include "Tesselator.h"
 #include "Common\UI\UI.h"
 
+#ifndef GL_SCISSOR_TEST
+#define GL_SCISSOR_TEST 0x0C11
+#endif
+
 // Natural width of the MainMenuButton textures (the height will be derived from
 // the actual PNG aspect ratio when loaded in EnsureTextures).
 static const float kMenuButtonWidth = 480.0f;
@@ -26,6 +30,7 @@ CustomGenericButton::CustomGenericButton()
 	, m_useTextureHeight(false)
 	, m_hovered(false)
 	, m_wasHovered(false)
+	, m_wasPressed(false)
 {
 }
 
@@ -148,8 +153,12 @@ bool CustomGenericButton::Update(Minecraft *minecraft)
 	}
 	m_wasHovered = m_hovered;
 
-	// Click
-	if(m_hovered && Mouse::isButtonPressed(0))
+	// Click — only on the rising edge (not-pressed → pressed)
+	const bool isPressed = Mouse::isButtonPressed(0);
+	const bool clicked = m_hovered && isPressed && !m_wasPressed;
+	m_wasPressed = isPressed;
+
+	if(clicked)
 	{
 		ui.PlayUISFX(eSFX_Press);
 		return true;
@@ -175,6 +184,7 @@ void CustomGenericButton::Render(Minecraft *minecraft, Font *font,
 
 	ui.setupRenderPosition((C4JRender::eViewportType)viewport);
 
+	glDisable(GL_SCISSOR_TEST);
 	glDisable(GL_CULL_FACE);
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_LIGHTING);

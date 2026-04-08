@@ -26,6 +26,7 @@ private:
 	UI_END_MAP_ELEMENTS_AND_NAMES()
 
 	bool m_bNotInGame;
+
 public:
 	UIScene_HelpAndOptionsMenu(int iPad, void *initData, UILayer *parentLayer);
 	virtual ~UIScene_HelpAndOptionsMenu();
@@ -35,14 +36,15 @@ public:
 	virtual void updateTooltips();
 	virtual void updateComponents();
 
+	virtual void tick();
+	virtual void render(S32 width, S32 height, C4JRender::eViewportType viewport);
+	virtual void customDraw(IggyCustomDrawCallbackRegion *region);
+
 protected:
-	// TODO: This should be pure virtual in this class
 	virtual wstring getMoviePath();
 
 public:
 	virtual void handleReload();
-
-	// INPUT
 	virtual void handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled);
 
 protected:

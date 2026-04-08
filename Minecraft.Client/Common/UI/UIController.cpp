@@ -70,6 +70,113 @@ static void RADLINK TraceCallback(void *user_callback_data, Iggy *player, char c
 	app.DebugPrintf(app.USER_UI, (char *)utf8_string);
 }
 
+namespace
+{
+	enum EUIFontProfile
+	{
+		eUIFontProfile_Bitmap = 0,
+		eUIFontProfile_Japanese,
+		eUIFontProfile_Chinese,
+		eUIFontProfile_Korean,
+	};
+
+	EUIFontProfile GetUIFontProfileForLanguage(DWORD language)
+	{
+		switch(language)
+		{
+		case XC_LANGUAGE_JAPANESE:
+			return eUIFontProfile_Japanese;
+		case XC_LANGUAGE_SCHINESE:
+		case XC_LANGUAGE_TCHINESE:
+			return eUIFontProfile_Chinese;
+		case XC_LANGUAGE_KOREAN:
+			return eUIFontProfile_Korean;
+		default:
+			return eUIFontProfile_Bitmap;
+		}
+	}
+
+	const char *GetUIFontAliasForProfile(EUIFontProfile fontProfile)
+	{
+		switch(fontProfile)
+		{
+		case eUIFontProfile_Japanese:
+			return "Mojangles_TTF_JPN";
+		case eUIFontProfile_Chinese:
+			return "Mojangles_TTF_CHT";
+		case eUIFontProfile_Korean:
+			return "Mojangles_TTF_KOR";
+		default:
+			return NULL;
+		}
+	}
+
+	void SetIggyFontAliases(const char *fontName)
+	{
+		if(fontName == NULL)
+		{
+			return;
+		}
+
+		IggyFontSetIndirectUTF8( "Mojangles7", -1, IGGY_FONTFLAG_all, fontName, -1, IGGY_FONTFLAG_none );
+		IggyFontSetIndirectUTF8( "Mojangles11", -1, IGGY_FONTFLAG_all, fontName, -1, IGGY_FONTFLAG_none );
+		IggyFontSetIndirectUTF8( "Times New Roman", -1, IGGY_FONTFLAG_all, fontName, -1, IGGY_FONTFLAG_none );
+		IggyFontSetIndirectUTF8( "Arial", -1, IGGY_FONTFLAG_all, fontName, -1, IGGY_FONTFLAG_none );
+	}
+
+	void RestoreBitmapFontAliases()
+	{
+		IggyFontSetIndirectUTF8( "Mojangles7", -1, IGGY_FONTFLAG_all, "Mojangles7", -1, IGGY_FONTFLAG_none );
+		IggyFontSetIndirectUTF8( "Mojangles11", -1, IGGY_FONTFLAG_all, "Mojangles11", -1, IGGY_FONTFLAG_none );
+	}
+
+	UITTFFont *GetCachedTTFFontForProfile(EUIFontProfile fontProfile)
+	{
+		static UITTFFont *s_japaneseFont = NULL;
+		static UITTFFont *s_chineseFont = NULL;
+		static UITTFFont *s_koreanFont = NULL;
+
+		switch(fontProfile)
+		{
+		case eUIFontProfile_Japanese:
+			if(s_japaneseFont == NULL)
+			{
+#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+				s_japaneseFont = new UITTFFont("Common/Media/font/JPN/DF-DotDotGothic16.ttf", "Mojangles_TTF_JPN", 0x203B);
+#else
+				s_japaneseFont = new UITTFFont("Common/Media/font/JPN/DFGMaruGothic-Md.ttf", "Mojangles_TTF_JPN", 0x2022);
+#endif
+			}
+			return s_japaneseFont;
+
+		case eUIFontProfile_Chinese:
+			if(s_chineseFont == NULL)
+			{
+#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+				s_chineseFont = new UITTFFont("Common/Media/font/CHT/DFTT_R5.TTC", "Mojangles_TTF_CHT", 0x203B);
+#else
+				s_chineseFont = new UITTFFont("Common/Media/font/CHT/DFHeiMedium-B5.ttf", "Mojangles_TTF_CHT", 0x2022);
+#endif
+			}
+			return s_chineseFont;
+
+		case eUIFontProfile_Korean:
+			if(s_koreanFont == NULL)
+			{
+#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+				s_koreanFont = new UITTFFont("Common/Media/font/KOR/candadite2.ttf", "Mojangles_TTF_KOR", 0x203B);
+#else
+				s_koreanFont = new UITTFFont("Common/Media/font/KOR/BOKMSD.ttf", "Mojangles_TTF_KOR", 0x2022);
+#endif
+			}
+			return s_koreanFont;
+
+		default:
+			return NULL;
+		}
+	}
+}
+
 #ifdef ENABLE_IGGY_PERFMON
 static void *RADLINK perf_malloc(void *handle, U32 size)
 {
@@ -262,44 +369,9 @@ void UIController::postInit()
 
 void UIController::SetupFont()
 {
-	bool bBitmapFont=false;
+	EUIFontProfile fontProfile = GetUIFontProfileForLanguage(XGetLanguage());
 
-	if(m_mcTTFFont!=NULL)
-	{
-		delete m_mcTTFFont;
-	}
-
-	switch(XGetLanguage())
-	{
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
-	case XC_LANGUAGE_JAPANESE:
-		m_mcTTFFont = new UITTFFont("Common/Media/font/JPN/DF-DotDotGothic16.ttf", 0x203B);
-		break;
-	case XC_LANGUAGE_SCHINESE:
-	case XC_LANGUAGE_TCHINESE:
-		m_mcTTFFont = new UITTFFont("Common/Media/font/CHT/DFTT_R5.TTC", 0x203B);
-		break;
-	case XC_LANGUAGE_KOREAN:
-		m_mcTTFFont = new UITTFFont("Common/Media/font/KOR/candadite2.ttf", 0x203B);
-		break;
-#else
-	case XC_LANGUAGE_JAPANESE:
-		m_mcTTFFont = new UITTFFont("Common/Media/font/JPN/DFGMaruGothic-Md.ttf", 0x2022);
-		break;
-	case XC_LANGUAGE_SCHINESE:
-	case XC_LANGUAGE_TCHINESE:
-		m_mcTTFFont = new UITTFFont("Common/Media/font/CHT/DFHeiMedium-B5.ttf", 0x2022);
-		break;
-	case XC_LANGUAGE_KOREAN:
-		m_mcTTFFont = new UITTFFont("Common/Media/font/KOR/BOKMSD.ttf", 0x2022);
-		break;
-#endif
-	default:
-		bBitmapFont=true;
-		break;
-	}
-
-	if(bBitmapFont)
+	if(fontProfile == eUIFontProfile_Bitmap)
 	{
 		if(m_moj7==NULL)
 		{
@@ -311,12 +383,16 @@ void UIController::SetupFont()
 			m_moj11 = new UIBitmapFont(SFontData::Mojangles_11);
 			m_moj11->registerFont();
 		}
+
+		RestoreBitmapFontAliases();
+		m_mcTTFFont = NULL;
 	}
 	else
 	{
-		app.DebugPrintf("IggyFontSetIndirectUTF8\n");
-		IggyFontSetIndirectUTF8( "Mojangles7", -1, IGGY_FONTFLAG_all, "Mojangles_TTF",-1 ,IGGY_FONTFLAG_none );
-		IggyFontSetIndirectUTF8( "Mojangles11", -1, IGGY_FONTFLAG_all, "Mojangles_TTF",-1 ,IGGY_FONTFLAG_none );
+		const char *fontAlias = GetUIFontAliasForProfile(fontProfile);
+		m_mcTTFFont = GetCachedTTFFontForProfile(fontProfile);
+		app.DebugPrintf("IggyFontSetIndirectUTF8 -> %s\n", fontAlias);
+		SetIggyFontAliases(fontAlias);
 	}
 }
 

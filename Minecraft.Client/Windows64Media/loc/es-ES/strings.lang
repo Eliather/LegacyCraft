@@ -1,4 +1,4 @@
-﻿<root>
+<root>
 	<data name="IDS_NULL">
 		<value>Sin usar</value>
 	</data>	
@@ -8404,4 +8404,7 @@ No apagues la Consola Xbox 360 cuando aparezca este icono en pantalla.</value>
 	<data name="IDS_HOST_OPTION_DISABLES_ACHIEVEMENTS">
 		<value>Esta opción deshabilita los logros y las actualizaciones del marcador de este mundo cuando se juega y si se vuelve a cargar después de guardarlo con esta opción activada.</value>
 	</data>	
+	<data name="IDS_AJUSTES">
+		<value>Ajustes</value>
+	</data>
 </root>

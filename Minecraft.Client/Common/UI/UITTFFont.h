@@ -4,9 +4,9 @@ class UITTFFont
 {
 private:
 	PBYTE pbData;
-	//DWORD dwDataSize;
+	string m_fontName;
 
 public:
-	UITTFFont(const string &path, S32 fallbackCharacter);
+	UITTFFont(const string &path, const string &fontName, S32 fallbackCharacter);
 	~UITTFFont();
 };

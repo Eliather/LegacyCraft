@@ -55,10 +55,6 @@ namespace
 	CustomGenericButton g_customMenuButtons[kCustomMenuButtonCount];
 	bool g_customMenuButtonsInitialized = false;
 
-	// ── TEST SLIDER ─────────────────────────────────────────────
-	CustomSlider g_testSlider;
-	bool g_testSliderInited = false;
-
 	enum ECustomMenuButton
 	{
 		eCMB_PlayGame = 0,
@@ -68,6 +64,75 @@ namespace
 		eCMB_ChangeSkin,    // "Cambiar Aspecto"
 		eCMB_Exit,
 	};
+
+	bool ShouldUseAsciiFallbackForCustomLabels()
+	{
+		switch(XGetLanguage())
+		{
+		case XC_LANGUAGE_JAPANESE:
+		case XC_LANGUAGE_KOREAN:
+		case XC_LANGUAGE_SCHINESE:
+		case XC_LANGUAGE_TCHINESE:
+			return true;
+		default:
+			return false;
+		}
+	}
+
+	const wchar_t *GetCustomMainMenuButtonLabel(ECustomMenuButton button)
+	{
+		if(ShouldUseAsciiFallbackForCustomLabels())
+		{
+			switch(button)
+			{
+			case eCMB_PlayGame:       return L"Play Game";
+			case eCMB_Leaderboards:   return L"Leaderboards";
+			case eCMB_Achievements:   return L"Achievements";
+			case eCMB_HelpAndOptions: return L"Help & Options";
+			case eCMB_ChangeSkin:     return L"Change Skin";
+			case eCMB_Exit:           return L"Exit Game";
+			default:                  return L"";
+			}
+		}
+
+		switch(button)
+		{
+		case eCMB_PlayGame:       return app.GetString(IDS_PLAY_GAME);
+		case eCMB_Leaderboards:   return app.GetString(IDS_LEADERBOARDS);
+		case eCMB_Achievements:   return app.GetString(IDS_ACHIEVEMENTS);
+		case eCMB_HelpAndOptions: return app.GetString(IDS_HELP_AND_OPTIONS);
+		case eCMB_ChangeSkin:     return app.GetString(IDS_CHANGE_SKIN);
+		case eCMB_Exit:           return app.GetString(IDS_EXIT_GAME);
+		default:                  return L"";
+		}
+	}
+
+	const wchar_t *GetAsciiSafeChangeNameFallback()
+	{
+		switch(XGetLanguage())
+		{
+		case XC_LANGUAGE_JAPANESE:
+			return L"Namae Henkou";
+		case XC_LANGUAGE_KOREAN:
+			return L"Ireum Byeongyeong";
+		case XC_LANGUAGE_SCHINESE:
+		case XC_LANGUAGE_TCHINESE:
+			return L"Genggai Mingcheng";
+		case XC_LANGUAGE_GERMAN:
+			return L"Namen aendern";
+		case XC_LANGUAGE_FRENCH:
+			return L"Changer de nom";
+		case XC_LANGUAGE_SPANISH:
+			return L"Cambiar Nombre";
+		case XC_LANGUAGE_ITALIAN:
+			return L"Cambia nome";
+		case XC_LANGUAGE_PORTUGUESE:
+		case MINECRAFT_LANGUAGE_BRAZILIAN:
+			return L"Alterar Nome";
+		default:
+			return L"Change Name";
+		}
+	}
 
 	void SetupCustomMenuButtons()
 	{
@@ -87,12 +152,12 @@ namespace
 		SetupCustomMenuButtons();
 
 		const wchar_t *labels[kCustomMenuButtonCount] = {
-			app.GetString(IDS_PLAY_GAME),
-			app.GetString(IDS_LEADERBOARDS),
-			app.GetString(IDS_ACHIEVEMENTS),
-			app.GetString(IDS_HELP_AND_OPTIONS),
-			L"Cambiar Aspecto",
-			app.GetString(IDS_EXIT_GAME),
+			GetCustomMainMenuButtonLabel(eCMB_PlayGame),
+			GetCustomMainMenuButtonLabel(eCMB_Leaderboards),
+			GetCustomMainMenuButtonLabel(eCMB_Achievements),
+			GetCustomMainMenuButtonLabel(eCMB_HelpAndOptions),
+			GetCustomMainMenuButtonLabel(eCMB_ChangeSkin),
+			GetCustomMainMenuButtonLabel(eCMB_Exit),
 		};
 
 		for(int i = 0; i < kCustomMenuButtonCount; ++i)
@@ -114,11 +179,11 @@ namespace
 	wstring GetMainMenuChangeNameButtonLabel()
 	{
 		LPCWSTR buttonLabel = app.GetString(IDS_CHANGE_NAME_BUTTON);
-		if(buttonLabel != NULL && buttonLabel[0] != 0)
+		if(buttonLabel != NULL && buttonLabel[0] != 0 && !ShouldUseAsciiFallbackForCustomLabels())
 		{
 			return buttonLabel;
 		}
-		return L"Cambiar Nombre";
+		return GetAsciiSafeChangeNameFallback();
 	}
 
 	void EnsureMainMenuLogoTexture(Minecraft *minecraft)
@@ -623,6 +688,11 @@ void UIScene_MainMenu::handlePress(F64 controlId, F64 childId)
 	// When the SWF is disabled, block all SWF button presses
 	// so their hitboxes have no effect.
 	if(!g_bEnableSFW) return;
+	
+	static long long s_lastClickTime = 0;
+	long long currentTime = System::currentTimeMillis();
+	if (currentTime - s_lastClickTime < 300) return;
+	s_lastClickTime = currentTime;
 #endif
 	int primaryPad = ProfileManager.GetPrimaryPad();
 	
@@ -813,14 +883,6 @@ void UIScene_MainMenu::customDrawSplash(IggyCustomDrawCallbackRegion *region)
 		DrawMainMenuSkinPreview(pMinecraft, pMinecraft->width_phys, pMinecraft->height_phys, m_parentLayer->getViewport());
 		DrawMainMenuChangeNameButton(pMinecraft, pMinecraft->width_phys, pMinecraft->height_phys, m_parentLayer->getViewport());
 		DrawCustomMenuButtons(pMinecraft, m_parentLayer->getViewport());
-
-		// ── TEST SLIDER at (0, 0) ────────────────────────────────
-		if(!g_testSliderInited)
-		{
-			g_testSlider.Setup(0.0f, 0.0f); // x=0, y=0, range 0-100
-			g_testSliderInited = true;
-		}
-		g_testSlider.Render(pMinecraft, pMinecraft->font, IDS_PLAY_GAME, (int)m_parentLayer->getViewport());
 	}
 #endif
 
@@ -1598,9 +1660,6 @@ void UIScene_MainMenu::tick()
 		{
 			PostQuitMessage(0);
 		}
-
-		// ── TEST SLIDER update ──
-		g_testSlider.Update(minecraft);
 	}
 #endif
 
@@ -1737,5 +1796,3 @@ void UIScene_MainMenu::handleUnlockFullVersion()
 {
 	m_buttons[(int)eControl_UnlockOrDLC].setLabel(L"Cambiar Aspecto",true);
 }
-
-

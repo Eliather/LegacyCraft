@@ -11,7 +11,9 @@ namespace
 	const wchar_t *kUserDataInfoFileName = L"UserData_Info.userdat";
 	const wchar_t *kDefaultPlayerName = L"Steve";
 	const unsigned int kDefaultSkinId = eDefaultSkins_Skin0;
-	const unsigned int kUserDataInfoVersion = 2;
+	const unsigned char kDefaultGamma = 0;
+	const unsigned char kDefaultFov = 70;
+	const unsigned int kUserDataInfoVersion = 3;
 
 #pragma pack(push, 1)
 	struct UserDataInfoFile
@@ -21,13 +23,14 @@ namespace
 		char playerName[17];
 		unsigned char modelType;
 		unsigned char languageId;
-		unsigned char reserved[2];
+		unsigned char gamma;
+		unsigned char fov;
 		unsigned int skinId;
 	};
 #pragma pack(pop)
 
 	bool g_userDataLoaded = false;
-	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId };
+	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov };
 	char g_userDataPlayerNameAnsi[17] = "Steve";
 
 	bool IsAllowedPlayerNameChar(wchar_t ch)
@@ -154,9 +157,9 @@ namespace
 
 	void ParseBinaryFile(const UserDataInfoFile &fileData)
 	{
-		UserData_Info::Data parsed = { kDefaultPlayerName, false, kDefaultSkinId };
+		UserData_Info::Data parsed = { kDefaultPlayerName, false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov };
 
-		if(memcmp(fileData.magic, "UDAT", 4) != 0 || (fileData.version != 1 && fileData.version != kUserDataInfoVersion))
+		if(memcmp(fileData.magic, "UDAT", 4) != 0 || (fileData.version != 1 && fileData.version != 2 && fileData.version != kUserDataInfoVersion))
 		{
 			g_userData = parsed;
 			return;
@@ -176,6 +179,17 @@ namespace
 		else
 		{
 			parsed.languageId = MINECRAFT_LANGUAGE_SPANISH; // Default for v1 files
+		}
+
+		if(fileData.version >= 3)
+		{
+			parsed.gamma = fileData.gamma;
+			parsed.fov = fileData.fov;
+		}
+		else
+		{
+			parsed.gamma = kDefaultGamma;
+			parsed.fov = kDefaultFov;
 		}
 
 		parsed.skinId = fileData.skinId;
@@ -224,6 +238,8 @@ void UserData_Info::Save()
 	memcpy(fileData.playerName, g_userDataPlayerNameAnsi, sizeof(fileData.playerName) - 1);
 	fileData.modelType = g_userData.modelType ? 1 : 0;
 	fileData.languageId = g_userData.languageId;
+	fileData.gamma = g_userData.gamma;
+	fileData.fov = g_userData.fov;
 	fileData.skinId = g_userData.skinId;
 
 	const std::wstring path = GetUserDataInfoPath();
@@ -269,6 +285,18 @@ unsigned char UserData_Info::GetLanguageId()
 	return g_userData.languageId;
 }
 
+unsigned char UserData_Info::GetGamma()
+{
+	EnsureLoaded();
+	return g_userData.gamma;
+}
+
+unsigned char UserData_Info::GetFov()
+{
+	EnsureLoaded();
+	return g_userData.fov;
+}
+
 unsigned int UserData_Info::GetSkinId()
 {
 	EnsureLoaded();
@@ -305,5 +333,19 @@ void UserData_Info::SetSkinId(unsigned int skinId)
 	EnsureLoaded();
 	g_userData.skinId = skinId;
 	ValidateData(true);
+	Save();
+}
+
+void UserData_Info::SetGamma(unsigned char gamma)
+{
+	EnsureLoaded();
+	g_userData.gamma = gamma;
+	Save();
+}
+
+void UserData_Info::SetFov(unsigned char fov)
+{
+	EnsureLoaded();
+	g_userData.fov = fov;
 	Save();
 }

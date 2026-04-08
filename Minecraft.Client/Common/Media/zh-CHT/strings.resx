@@ -4461,4 +4461,6 @@ Xbox One 主機上的 Minecraft 預設為多人遊戲。如果您選擇高畫質
   </data>
 <data name="IDS_SAVE_TRANSFER_UPLOADFAILED"><value>上傳失敗。請您稍後再試。</value>
   </data>
+<data name="IDS_CHANGE_NAME_BUTTON"><value>&#x66F4;&#x6539;&#x540D;&#x7A31;</value>
+  </data>
 </root>

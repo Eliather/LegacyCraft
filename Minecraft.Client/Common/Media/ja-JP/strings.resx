@@ -4461,4 +4461,6 @@ OK を選択すると、この世界でのプレイを終了します</value>
   </data>
 <data name="IDS_SAVE_TRANSFER_UPLOADFAILED"><value>読み込みに失敗しました。後ほど改めてお試しください</value>
   </data>
+<data name="IDS_CHANGE_NAME_BUTTON"><value>&#x540D;&#x524D;&#x3092;&#x5909;&#x66F4;</value>
+  </data>
 </root>
