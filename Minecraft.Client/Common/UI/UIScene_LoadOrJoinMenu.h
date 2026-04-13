@@ -105,6 +105,9 @@ private:
 	bool m_bSaveTransferCancelled;
 #endif
 	bool m_bUpdateSaveSize;
+#ifdef _WINDOWS64
+	bool m_bUsingWindows64DirectDiskSaves;
+#endif
 
 public:
 	UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer *parentLayer);
@@ -135,6 +138,10 @@ private:
 	void GetSaveInfo();
 	void UpdateGamesList();
 	void AddDefaultButtons();
+#ifdef _WINDOWS64
+	bool PopulateWindows64DirectDiskSaves();
+	void RefreshWindows64DirectDiskSaves(int preferredSelection);
+#endif
 	bool DoesSavesListHaveFocus();
 	bool DoesMashUpWorldHaveFocus();
 	bool DoesGamesListHaveFocus();

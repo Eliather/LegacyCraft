@@ -161,7 +161,7 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(OutDir)$(ProjectName).pdb</ProgramDatabaseFile>
-      <AdditionalDependencies>d3d11.lib;..\Minecraft.World\x64_Debug\Minecraft.World.lib;%(AdditionalDependencies);XInput9_1_0.lib;..\Minecraft.Client\Windows64\Miles\Lib\mss64.lib</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;..\Minecraft.World\x64_Debug\Minecraft.World.lib;Windows64\4JLibs\libs\4J_Storage_d.lib;%(AdditionalDependencies);XInput9_1_0.lib;..\Minecraft.Client\Windows64\Miles\Lib\mss64.lib</AdditionalDependencies>
       <ShowProgress>NotSet</ShowProgress>
       <SuppressStartupBanner>false</SuppressStartupBanner>
     </Link>
@@ -188,7 +188,7 @@
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ProgramDatabaseFile>$(OutDir)$(ProjectName).pdb</ProgramDatabaseFile>
-      <AdditionalDependencies>d3d11.lib;..\Minecraft.World\x64_Release\Minecraft.World.lib;XInput9_1_0.lib;Windows64\Iggy\lib\iggy_w64.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;..\Minecraft.World\x64_Release\Minecraft.World.lib;XInput9_1_0.lib;Windows64\Iggy\lib\iggy_w64.lib;Windows64\4JLibs\libs\4J_Storage.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <ShowProgress>NotSet</ShowProgress>
       <SuppressStartupBanner>false</SuppressStartupBanner>
     </Link>

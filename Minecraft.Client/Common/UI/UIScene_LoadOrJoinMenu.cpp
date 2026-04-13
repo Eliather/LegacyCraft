@@ -2,13 +2,20 @@
 #include "UI.h"
 #include "UIScene_LoadOrJoinMenu.h"
 
+#include <time.h>
+
 #include "..\..\..\Minecraft.World\StringHelpers.h"
 #include "..\..\..\Minecraft.World\net.minecraft.world.item.h"
 #include "..\..\..\Minecraft.World\net.minecraft.world.level.h"
 #include "..\..\..\Minecraft.World\net.minecraft.world.level.chunk.storage.h"
 #include "..\..\..\Minecraft.World\ConsoleSaveFile.h"
+#include "..\..\..\Minecraft.World\ConsoleSaveFileInputStream.h"
 #include "..\..\..\Minecraft.World\ConsoleSaveFileOriginal.h"
+#include "..\..\..\Minecraft.World\ConsoleSaveFileOutputStream.h"
 #include "..\..\..\Minecraft.World\ConsoleSaveFileSplit.h"
+#include "..\..\..\Minecraft.World\com.mojang.nbt.h"
+#include "..\..\..\Minecraft.World\DirectoryLevelStorageSource.h"
+#include "..\..\..\Minecraft.World\LevelData.h"
 #include "..\..\ProgressRenderer.h"
 #include "..\..\MinecraftServer.h"
 #include "..\..\TexturePackRepository.h"
@@ -50,6 +57,901 @@ wstring UIScene_LoadOrJoinMenu::m_wstrStageText=L"";
 C4JStorage::SAVETRANSFER_FILE_DETAILS UIScene_LoadOrJoinMenu::m_debugTransferDetails;
 #endif
 #endif
+
+namespace
+{
+#ifdef _WINDOWS64
+	struct Windows64DirectSaveEntry
+	{
+		std::string saveId;
+		std::string displayTitle;
+		__int64 modifiedTime;
+	};
+
+	std::string BuildSaveListItemLabel(const std::string &title, const std::string &timestampText)
+	{
+		if(timestampText.empty())
+		{
+			return title;
+		}
+
+		return title + "\n" + timestampText;
+	}
+
+	std::string FormatLocalSystemTime(const SYSTEMTIME &localTime)
+	{
+		char formatted[32];
+		sprintf_s(
+			formatted,
+			"%02u/%02u/%04u %02u:%02u",
+			(unsigned int)localTime.wDay,
+			(unsigned int)localTime.wMonth,
+			(unsigned int)localTime.wYear,
+			(unsigned int)localTime.wHour,
+			(unsigned int)localTime.wMinute);
+		return formatted;
+	}
+
+	bool TryFormatWindowsFileTime(__int64 rawFileTime, std::string &formattedTime)
+	{
+		if(rawFileTime <= 0)
+		{
+			return false;
+		}
+
+		ULARGE_INTEGER fileTimeValue;
+		fileTimeValue.QuadPart = (ULONGLONG)rawFileTime;
+
+		FILETIME utcFileTime;
+		utcFileTime.dwLowDateTime = fileTimeValue.LowPart;
+		utcFileTime.dwHighDateTime = fileTimeValue.HighPart;
+
+		FILETIME localFileTime;
+		if(!FileTimeToLocalFileTime(&utcFileTime, &localFileTime))
+		{
+			localFileTime = utcFileTime;
+		}
+
+		SYSTEMTIME localSystemTime;
+		if(!FileTimeToSystemTime(&localFileTime, &localSystemTime))
+		{
+			return false;
+		}
+
+		formattedTime = FormatLocalSystemTime(localSystemTime);
+		return !formattedTime.empty();
+	}
+
+	bool TryGetWindows64ExecutableDirectory(std::wstring &directoryPath)
+	{
+		wchar_t modulePath[MAX_PATH];
+		const DWORD length = GetModuleFileNameW(NULL, modulePath, MAX_PATH);
+		if(length == 0 || length >= MAX_PATH)
+		{
+			return false;
+		}
+
+		std::wstring fullPath(modulePath, length);
+		const size_t slash = fullPath.find_last_of(L"\\/");
+		if(slash == std::wstring::npos)
+		{
+			return false;
+		}
+
+		directoryPath = fullPath.substr(0, slash);
+		return !directoryPath.empty();
+	}
+
+	std::wstring CombineWindows64Path(const std::wstring &parentPath, const std::wstring &childPath)
+	{
+		if(parentPath.empty())
+		{
+			return childPath;
+		}
+
+		if(childPath.empty())
+		{
+			return parentPath;
+		}
+
+		return parentPath + L"\\" + childPath;
+	}
+
+	bool Windows64PathIsDirectory(const std::wstring &path)
+	{
+		const DWORD attributes = GetFileAttributesW(path.c_str());
+		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
+	}
+
+	bool Windows64PathIsFile(const std::wstring &path)
+	{
+		const DWORD attributes = GetFileAttributesW(path.c_str());
+		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+	}
+
+	bool IsSafeWindows64SaveId(const char *saveId);
+
+	bool TryGetWindows64GameHddRootPath(std::wstring &gameHddRootPath)
+	{
+		std::wstring executableDirectory;
+		if(!TryGetWindows64ExecutableDirectory(executableDirectory))
+		{
+			return false;
+		}
+
+		const std::wstring windows64Root = CombineWindows64Path(executableDirectory, L"Windows64");
+		gameHddRootPath = CombineWindows64Path(windows64Root, L"GameHDD");
+		return true;
+	}
+
+	bool Windows64PathStartsWithDirectory(const std::wstring &path, const std::wstring &directoryRoot)
+	{
+		if(path.empty() || directoryRoot.empty())
+		{
+			return false;
+		}
+
+		const size_t rootLength = directoryRoot.length();
+		if(path.length() <= rootLength)
+		{
+			return false;
+		}
+
+		if(_wcsnicmp(path.c_str(), directoryRoot.c_str(), rootLength) != 0)
+		{
+			return false;
+		}
+
+		const wchar_t separator = path[rootLength];
+		return separator == L'\\' || separator == L'/';
+	}
+
+	bool TryResolveWindows64DirectSavePaths(const char *saveId, std::wstring &gameHddRootPath, std::wstring &storageDirPath, std::wstring &saveDataPath)
+	{
+		if(!IsSafeWindows64SaveId(saveId))
+		{
+			return false;
+		}
+
+		if(!TryGetWindows64GameHddRootPath(gameHddRootPath))
+		{
+			return false;
+		}
+
+		if(!Windows64PathIsDirectory(gameHddRootPath))
+		{
+			return false;
+		}
+
+		const std::wstring saveIdWide = filenametowstring(saveId);
+		storageDirPath = CombineWindows64Path(gameHddRootPath, saveIdWide);
+		if(storageDirPath.empty() || _wcsicmp(storageDirPath.c_str(), gameHddRootPath.c_str()) == 0)
+		{
+			return false;
+		}
+
+		saveDataPath = CombineWindows64Path(storageDirPath, L"saveData.ms");
+		if(!Windows64PathIsDirectory(storageDirPath) || !Windows64PathIsFile(saveDataPath))
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	bool DeleteWindows64DirectoryTreeByPath(const std::wstring &directoryPath, const std::wstring &protectedRootPath)
+	{
+		if(directoryPath.empty() || protectedRootPath.empty())
+		{
+			return false;
+		}
+
+		if(!Windows64PathIsDirectory(directoryPath))
+		{
+			return false;
+		}
+
+		if(_wcsicmp(directoryPath.c_str(), protectedRootPath.c_str()) == 0)
+		{
+			return false;
+		}
+
+		if(!Windows64PathStartsWithDirectory(directoryPath, protectedRootPath))
+		{
+			return false;
+		}
+
+		const std::wstring searchPattern = CombineWindows64Path(directoryPath, L"*");
+		WIN32_FIND_DATAW findData;
+		HANDLE findHandle = FindFirstFileW(searchPattern.c_str(), &findData);
+		if(findHandle == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		bool ok = true;
+		do
+		{
+			if(wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0)
+			{
+				continue;
+			}
+
+			const std::wstring childPath = CombineWindows64Path(directoryPath, findData.cFileName);
+			if((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+			{
+				if(!DeleteWindows64DirectoryTreeByPath(childPath, protectedRootPath))
+				{
+					ok = false;
+					break;
+				}
+			}
+			else
+			{
+				SetFileAttributesW(childPath.c_str(), FILE_ATTRIBUTE_NORMAL);
+				if(!DeleteFileW(childPath.c_str()))
+				{
+					ok = false;
+					break;
+				}
+			}
+		}
+		while(FindNextFileW(findHandle, &findData));
+
+		FindClose(findHandle);
+		if(!ok)
+		{
+			return false;
+		}
+
+		SetFileAttributesW(directoryPath.c_str(), FILE_ATTRIBUTE_NORMAL);
+		return RemoveDirectoryW(directoryPath.c_str()) != 0;
+	}
+
+	bool TryGetWindows64SaveDataModifiedTime(const char *saveId, __int64 &modifiedTime)
+	{
+		std::wstring gameHddRootPath;
+		std::wstring storageDirPath;
+		std::wstring saveDataPath;
+		if(!TryResolveWindows64DirectSavePaths(saveId, gameHddRootPath, storageDirPath, saveDataPath))
+		{
+			return false;
+		}
+
+		WIN32_FILE_ATTRIBUTE_DATA attributes;
+		if(!GetFileAttributesExW(saveDataPath.c_str(), GetFileExInfoStandard, &attributes))
+		{
+			return false;
+		}
+
+		ULARGE_INTEGER timestamp;
+		timestamp.LowPart = attributes.ftLastWriteTime.dwLowDateTime;
+		timestamp.HighPart = attributes.ftLastWriteTime.dwHighDateTime;
+		modifiedTime = (__int64)timestamp.QuadPart;
+		return modifiedTime > 0;
+	}
+
+	bool TryBuildSaveTimestampSubtitle(const SAVE_INFO &saveInfo, std::string &subtitle)
+	{
+		subtitle.clear();
+
+		__int64 fileModifiedTime = 0;
+		if(TryGetWindows64SaveDataModifiedTime(saveInfo.UTF8SaveFilename, fileModifiedTime))
+		{
+			return TryFormatWindowsFileTime(fileModifiedTime, subtitle);
+		}
+
+		if(saveInfo.metaData.modifiedTime <= 0)
+		{
+			return false;
+		}
+
+		time_t localTimestamp = saveInfo.metaData.modifiedTime;
+		struct tm *pLocalTime = localtime(&localTimestamp);
+		if(pLocalTime == NULL)
+		{
+			return false;
+		}
+
+		const struct tm localTime = *pLocalTime;
+
+		char formatted[32];
+		sprintf_s(
+			formatted,
+			"%02u/%02u/%04u %02u:%02u",
+			(unsigned int)localTime.tm_mday,
+			(unsigned int)(localTime.tm_mon + 1),
+			(unsigned int)(localTime.tm_year + 1900),
+			(unsigned int)localTime.tm_hour,
+			(unsigned int)localTime.tm_min);
+		subtitle = formatted;
+		return true;
+	}
+
+	bool IsDigitsOnly(const std::string &value)
+	{
+		if(value.empty())
+		{
+			return false;
+		}
+
+		for(size_t i = 0; i < value.length(); ++i)
+		{
+			const char ch = value[i];
+			if(ch < '0' || ch > '9')
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool IsTimestampLikeSaveId(const std::string &value)
+	{
+		if(value.length() != 14 || !IsDigitsOnly(value))
+		{
+			return false;
+		}
+
+		const int year = ((value[0] - '0') * 1000) + ((value[1] - '0') * 100) + ((value[2] - '0') * 10) + (value[3] - '0');
+		const int month = ((value[4] - '0') * 10) + (value[5] - '0');
+		const int day = ((value[6] - '0') * 10) + (value[7] - '0');
+		const int hour = ((value[8] - '0') * 10) + (value[9] - '0');
+		const int minute = ((value[10] - '0') * 10) + (value[11] - '0');
+		const int second = ((value[12] - '0') * 10) + (value[13] - '0');
+
+		if(year < 2000 || year > 2099)
+		{
+			return false;
+		}
+
+		if(month < 1 || month > 12)
+		{
+			return false;
+		}
+
+		if(day < 1 || day > 31)
+		{
+			return false;
+		}
+
+		if(hour < 0 || hour > 23)
+		{
+			return false;
+		}
+
+		if(minute < 0 || minute > 59)
+		{
+			return false;
+		}
+
+		if(second < 0 || second > 59)
+		{
+			return false;
+		}
+
+		return true;
+	}
+
+	bool ShouldHideGeneratedSave(const SAVE_INFO &saveInfo)
+	{
+		const std::string title = saveInfo.UTF8SaveTitle;
+		const std::string filename = saveInfo.UTF8SaveFilename;
+
+		if(title.empty() || filename.empty())
+		{
+			return false;
+		}
+
+		return title == filename && IsTimestampLikeSaveId(title);
+	}
+
+	std::string GetGeneratedSaveDisplayTitle(const SAVE_INFO &saveInfo)
+	{
+		const std::string title = saveInfo.UTF8SaveTitle;
+		if(!ShouldHideGeneratedSave(saveInfo))
+		{
+			return title;
+		}
+
+		char formatted[32];
+		sprintf_s(
+			formatted,
+			"%c%c%c%c-%c%c-%c%c %c%c:%c%c:%c%c",
+			title[0], title[1], title[2], title[3],
+			title[4], title[5],
+			title[6], title[7],
+			title[8], title[9],
+			title[10], title[11],
+			title[12], title[13]);
+		return formatted;
+	}
+
+	std::string WideStringToUtf8(const std::wstring &value)
+	{
+		if(value.empty())
+		{
+			return std::string();
+		}
+
+		const int requiredBytes = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), (int)value.length(), NULL, 0, NULL, NULL);
+		if(requiredBytes <= 0)
+		{
+			return std::string();
+		}
+
+		std::string utf8Value(requiredBytes, '\0');
+		WideCharToMultiByte(CP_UTF8, 0, value.c_str(), (int)value.length(), &utf8Value[0], requiredBytes, NULL, NULL);
+		return utf8Value;
+	}
+
+	bool ReadWholeStorageSaveFile(const std::wstring &filePath, std::vector<unsigned char> &data)
+	{
+		HANDLE fileHandle = CreateFileW(
+			filePath.c_str(),
+			GENERIC_READ,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			NULL,
+			OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL);
+
+		if(fileHandle == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		LARGE_INTEGER fileSize64;
+		if(!GetFileSizeEx(fileHandle, &fileSize64) || fileSize64.QuadPart <= 0 || fileSize64.QuadPart > 0x7fffffff)
+		{
+			CloseHandle(fileHandle);
+			return false;
+		}
+
+		const DWORD fileSize = (DWORD)fileSize64.QuadPart;
+		data.resize(fileSize);
+
+		DWORD bytesRead = 0;
+		const BOOL readOk = ReadFile(fileHandle, &data[0], fileSize, &bytesRead, NULL);
+		CloseHandle(fileHandle);
+
+		if(!readOk || bytesRead != fileSize)
+		{
+			data.clear();
+			return false;
+		}
+
+		return true;
+	}
+
+	bool ReadWholeStorageSaveFile(File file, std::vector<unsigned char> &data)
+	{
+		return ReadWholeStorageSaveFile(file.getPath(), data);
+	}
+
+	bool WriteWholeStorageSaveFile(const std::wstring &filePath, const void *data, DWORD dataSize)
+	{
+		if(data == NULL || dataSize == 0)
+		{
+			return false;
+		}
+
+		HANDLE fileHandle = CreateFileW(
+			filePath.c_str(),
+			GENERIC_WRITE,
+			0,
+			NULL,
+			CREATE_ALWAYS,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL);
+
+		if(fileHandle == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		DWORD bytesWritten = 0;
+		const BOOL writeOk = WriteFile(fileHandle, data, dataSize, &bytesWritten, NULL);
+		CloseHandle(fileHandle);
+		return writeOk && bytesWritten == dataSize;
+	}
+
+	bool WriteWholeStorageSaveFile(const File &file, const void *data, DWORD dataSize)
+	{
+		return WriteWholeStorageSaveFile(file.getPath(), data, dataSize);
+	}
+
+	class Windows64EditableSaveFileOriginal : public ConsoleSaveFileOriginal
+	{
+	public:
+		Windows64EditableSaveFileOriginal(const std::wstring &fileName, LPVOID pvSaveData, DWORD fileSize)
+			: ConsoleSaveFileOriginal(fileName, pvSaveData, fileSize, false, SAVE_FILE_PLATFORM_LOCAL)
+		{
+		}
+
+		bool ExportRawSaveData(std::vector<unsigned char> &data)
+		{
+			finalizeWrite();
+			const unsigned int fileSize = getSizeOnDisk();
+			if(fileSize == 0)
+			{
+				return false;
+			}
+
+			FileEntry rootEntry;
+			rootEntry.currentFilePointer = 0;
+			void *rawData = getWritePointer(&rootEntry);
+			if(rawData == NULL)
+			{
+				return false;
+			}
+
+			data.resize(fileSize);
+			memcpy(&data[0], rawData, fileSize);
+			return true;
+		}
+	};
+
+	bool IsSafeWindows64SaveId(const char *saveId)
+	{
+		if(saveId == NULL || saveId[0] == 0)
+		{
+			return false;
+		}
+
+		for(const char *ptr = saveId; *ptr != 0; ++ptr)
+		{
+			const char ch = *ptr;
+			const bool isLetter = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+			const bool isDigit = (ch >= '0' && ch <= '9');
+			const bool isAllowedPunctuation = (ch == '-');
+			if(!isLetter && !isDigit && !isAllowedPunctuation)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool TryRenameWindows64DirectSave(const char *saveId, const wchar_t *newLevelName)
+	{
+		if(newLevelName == NULL || newLevelName[0] == 0)
+		{
+			return false;
+		}
+
+		std::wstring gameHddRootPath;
+		std::wstring storageDirPath;
+		std::wstring saveDataPath;
+		if(!TryResolveWindows64DirectSavePaths(saveId, gameHddRootPath, storageDirPath, saveDataPath))
+		{
+			return false;
+		}
+
+		std::vector<unsigned char> saveBytes;
+		if(!ReadWholeStorageSaveFile(saveDataPath, saveBytes) || saveBytes.empty())
+		{
+			return false;
+		}
+
+		Windows64EditableSaveFileOriginal saveFile(L"", &saveBytes[0], (DWORD)saveBytes.size());
+		ConsoleSavePath dataFile(std::wstring(L"level.dat"));
+		if(!saveFile.doesFileExist(dataFile))
+		{
+			return false;
+		}
+
+		ConsoleSaveFileInputStream fis(&saveFile, dataFile);
+		CompoundTag *root = NbtIo::readCompressed(&fis);
+		if(root == NULL)
+		{
+			return false;
+		}
+
+		CompoundTag *tag = root->getCompound(L"Data");
+		if(tag == NULL)
+		{
+			delete root;
+			return false;
+		}
+
+		tag->putString(L"LevelName", trimString(std::wstring(newLevelName)));
+
+		ConsoleSaveFileOutputStream fos(&saveFile, dataFile);
+		NbtIo::writeCompressed(root, &fos);
+		delete root;
+
+		std::vector<unsigned char> updatedSaveBytes;
+		if(!saveFile.ExportRawSaveData(updatedSaveBytes) || updatedSaveBytes.empty())
+		{
+			return false;
+		}
+
+		return WriteWholeStorageSaveFile(saveDataPath, &updatedSaveBytes[0], (DWORD)updatedSaveBytes.size());
+	}
+
+	bool TryDeleteWindows64DirectSave(const char *saveId)
+	{
+		std::wstring gameHddRootPath;
+		std::wstring storageDirPath;
+		std::wstring saveDataPath;
+		if(!TryResolveWindows64DirectSavePaths(saveId, gameHddRootPath, storageDirPath, saveDataPath))
+		{
+			return false;
+		}
+
+		if(_wcsicmp(storageDirPath.c_str(), gameHddRootPath.c_str()) == 0)
+		{
+			return false;
+		}
+
+		if(!Windows64PathStartsWithDirectory(storageDirPath, gameHddRootPath))
+		{
+			return false;
+		}
+
+		return DeleteWindows64DirectoryTreeByPath(storageDirPath, gameHddRootPath);
+	}
+
+	bool TryResolveWindows64SaveTitleFromStoragePath(const std::wstring &storageDirPath, std::string &resolvedTitle)
+	{
+		const std::wstring saveDataPath = CombineWindows64Path(storageDirPath, L"saveData.ms");
+		if(!Windows64PathIsFile(saveDataPath))
+		{
+			return false;
+		}
+
+		std::vector<unsigned char> saveBytes;
+		if(!ReadWholeStorageSaveFile(saveDataPath, saveBytes) || saveBytes.empty())
+		{
+			return false;
+		}
+
+		DirectoryLevelStorageSource levelStorageSource(File(L"."));
+		LevelData *levelData = NULL;
+
+		{
+			ConsoleSaveFileOriginal saveFile(L"", &saveBytes[0], (DWORD)saveBytes.size(), false, SAVE_FILE_PLATFORM_LOCAL);
+			levelData = levelStorageSource.getDataTagFor(&saveFile, L"");
+		}
+
+#ifdef SPLIT_SAVES
+		if(levelData == NULL)
+		{
+			ConsoleSaveFileSplit splitSaveFile(L"", &saveBytes[0], (DWORD)saveBytes.size(), false, SAVE_FILE_PLATFORM_LOCAL);
+			levelData = levelStorageSource.getDataTagFor(&splitSaveFile, L"");
+		}
+#endif
+
+		if(levelData == NULL)
+		{
+			return false;
+		}
+
+		const std::wstring levelName = trimString(levelData->getLevelName());
+		delete levelData;
+
+		if(levelName.empty())
+		{
+			return false;
+		}
+
+		resolvedTitle = WideStringToUtf8(levelName);
+		return !resolvedTitle.empty();
+	}
+
+	bool TryResolveWindows64SaveTitleFromStorage(const File &storageDir, std::string &resolvedTitle)
+	{
+		return TryResolveWindows64SaveTitleFromStoragePath(storageDir.getPath(), resolvedTitle);
+	}
+
+	bool TryResolveGeneratedSaveTitleFromStorage(const SAVE_INFO &saveInfo, std::string &resolvedTitle)
+	{
+		std::wstring gameHddRootPath;
+		std::wstring storageDirPath;
+		std::wstring saveDataPath;
+		if(!TryResolveWindows64DirectSavePaths(saveInfo.UTF8SaveFilename, gameHddRootPath, storageDirPath, saveDataPath))
+		{
+			return false;
+		}
+
+		return TryResolveWindows64SaveTitleFromStoragePath(storageDirPath, resolvedTitle);
+	}
+
+	bool GetWindows64DirectSaveEntries(std::vector<Windows64DirectSaveEntry> &entries)
+	{
+		std::wstring gameHddRootPath;
+		if(!TryGetWindows64GameHddRootPath(gameHddRootPath))
+		{
+			return false;
+		}
+
+		if(!Windows64PathIsDirectory(gameHddRootPath))
+		{
+			return false;
+		}
+
+		const std::wstring searchPattern = CombineWindows64Path(gameHddRootPath, L"*");
+		WIN32_FIND_DATAW findData;
+		HANDLE findHandle = FindFirstFileW(searchPattern.c_str(), &findData);
+		if(findHandle == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		do
+		{
+			if((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+			{
+				continue;
+			}
+
+			if(wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0)
+			{
+				continue;
+			}
+
+			const std::wstring storageDirPath = CombineWindows64Path(gameHddRootPath, findData.cFileName);
+			const std::wstring saveDataPath = CombineWindows64Path(storageDirPath, L"saveData.ms");
+			if(Windows64PathIsFile(saveDataPath))
+			{
+				Windows64DirectSaveEntry entry;
+				entry.saveId = WideStringToUtf8(findData.cFileName);
+				entry.modifiedTime = 0;
+				WIN32_FILE_ATTRIBUTE_DATA saveDataAttributes;
+				if(GetFileAttributesExW(saveDataPath.c_str(), GetFileExInfoStandard, &saveDataAttributes))
+				{
+					ULARGE_INTEGER modifiedTime;
+					modifiedTime.LowPart = saveDataAttributes.ftLastWriteTime.dwLowDateTime;
+					modifiedTime.HighPart = saveDataAttributes.ftLastWriteTime.dwHighDateTime;
+					entry.modifiedTime = (__int64)modifiedTime.QuadPart;
+				}
+
+				if(!entry.saveId.empty())
+				{
+					entry.displayTitle.clear();
+					if(!TryResolveWindows64SaveTitleFromStoragePath(storageDirPath, entry.displayTitle))
+					{
+						SAVE_INFO generatedSaveInfo;
+						ZeroMemory(&generatedSaveInfo, sizeof(generatedSaveInfo));
+						strncpy(generatedSaveInfo.UTF8SaveFilename, entry.saveId.c_str(), MAX_SAVEFILENAME_LENGTH - 1);
+						strncpy(generatedSaveInfo.UTF8SaveTitle, entry.saveId.c_str(), MAX_DISPLAYNAME_LENGTH - 1);
+						entry.displayTitle = IsTimestampLikeSaveId(entry.saveId) ? GetGeneratedSaveDisplayTitle(generatedSaveInfo) : entry.saveId;
+					}
+
+					entries.push_back(entry);
+				}
+			}
+		}
+		while(FindNextFileW(findHandle, &findData));
+
+		FindClose(findHandle);
+
+		for(size_t i = 0; i < entries.size(); ++i)
+		{
+			for(size_t j = i + 1; j < entries.size(); ++j)
+			{
+				if(entries[j].modifiedTime > entries[i].modifiedTime ||
+					(entries[j].modifiedTime == entries[i].modifiedTime && entries[j].saveId > entries[i].saveId))
+				{
+					Windows64DirectSaveEntry temp = entries[i];
+					entries[i] = entries[j];
+					entries[j] = temp;
+				}
+			}
+		}
+
+		return !entries.empty();
+	}
+
+	std::string SanitizeSaveLogValue(const char *value)
+	{
+		std::string sanitized;
+		if(value == NULL)
+		{
+			return sanitized;
+		}
+
+		const unsigned char *ptr = (const unsigned char *)value;
+		while(*ptr != 0)
+		{
+			const unsigned char ch = *ptr++;
+			if(ch == '\r' || ch == '\n' || ch == '\t')
+			{
+				sanitized.push_back(' ');
+			}
+			else if(ch >= 32 || ch >= 128)
+			{
+				sanitized.push_back((char)ch);
+			}
+		}
+
+		return sanitized;
+	}
+
+	void WriteWindows64StorageSaveListLog(const SAVE_DETAILS *pSaveDetails)
+	{
+		File savesDir(L"Saves");
+		if(!savesDir.exists())
+		{
+			savesDir.mkdir();
+		}
+
+		File logFile(savesDir, L"StorageSaveList.log");
+		HANDLE logHandle = CreateFile(
+			wstringtofilename(logFile.getPath()),
+			GENERIC_WRITE,
+			FILE_SHARE_READ,
+			NULL,
+			CREATE_ALWAYS,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL);
+
+		if(logHandle == INVALID_HANDLE_VALUE)
+		{
+			app.DebugPrintf("Failed to open storage save list log file\n");
+			return;
+		}
+
+		SYSTEMTIME localTime;
+		GetLocalTime(&localTime);
+
+		std::string logData;
+		logData.reserve(1024);
+
+		char header[256];
+		sprintf_s(
+			header,
+			"Storage save list dump %04d-%02d-%02d %02d:%02d:%02d\r\n",
+			(int)localTime.wYear,
+			(int)localTime.wMonth,
+			(int)localTime.wDay,
+			(int)localTime.wHour,
+			(int)localTime.wMinute,
+			(int)localTime.wSecond);
+		logData += header;
+
+		if(pSaveDetails == NULL)
+		{
+			logData += "ReturnSavesInfo() returned NULL\r\n";
+		}
+		else
+		{
+			char countLine[64];
+			sprintf_s(countLine, "saveCount=%d\r\n", pSaveDetails->iSaveC);
+			logData += countLine;
+
+			for(int i = 0; i < pSaveDetails->iSaveC; ++i)
+			{
+				const SAVE_INFO &saveInfo = pSaveDetails->SaveInfoA[i];
+				const bool hiddenGenerated = ShouldHideGeneratedSave(saveInfo);
+				char infoLine[256];
+				sprintf_s(
+					infoLine,
+					"[%d] hiddenGenerated=%d modifiedTime=%lld dataSize=%u thumbnailSize=%u\r\n",
+					i,
+					hiddenGenerated ? 1 : 0,
+					(long long)saveInfo.metaData.modifiedTime,
+					(unsigned int)saveInfo.metaData.dataSize,
+					(unsigned int)saveInfo.metaData.thumbnailSize);
+				logData += infoLine;
+				logData += "    title=";
+				logData += SanitizeSaveLogValue(saveInfo.UTF8SaveTitle);
+				logData += "\r\n";
+				logData += "    filename=";
+				logData += SanitizeSaveLogValue(saveInfo.UTF8SaveFilename);
+				logData += "\r\n";
+			}
+		}
+
+		DWORD bytesWritten = 0;
+		WriteFile(logHandle, logData.c_str(), (DWORD)logData.size(), &bytesWritten, NULL);
+		CloseHandle(logHandle);
+	}
+#endif
+}
 
 int UIScene_LoadOrJoinMenu::LoadSaveDataThumbnailReturned(LPVOID lpParam,PBYTE pbThumbnail,DWORD dwThumbnailBytes)
 {
@@ -135,6 +1037,9 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
 	m_eAction = eAction_None;
 
     m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
+#ifdef _WINDOWS64
+	m_bUsingWindows64DirectDiskSaves = false;
+#endif
 
 #ifdef _XBOX_ONE
 	// 4J-PB - in order to buy the skin packs & texture packs, we need the signed offer ids for them, which we get in the availability info
@@ -323,6 +1228,13 @@ void UIScene_LoadOrJoinMenu::updateTooltips()
     {
         if((m_iDefaultButtonsC > 0) && (m_iSaveListIndex >= m_iDefaultButtonsC))
         {		
+#ifdef _WINDOWS64
+			if(m_bUsingWindows64DirectDiskSaves)
+			{
+				iRB = IDS_TOOLTIPS_SAVEOPTIONS;
+			}
+			else
+#endif
             if(StorageManager.GetSaveDisabled())
             {
                 iRB=IDS_TOOLTIPS_DELETESAVE;
@@ -577,7 +1489,19 @@ void UIScene_LoadOrJoinMenu::tick()
         // Display the saves if we have them
         if(!m_bSavesDisplayed)
         {
+#ifdef _WINDOWS64
+			if(PopulateWindows64DirectDiskSaves())
+			{
+				return;
+			}
+#endif
             m_pSaveDetails=StorageManager.ReturnSavesInfo();
+#ifdef _WINDOWS64
+			if(m_pSaveDetails != NULL)
+			{
+				WriteWindows64StorageSaveListLog(m_pSaveDetails);
+			}
+#endif
             if(m_pSaveDetails!=NULL)
             {
                 //CD - Fix - Adding define for ORBIS/XBOXONE
@@ -602,9 +1526,10 @@ void UIScene_LoadOrJoinMenu::tick()
                 }
                 m_saveDetails = new SaveListDetails[m_pSaveDetails->iSaveC];
 
-                m_iSaveDetailsCount = m_pSaveDetails->iSaveC;
+                m_iSaveDetailsCount = 0;
                 for(unsigned int i = 0; i < m_pSaveDetails->iSaveC; ++i)
                 {
+                    const int visibleIndex = m_iSaveDetailsCount;
 #if defined(_XBOX_ONE)
                     m_spaceIndicatorSaves.addSave(m_pSaveDetails->SaveInfoA[i].totalSize);
 #elif defined(__ORBIS__)
@@ -613,16 +1538,32 @@ void UIScene_LoadOrJoinMenu::tick()
 #ifdef _DURANGO
                     m_buttonListSaves.addItem(m_pSaveDetails->SaveInfoA[i].UTF16SaveTitle, L"");
 
-                    m_saveDetails[i].saveId = i;
-                    memcpy(m_saveDetails[i].UTF16SaveName, m_pSaveDetails->SaveInfoA[i].UTF16SaveTitle, 128);
-                    memcpy(m_saveDetails[i].UTF16SaveFilename, m_pSaveDetails->SaveInfoA[i].UTF16SaveFilename, MAX_SAVEFILENAME_LENGTH);
+                    m_saveDetails[visibleIndex].saveId = i;
+                    memcpy(m_saveDetails[visibleIndex].UTF16SaveName, m_pSaveDetails->SaveInfoA[i].UTF16SaveTitle, 128);
+                    memcpy(m_saveDetails[visibleIndex].UTF16SaveFilename, m_pSaveDetails->SaveInfoA[i].UTF16SaveFilename, MAX_SAVEFILENAME_LENGTH);
 #else
-                    m_buttonListSaves.addItem(m_pSaveDetails->SaveInfoA[i].UTF8SaveTitle, L"");
+                    std::string displayTitle = m_pSaveDetails->SaveInfoA[i].UTF8SaveTitle;
+                    std::string displayLabel = displayTitle;
+#ifdef _WINDOWS64
+                    if(!TryResolveGeneratedSaveTitleFromStorage(m_pSaveDetails->SaveInfoA[i], displayTitle))
+                    {
+                        displayTitle = GetGeneratedSaveDisplayTitle(m_pSaveDetails->SaveInfoA[i]);
+                    }
 
-                    m_saveDetails[i].saveId = i;
-                    memcpy(m_saveDetails[i].UTF8SaveName, m_pSaveDetails->SaveInfoA[i].UTF8SaveTitle, 128);
-                    memcpy(m_saveDetails[i].UTF8SaveFilename, m_pSaveDetails->SaveInfoA[i].UTF8SaveFilename, MAX_SAVEFILENAME_LENGTH);
+					displayLabel = displayTitle;
+					std::string timestampSubtitle;
+					if(TryBuildSaveTimestampSubtitle(m_pSaveDetails->SaveInfoA[i], timestampSubtitle))
+					{
+						displayLabel = BuildSaveListItemLabel(displayTitle, timestampSubtitle);
+					}
 #endif
+                    m_buttonListSaves.addItem(displayLabel.c_str(), L"");
+
+                    m_saveDetails[visibleIndex].saveId = i;
+                    strncpy(m_saveDetails[visibleIndex].UTF8SaveName, displayTitle.c_str(), 127);
+                    memcpy(m_saveDetails[visibleIndex].UTF8SaveFilename, m_pSaveDetails->SaveInfoA[i].UTF8SaveFilename, MAX_SAVEFILENAME_LENGTH);
+#endif
+                    ++m_iSaveDetailsCount;
                 }
                 m_controlSavesTimer.setVisible( false );
 
@@ -639,7 +1580,8 @@ void UIScene_LoadOrJoinMenu::tick()
                 app.DebugPrintf("Requesting the first thumbnail\n");
                 // set the save to load
                 PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
-                C4JStorage::ESaveGameState eLoadStatus=StorageManager.LoadSaveDataThumbnail(&pSaveDetails->SaveInfoA[(int)m_iRequestingThumbnailId],&LoadSaveDataThumbnailReturned,this);
+                const int saveId = m_saveDetails[m_iRequestingThumbnailId].saveId;
+                C4JStorage::ESaveGameState eLoadStatus=StorageManager.LoadSaveDataThumbnail(&pSaveDetails->SaveInfoA[saveId],&LoadSaveDataThumbnailReturned,this);
 
                 if(eLoadStatus!=C4JStorage::ESaveGame_GetSaveThumbnail)
                 {
@@ -702,7 +1644,8 @@ void UIScene_LoadOrJoinMenu::tick()
                     app.DebugPrintf("Requesting another thumbnail\n");
                     // set the save to load
                     PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
-                    C4JStorage::ESaveGameState eLoadStatus=StorageManager.LoadSaveDataThumbnail(&pSaveDetails->SaveInfoA[(int)m_iRequestingThumbnailId],&LoadSaveDataThumbnailReturned,this);
+                    const int saveId = m_saveDetails[m_iRequestingThumbnailId].saveId;
+                    C4JStorage::ESaveGameState eLoadStatus=StorageManager.LoadSaveDataThumbnail(&pSaveDetails->SaveInfoA[saveId],&LoadSaveDataThumbnailReturned,this);
                     if(eLoadStatus!=C4JStorage::ESaveGame_GetSaveThumbnail)
                     {
                         // something went wrong
@@ -849,7 +1792,6 @@ void UIScene_LoadOrJoinMenu::GetSaveInfo()
 
         for(unsigned int i=0;i<listItems;i++)
         {
-
             wstring wName = m_saves->at(i)->getName();
             wchar_t *name = new wchar_t[wName.size()+1];
             for(unsigned int j = 0; j < wName.size(); ++j)
@@ -870,11 +1812,18 @@ void UIScene_LoadOrJoinMenu::GetSaveInfo()
         m_buttonListSaves.clearList();
         m_iSaveInfoC=0;
         m_controlSavesTimer.setVisible(true);
+#ifdef _WINDOWS64
+		m_bUsingWindows64DirectDiskSaves = false;
+#endif
 
         m_pSaveDetails=StorageManager.ReturnSavesInfo();
         if(m_pSaveDetails==NULL)
         {
+#ifdef _WINDOWS64
+			C4JStorage::ESaveGameState eSGIStatus= StorageManager.GetSavesInfo(m_iPad,NULL,this,NULL); 
+#else
             C4JStorage::ESaveGameState eSGIStatus= StorageManager.GetSavesInfo(m_iPad,NULL,this,"save"); 
+#endif
         }
 
 #if TO_BE_IMPLEMENTED
@@ -889,6 +1838,119 @@ void UIScene_LoadOrJoinMenu::GetSaveInfo()
 
     return;
 }
+
+#ifdef _WINDOWS64
+bool UIScene_LoadOrJoinMenu::PopulateWindows64DirectDiskSaves()
+{
+	if(m_bSavesDisplayed)
+	{
+		return false;
+	}
+
+	std::vector<Windows64DirectSaveEntry> entries;
+	if(!GetWindows64DirectSaveEntries(entries))
+	{
+		return false;
+	}
+
+	AddDefaultButtons();
+	m_bSavesDisplayed = true;
+	m_bAllLoaded = true;
+	m_bRetrievingSaveThumbnails = false;
+	m_bSaveThumbnailReady = false;
+	m_bUsingWindows64DirectDiskSaves = true;
+	UpdateGamesList();
+
+	if(m_saveDetails!=NULL)
+	{
+		for(int i = 0; i < m_iSaveDetailsCount; ++i)
+		{
+			if(m_saveDetails[i].pbThumbnailData!=NULL)
+			{
+				delete m_saveDetails[i].pbThumbnailData;
+			}
+		}
+		delete [] m_saveDetails;
+		m_saveDetails = NULL;
+	}
+
+	m_iSaveDetailsCount = (int)entries.size();
+	m_saveDetails = new SaveListDetails[m_iSaveDetailsCount];
+
+	for(int i = 0; i < m_iSaveDetailsCount; ++i)
+	{
+		std::string timestampSubtitle;
+		TryFormatWindowsFileTime(entries[i].modifiedTime, timestampSubtitle);
+		const std::string displayLabel = BuildSaveListItemLabel(entries[i].displayTitle, timestampSubtitle);
+		m_buttonListSaves.addItem(displayLabel.c_str(), L"");
+		m_saveDetails[i].saveId = -1;
+		strncpy(m_saveDetails[i].UTF8SaveName, entries[i].displayTitle.c_str(), 127);
+		strncpy(m_saveDetails[i].UTF8SaveFilename, entries[i].saveId.c_str(), MAX_SAVEFILENAME_LENGTH - 1);
+	}
+
+	m_controlSavesTimer.setVisible(false);
+	updateTooltips();
+	return true;
+}
+
+void UIScene_LoadOrJoinMenu::RefreshWindows64DirectDiskSaves(int preferredSelection)
+{
+	m_bIgnoreInput = false;
+	m_iState = e_SavesIdle;
+	m_iRequestingThumbnailId = 0;
+	m_bAllLoaded = true;
+	m_bRetrievingSaveThumbnails = false;
+	m_bSaveThumbnailReady = false;
+	m_bSavesDisplayed = false;
+	m_iSaveInfoC = 0;
+	m_bUsingWindows64DirectDiskSaves = false;
+	m_controlSavesTimer.setVisible(false);
+	m_buttonListSaves.clearList();
+
+	if(m_saveDetails != NULL)
+	{
+		for(int i = 0; i < m_iSaveDetailsCount; ++i)
+		{
+			if(m_saveDetails[i].pbThumbnailData != NULL)
+			{
+				delete m_saveDetails[i].pbThumbnailData;
+			}
+		}
+
+		delete [] m_saveDetails;
+		m_saveDetails = NULL;
+	}
+	m_iSaveDetailsCount = 0;
+
+	if(!PopulateWindows64DirectDiskSaves())
+	{
+		AddDefaultButtons();
+		m_bSavesDisplayed = true;
+		m_bAllLoaded = true;
+		UpdateGamesList();
+		updateTooltips();
+	}
+
+	if(m_buttonListSaves.getItemCount() > 0)
+	{
+		int clampedSelection = preferredSelection;
+		if(clampedSelection < 0)
+		{
+			clampedSelection = 0;
+		}
+		else if(clampedSelection >= m_buttonListSaves.getItemCount())
+		{
+			clampedSelection = m_buttonListSaves.getItemCount() - 1;
+		}
+		m_iSaveListIndex = clampedSelection;
+		m_buttonListSaves.setCurrentSelection(clampedSelection);
+	}
+	else
+	{
+		m_iSaveListIndex = 0;
+	}
+}
+#endif
 
 void UIScene_LoadOrJoinMenu::AddDefaultButtons()
 {
@@ -1051,6 +2113,19 @@ void UIScene_LoadOrJoinMenu::handleInput(int iPad, int key, bool repeat, bool pr
             // 4J-PB - check we are on a valid save
             if((m_iDefaultButtonsC != 0) && (m_iSaveListIndex >= m_iDefaultButtonsC))
             {
+#ifdef _WINDOWS64
+				if(m_bUsingWindows64DirectDiskSaves)
+				{
+					m_bIgnoreInput = true;
+					UINT uiIDA[3];
+					uiIDA[0]=IDS_CONFIRM_CANCEL;
+					uiIDA[1]=IDS_TITLE_RENAMESAVE;
+					uiIDA[2]=IDS_TOOLTIPS_DELETESAVE;
+					ui.RequestMessageBox(IDS_TOOLTIPS_SAVEOPTIONS, IDS_TEXT_SAVEOPTIONS, uiIDA, 3, iPad,&UIScene_LoadOrJoinMenu::SaveOptionsDialogReturned,this, app.GetStringTable(),NULL,0,false);
+					handled = true;
+					break;
+				}
+#endif
                 m_bIgnoreInput = true;
 
                 // Could be delete save or Save Options
@@ -1181,7 +2256,23 @@ int UIScene_LoadOrJoinMenu::KeyboardCompleteWorldNameCallback(LPVOID lpParam,boo
         {
 #if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined(__PSVITA__))
             // open the save and overwrite the metadata
-            StorageManager.RenameSaveData(pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC, ui16Text,&UIScene_LoadOrJoinMenu::RenameSaveDataReturned,pClass);
+            const int saveListIndex = pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC;
+            const int storageSaveIndex = pClass->m_saveDetails[saveListIndex].saveId;
+            StorageManager.RenameSaveData(storageSaveIndex, ui16Text,&UIScene_LoadOrJoinMenu::RenameSaveDataReturned,pClass);
+#elif defined(_WINDOWS64)
+			const int saveListIndex = pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC;
+			const bool renameOk = TryRenameWindows64DirectSave(
+				pClass->m_saveDetails[saveListIndex].UTF8SaveFilename,
+				(const wchar_t *)ui16Text);
+			if(renameOk)
+			{
+				pClass->m_iState = e_SavesRepopulate;
+			}
+			else
+			{
+				pClass->m_bIgnoreInput=false;
+				pClass->updateTooltips();
+			}
 #endif
         }
         else 
@@ -1284,9 +2375,10 @@ void UIScene_LoadOrJoinMenu::handlePress(F64 controlId, F64 childId)
             }
             else
             {
+                const int saveListIndex = ((int)childId) - m_iDefaultButtonsC;
 #ifdef __ORBIS__
                 // check if this is a damaged save
-				PSAVE_INFO pSaveInfo = &m_pSaveDetails->SaveInfoA[((int)childId)-m_iDefaultButtonsC];
+				PSAVE_INFO pSaveInfo = &m_pSaveDetails->SaveInfoA[m_saveDetails[saveListIndex].saveId];
                 if(pSaveInfo->thumbnailData == NULL && pSaveInfo->modifiedTime == 0)		// no thumbnail data and time of zero and zero blocks useset for corrupt files
                 {
                     // give the option to delete the save
@@ -1310,10 +2402,17 @@ void UIScene_LoadOrJoinMenu::handlePress(F64 controlId, F64 childId)
                         LoadMenuInitData *params = new LoadMenuInitData();
                         params->iPad = m_iPad;
                         // need to get the iIndex from the list item, since the position in the list doesn't correspond to the GetSaveGameInfo list because of sorting
-                        params->iSaveGameInfoIndex=((int)childId)-m_iDefaultButtonsC;
+#ifdef _WINDOWS64
+						if(m_bUsingWindows64DirectDiskSaves)
+						{
+							params->iSaveGameInfoIndex = -1;
+						}
+						else
+#endif
+                        params->iSaveGameInfoIndex = m_saveDetails[saveListIndex].saveId;
                         //params->pbSaveRenamed=&m_bSaveRenamed;
                         params->levelGen = NULL;
-                        params->saveDetails = &m_saveDetails[ ((int)childId)-m_iDefaultButtonsC ];
+                        params->saveDetails = &m_saveDetails[saveListIndex];
 
 #ifdef _XBOX_ONE
                         // On XB1, saves might need syncing, in which case inform the user so they can decide whether they want to wait for this to happen
@@ -1540,9 +2639,7 @@ void UIScene_LoadOrJoinMenu::LoadLevelGen(LevelGenerationOptions *levelGen)
     // clear out the app's terrain features list
     app.ClearTerrainFeaturePosition();
 
-    StorageManager.ResetSaveData();
-    // Make our next save default to the name of the level
-    StorageManager.SetSaveTitle(levelGen->getDefaultSaveName().c_str());
+    app.PrepareNewSaveData(levelGen->getDefaultSaveName().c_str());
 
     bool isClientSide = false;
     bool isPrivate = false;
@@ -2027,7 +3124,26 @@ int UIScene_LoadOrJoinMenu::DeleteSaveDialogReturned(void *pParam,int iPad,C4JSt
         }
         else
         {
-			StorageManager.DeleteSaveData(&pClass->m_pSaveDetails->SaveInfoA[pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC], UIScene_LoadOrJoinMenu::DeleteSaveDataReturned, (LPVOID)pClass->GetCallbackUniqueId());
+#ifdef _WINDOWS64
+			if(pClass->m_bUsingWindows64DirectDiskSaves)
+			{
+				const int saveListIndex = pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC;
+				if(TryDeleteWindows64DirectSave(pClass->m_saveDetails[saveListIndex].UTF8SaveFilename))
+				{
+					pClass->RefreshWindows64DirectDiskSaves(pClass->m_iSaveListIndex);
+				}
+				else
+				{
+					pClass->m_bIgnoreInput=false;
+				}
+
+				pClass->updateTooltips();
+				return 0;
+			}
+#endif
+			const int saveListIndex = pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC;
+			const int storageSaveIndex = pClass->m_saveDetails[saveListIndex].saveId;
+			StorageManager.DeleteSaveData(&pClass->m_pSaveDetails->SaveInfoA[storageSaveIndex], UIScene_LoadOrJoinMenu::DeleteSaveDataReturned, (LPVOID)pClass->GetCallbackUniqueId());
             pClass->m_controlSavesTimer.setVisible( true );
         }
     }
@@ -3417,7 +4533,9 @@ int UIScene_LoadOrJoinMenu::CopySaveThreadProc( LPVOID lpParameter )
 		pClass->m_bCopyingCancelled = false;
 		ui.LeaveCallbackIdCriticalSection();
 		// Copy save data takes two callbacks - one for completion, and one for progress. The progress callback also lets us cancel the operation, if we return false.
-		StorageManager.CopySaveData(&pClass->m_pSaveDetails->SaveInfoA[pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC],UIScene_LoadOrJoinMenu::CopySaveDataReturned,UIScene_LoadOrJoinMenu::CopySaveDataProgress,lpParameter);
+		const int saveListIndex = pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC;
+		const int storageSaveIndex = pClass->m_saveDetails[saveListIndex].saveId;
+		StorageManager.CopySaveData(&pClass->m_pSaveDetails->SaveInfoA[storageSaveIndex],UIScene_LoadOrJoinMenu::CopySaveDataReturned,UIScene_LoadOrJoinMenu::CopySaveDataProgress,lpParameter);
 			
 		bool bContinue = true;
 		do

@@ -885,9 +885,7 @@ void CScene_MultiGameCreate::CreateGame(CScene_MultiGameCreate* pClass, DWORD dw
 	// create the world and launch
 	wstring wWorldName = pClass->m_EditWorldName.GetText();
 		
-	StorageManager.ResetSaveData();
-	// Make our next save default to the name of the level
-	StorageManager.SetSaveTitle((wchar_t *)wWorldName.c_str());
+	app.PrepareNewSaveData(wWorldName.c_str());
 
 	BOOL bHasSeed = (pClass->m_EditSeed.GetText() != NULL);
 

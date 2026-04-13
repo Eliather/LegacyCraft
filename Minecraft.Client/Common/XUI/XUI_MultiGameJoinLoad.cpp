@@ -1893,9 +1893,7 @@ void CScene_MultiGameJoinLoad::LoadLevelGen(LevelGenerationOptions *levelGen)
 	// clear out the app's terrain features list
 	app.ClearTerrainFeaturePosition();
 		
-	StorageManager.ResetSaveData();
-	// Make our next save default to the name of the level
-	StorageManager.SetSaveTitle(levelGen->getDefaultSaveName().c_str());
+	app.PrepareNewSaveData(levelGen->getDefaultSaveName().c_str());
 	
 	bool isClientSide = false;
 	bool isPrivate = false;
@@ -2076,7 +2074,7 @@ int CScene_MultiGameJoinLoad::UploadSaveForXboxOneThreadProc( LPVOID lpParameter
 		ByteArrayOutputStream baos;
 		DataOutputStream dos(&baos);
 
-		LPCWSTR title = StorageManager.GetSaveTitle();
+		LPCWSTR title = app.GetPreparedSaveTitle();
 		dos.writeUTF(title);
 
 		char szUniqueMapName[14];

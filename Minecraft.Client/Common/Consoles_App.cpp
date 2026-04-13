@@ -173,7 +173,7 @@ CMinecraftApp::CMinecraftApp()
 	m_iTotalDLCInstalled = 0;
 	mfTrialPausedTime=0.0f;
 	m_uiAutosaveTimer=0;
-	ZeroMemory(m_pszUniqueMapName,14);
+	ZeroMemory(m_pszUniqueMapName,sizeof(m_pszUniqueMapName));
 
 
 	m_bNewDLCAvailable=false;
@@ -7198,9 +7198,414 @@ void CMinecraftApp::SetSpecialTutorialCompletionFlag(int iPad, int index)
 
 // BANNED LIST FUNCTIONS
 
+#ifdef _WINDOWS64
+namespace
+{
+	char MapWindows64SaveIdCharacter(wchar_t ch)
+	{
+		switch(ch)
+		{
+		case L'\x00C1': case L'\x00C0': case L'\x00C2': case L'\x00C3': case L'\x00C4': case L'\x00C5':
+			return 'A';
+		case L'\x00E1': case L'\x00E0': case L'\x00E2': case L'\x00E3': case L'\x00E4': case L'\x00E5':
+			return 'a';
+		case L'\x00C9': case L'\x00C8': case L'\x00CA': case L'\x00CB':
+			return 'E';
+		case L'\x00E9': case L'\x00E8': case L'\x00EA': case L'\x00EB':
+			return 'e';
+		case L'\x00CD': case L'\x00CC': case L'\x00CE': case L'\x00CF':
+			return 'I';
+		case L'\x00ED': case L'\x00EC': case L'\x00EE': case L'\x00EF':
+			return 'i';
+		case L'\x00D3': case L'\x00D2': case L'\x00D4': case L'\x00D5': case L'\x00D6': case L'\x00D8':
+			return 'O';
+		case L'\x00F3': case L'\x00F2': case L'\x00F4': case L'\x00F5': case L'\x00F6': case L'\x00F8':
+			return 'o';
+		case L'\x00DA': case L'\x00D9': case L'\x00DB': case L'\x00DC':
+			return 'U';
+		case L'\x00FA': case L'\x00F9': case L'\x00FB': case L'\x00FC':
+			return 'u';
+		case L'\x00D1': case L'\x00F1':
+			return ch == L'\x00D1' ? 'N' : 'n';
+		case L'\x00C7': case L'\x00E7':
+			return ch == L'\x00C7' ? 'C' : 'c';
+		default:
+			break;
+		}
+
+		if(ch >= L'0' && ch <= L'9')
+		{
+			return (char)ch;
+		}
+
+		if(ch >= L'a' && ch <= L'z')
+		{
+			return (char)ch;
+		}
+
+		if(ch >= L'A' && ch <= L'Z')
+		{
+			return (char)ch;
+		}
+
+		return 0;
+	}
+
+	std::string WideStringToUtf8ForSaveId(LPCWSTR value)
+	{
+		if(value == NULL || value[0] == 0)
+		{
+			return std::string();
+		}
+
+		const int requiredBytes = WideCharToMultiByte(CP_UTF8, 0, value, -1, NULL, 0, NULL, NULL);
+		if(requiredBytes <= 1)
+		{
+			return std::string();
+		}
+
+		std::string utf8Value(requiredBytes, '\0');
+		WideCharToMultiByte(CP_UTF8, 0, value, -1, &utf8Value[0], requiredBytes, NULL, NULL);
+		utf8Value.resize(requiredBytes - 1);
+		return utf8Value;
+	}
+
+	unsigned int HashWindows64SaveIdentity(const std::string &utf8Title, const std::string &salt)
+	{
+		unsigned int hash = 2166136261u;
+
+		for(size_t i = 0; i < utf8Title.length(); ++i)
+		{
+			hash ^= (unsigned char)utf8Title[i];
+			hash *= 16777619u;
+		}
+
+		for(size_t i = 0; i < salt.length(); ++i)
+		{
+			hash ^= (unsigned char)salt[i];
+			hash *= 16777619u;
+		}
+
+		return hash == 0 ? 1u : hash;
+	}
+
+	bool IsTimestampLikeSaveId(const char *value);
+
+	std::string BuildWindows64SaveIdBase(LPCWSTR pwchSaveTitle)
+	{
+		std::string normalizedTitle;
+		if(pwchSaveTitle != NULL)
+		{
+			for(const wchar_t *ptr = pwchSaveTitle; *ptr != 0; ++ptr)
+			{
+				const char mapped = MapWindows64SaveIdCharacter(*ptr);
+				if(mapped != 0)
+				{
+					normalizedTitle.push_back(mapped);
+				}
+			}
+		}
+
+		if(normalizedTitle.empty())
+		{
+			normalizedTitle = "world";
+		}
+
+		if(normalizedTitle.length() > 14)
+		{
+			normalizedTitle.resize(14);
+		}
+
+		if(IsTimestampLikeSaveId(normalizedTitle.c_str()))
+		{
+			if(normalizedTitle.length() == 14)
+			{
+				normalizedTitle.resize(13);
+			}
+			normalizedTitle.insert(normalizedTitle.begin(), 'w');
+		}
+
+		return normalizedTitle;
+	}
+
+	char ToLowerAscii(char ch)
+	{
+		if(ch >= 'A' && ch <= 'Z')
+		{
+			return (char)(ch - 'A' + 'a');
+		}
+
+		return ch;
+	}
+
+	bool EqualsIgnoreCaseAscii(const std::string &a, const std::string &b)
+	{
+		if(a.length() != b.length())
+		{
+			return false;
+		}
+
+		for(size_t i = 0; i < a.length(); ++i)
+		{
+			if(ToLowerAscii(a[i]) != ToLowerAscii(b[i]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	std::string BuildWindows64DuplicateSaveId(const std::string &baseId, int duplicateIndex)
+	{
+		if(duplicateIndex <= 1)
+		{
+			return baseId;
+		}
+
+		char suffix[16];
+		sprintf_s(suffix, sizeof(suffix), "-%d", duplicateIndex);
+
+		std::string candidate = baseId;
+		const size_t suffixLength = strlen(suffix);
+		if(candidate.length() + suffixLength > 14)
+		{
+			candidate.resize(14 - suffixLength);
+			while(!candidate.empty() && candidate[candidate.length() - 1] == '-')
+			{
+				candidate.resize(candidate.length() - 1);
+			}
+		}
+
+		candidate += suffix;
+		return candidate;
+	}
+
+	std::string CanonicalizeWindows64PreferredSaveId(LPCWSTR pwchSaveTitle, const char *pszPreferredSaveId)
+	{
+		if(pszPreferredSaveId == NULL || pszPreferredSaveId[0] == 0)
+		{
+			return std::string();
+		}
+
+		std::string canonicalId = pszPreferredSaveId;
+		const std::string baseId = BuildWindows64SaveIdBase(pwchSaveTitle);
+		if(baseId.empty())
+		{
+			return canonicalId;
+		}
+
+		if(EqualsIgnoreCaseAscii(baseId, canonicalId))
+		{
+			return baseId;
+		}
+
+		size_t suffixStart = canonicalId.length();
+		while(suffixStart > 0 && canonicalId[suffixStart - 1] >= '0' && canonicalId[suffixStart - 1] <= '9')
+		{
+			--suffixStart;
+		}
+
+		if(suffixStart < canonicalId.length())
+		{
+			size_t baseEnd = suffixStart;
+			const bool hadSeparator = baseEnd > 0 && canonicalId[baseEnd - 1] == '-';
+			if(baseEnd > 0 && canonicalId[baseEnd - 1] == '-')
+			{
+				--baseEnd;
+			}
+
+			if(baseEnd == baseId.length() &&
+				EqualsIgnoreCaseAscii(baseId, canonicalId.substr(0, baseEnd)))
+			{
+				int duplicateIndex = 0;
+				for(size_t i = suffixStart; i < canonicalId.length(); ++i)
+				{
+					duplicateIndex = (duplicateIndex * 10) + (canonicalId[i] - '0');
+				}
+
+				if(duplicateIndex >= 2)
+				{
+					if(hadSeparator)
+					{
+						return BuildWindows64DuplicateSaveId(baseId, duplicateIndex);
+					}
+
+					return baseId + canonicalId.substr(suffixStart);
+				}
+
+				return baseId;
+			}
+		}
+
+		return canonicalId;
+	}
+
+	bool Windows64SaveIdExists(const std::string &saveId)
+	{
+		if(saveId.empty())
+		{
+			return false;
+		}
+
+		File storageRoot(L"Windows64\\GameHDD");
+		if(!storageRoot.exists() || !storageRoot.isDirectory())
+		{
+			return false;
+		}
+
+		File candidate(storageRoot, filenametowstring(saveId.c_str()));
+		return candidate.exists() && candidate.isDirectory();
+	}
+
+	void BuildWindows64StableSaveId(char *outId, size_t outSize, LPCWSTR pwchSaveTitle, const char *pszSalt)
+	{
+		if(outId == NULL || outSize == 0)
+		{
+			return;
+		}
+
+		ZeroMemory(outId, outSize);
+
+		const std::string baseId = BuildWindows64SaveIdBase(pwchSaveTitle);
+		std::string chosenId = baseId;
+
+		if(Windows64SaveIdExists(chosenId))
+		{
+			for(int attempt = 2; attempt < 1000000; ++attempt)
+			{
+				const std::string candidate = BuildWindows64DuplicateSaveId(baseId, attempt);
+				if(!Windows64SaveIdExists(candidate))
+				{
+					chosenId = candidate;
+					break;
+				}
+			}
+		}
+
+		if(chosenId.empty())
+		{
+			const unsigned int hash = HashWindows64SaveIdentity(
+				WideStringToUtf8ForSaveId(pwchSaveTitle),
+				pszSalt ? pszSalt : "");
+			sprintf_s(outId, outSize, "world%08x", hash);
+			outId[outSize - 1] = 0;
+			return;
+		}
+
+		strncpy_s(outId, outSize, chosenId.c_str(), _TRUNCATE);
+	}
+
+	bool IsTimestampLikeSaveId(const char *value)
+	{
+		if(value == NULL || strlen(value) != 14)
+		{
+			return false;
+		}
+
+		for(int i = 0; i < 14; ++i)
+		{
+			if(value[i] < '0' || value[i] > '9')
+			{
+				return false;
+			}
+		}
+
+		const int year = (value[0] - '0') * 1000 + (value[1] - '0') * 100 + (value[2] - '0') * 10 + (value[3] - '0');
+		const int month = (value[4] - '0') * 10 + (value[5] - '0');
+		const int day = (value[6] - '0') * 10 + (value[7] - '0');
+		const int hour = (value[8] - '0') * 10 + (value[9] - '0');
+		const int minute = (value[10] - '0') * 10 + (value[11] - '0');
+		const int second = (value[12] - '0') * 10 + (value[13] - '0');
+
+		return year >= 2000 && year <= 2099 &&
+			month >= 1 && month <= 12 &&
+			day >= 1 && day <= 31 &&
+			hour >= 0 && hour <= 23 &&
+			minute >= 0 && minute <= 59 &&
+			second >= 0 && second <= 59;
+	}
+}
+#endif
+
+void CMinecraftApp::SetPreparedSaveTitle(LPCWSTR pwchSaveTitle)
+{
+	m_wsPreparedSaveTitle = pwchSaveTitle ? pwchSaveTitle : L"";
+}
+
+LPCWSTR CMinecraftApp::GetPreparedSaveTitle(void) const
+{
+	return m_wsPreparedSaveTitle.c_str();
+}
+
+void CMinecraftApp::SetPreparedSaveIdentity(LPCWSTR pwchSaveTitle, LPCSTR pszPreferredSaveId)
+{
+	SetPreparedSaveTitle(pwchSaveTitle);
+	StorageManager.SetSaveTitle(pwchSaveTitle ? pwchSaveTitle : L"");
+
+#ifdef _WINDOWS64
+	char stableSaveId[15];
+	ZeroMemory(stableSaveId, sizeof(stableSaveId));
+
+	const bool usePreferredSaveId =
+		pszPreferredSaveId != NULL &&
+		pszPreferredSaveId[0] != 0 &&
+		strlen(pszPreferredSaveId) <= 14 &&
+		!IsTimestampLikeSaveId(pszPreferredSaveId);
+
+	if(usePreferredSaveId)
+	{
+		const std::string canonicalPreferredSaveId = CanonicalizeWindows64PreferredSaveId(pwchSaveTitle, pszPreferredSaveId);
+		strncpy_s(stableSaveId, sizeof(stableSaveId), canonicalPreferredSaveId.c_str(), 14);
+	}
+	else
+	{
+		char salt[64];
+		ZeroMemory(salt, sizeof(salt));
+
+		if(pszPreferredSaveId != NULL && pszPreferredSaveId[0] != 0)
+		{
+			strncpy_s(salt, sizeof(salt), pszPreferredSaveId, _TRUNCATE);
+		}
+		else
+		{
+			SYSTEMTIME localTime;
+			GetLocalTime(&localTime);
+			sprintf_s(
+				salt,
+				sizeof(salt),
+				"%04d%02d%02d%02d%02d%02d%03d%lu",
+				(int)localTime.wYear,
+				(int)localTime.wMonth,
+				(int)localTime.wDay,
+				(int)localTime.wHour,
+				(int)localTime.wMinute,
+				(int)localTime.wSecond,
+				(int)localTime.wMilliseconds,
+				(unsigned long)GetTickCount());
+		}
+
+		BuildWindows64StableSaveId(stableSaveId, sizeof(stableSaveId), pwchSaveTitle, salt);
+	}
+
+	SetUniqueMapName(stableSaveId);
+	StorageManager.SetSaveUniqueFilename(stableSaveId);
+#endif
+}
+
+void CMinecraftApp::PrepareNewSaveData(LPCWSTR pwchDefaultSaveName)
+{
+	StorageManager.ResetSaveData();
+	SetPreparedSaveIdentity(pwchDefaultSaveName);
+}
+
 void CMinecraftApp::SetUniqueMapName(char *pszUniqueMapName)
 {
-	memcpy(m_pszUniqueMapName,pszUniqueMapName,14);
+	ZeroMemory(m_pszUniqueMapName, sizeof(m_pszUniqueMapName));
+	if(pszUniqueMapName != NULL)
+	{
+		strncpy_s(m_pszUniqueMapName, sizeof(m_pszUniqueMapName), pszUniqueMapName, 14);
+	}
 }
 
 char *CMinecraftApp::GetUniqueMapName(void)

@@ -889,15 +889,13 @@ void CScene_Main::LoadTrial(void)
 	// clear out the app's terrain features list
 	app.ClearTerrainFeaturePosition();
 
-	StorageManager.ResetSaveData();
+	app.PrepareNewSaveData(L"Tutorial");
 
 	// Need to set the mode as trial
 	ProfileManager.StartTrialGame();
 
 	// No saving in the trial
 	StorageManager.SetSaveDisabled(true);
-
-	StorageManager.SetSaveTitle(L"Tutorial");
 
 	// Reset the autosave time
 	app.SetAutosaveTimerTime();

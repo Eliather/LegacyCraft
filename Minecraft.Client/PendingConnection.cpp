@@ -97,8 +97,17 @@ void PendingConnection::sendPreLoginResponse()
 	DWORD hostIndex = 0;
 	BYTE ugcFriendsOnlyBits = 0;
 	char szUniqueMapName[14];
+	ZeroMemory(szUniqueMapName, sizeof(szUniqueMapName));
 
-	StorageManager.GetSaveUniqueFilename(szUniqueMapName);
+	const char *preparedUniqueMapName = app.GetUniqueMapName();
+	if(preparedUniqueMapName != NULL && preparedUniqueMapName[0] != 0)
+	{
+		memcpy(szUniqueMapName, preparedUniqueMapName, min((size_t)14, strlen(preparedUniqueMapName)));
+	}
+	else
+	{
+		StorageManager.GetSaveUniqueFilename(szUniqueMapName);
+	}
 
 	PlayerList *playerList = MinecraftServer::getInstance()->getPlayers();
 	for(AUTO_VAR(it, playerList->players.begin()); it != playerList->players.end(); ++it)

@@ -204,6 +204,11 @@ bool MinecraftServer::initServer(__int64 seed, NetworkGameInitData *initData, DW
         __int64 levelNanoTime = System::nanoTime();
 
         wstring levelName = settings->getString(L"level-name", L"world");
+		LPCWSTR preparedSaveTitle = app.GetPreparedSaveTitle();
+		if((levelName.empty() || levelName == L"world") && preparedSaveTitle != NULL && preparedSaveTitle[0] != 0)
+		{
+			levelName = preparedSaveTitle;
+		}
 		wstring levelTypeString;
 
 		bool gameRuleUseFlatWorld = false;

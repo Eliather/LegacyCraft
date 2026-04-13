@@ -480,9 +480,6 @@ void UIScene_HelpAndOptionsMenu::handleInput(int iPad, int key, bool repeat, boo
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		if(pressed)
 		{
 #if defined(_WINDOWS64)

@@ -1428,9 +1428,7 @@ void CScene_LoadGameSettings::LoadLevelGen(LevelGenerationOptions *levelGen)
 	//File saveFile( L"Tutorial\\Tutorial" );
 	//LoadSaveFromDisk(&saveFile);
 		
-	StorageManager.ResetSaveData();
-	// Make our next save default to the name of the level
-	StorageManager.SetSaveTitle(levelGen->getDefaultSaveName().c_str());
+	app.PrepareNewSaveData(levelGen->getDefaultSaveName().c_str());
 	
 	bool isPrivate = (app.GetGameSettings(m_iPad,eGameSetting_InviteOnly)>0)?true:false;
 

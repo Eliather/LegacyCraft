@@ -787,46 +787,118 @@ static void AddKeyboardState(bool &down, bool &pressed, bool &released, int keyC
 	released = released || Keyboard::isKeyReleased(keyCode);
 }
 
-static void ApplyWindowsMenuKeyboardFallback(unsigned int action, bool &down, bool &pressed, bool &released)
+static bool IsFocusedTextInput(UIScene *scene)
+{
+	if(scene == NULL)
+	{
+		return false;
+	}
+
+	const int focusedControlId = scene->getControlFocus();
+	vector<UIControl *> *controls = scene->GetControls();
+	for(size_t i = 0; i < controls->size(); ++i)
+	{
+		UIControl *control = (*controls)[i];
+		if(control != NULL &&
+			control->getId() == focusedControlId &&
+			control->getControlType() == UIControl::eTextInput)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static UIScene *GetActiveGroupScene(UIGroup *group)
+{
+	if(group == NULL)
+	{
+		return NULL;
+	}
+
+	for(int i = 0; i < (int)eUILayer_COUNT; ++i)
+	{
+		UIScene *scene = group->GetTopScene((EUILayer)i);
+		if(scene != NULL)
+		{
+			return scene;
+		}
+	}
+
+	return NULL;
+}
+
+static void ApplyWindowsMenuKeyboardFallback(unsigned int action, bool &down, bool &pressed, bool &released, bool textInputFocused)
 {
 	switch(action)
 	{
 	case ACTION_MENU_UP:
-		AddKeyboardState(down, pressed, released, VK_UP);
-		AddKeyboardState(down, pressed, released, 'W');
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_UP);
+			AddKeyboardState(down, pressed, released, 'W');
+		}
 		break;
 	case ACTION_MENU_DOWN:
-		AddKeyboardState(down, pressed, released, VK_DOWN);
-		AddKeyboardState(down, pressed, released, 'S');
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_DOWN);
+			AddKeyboardState(down, pressed, released, 'S');
+		}
 		break;
 	case ACTION_MENU_LEFT:
-		AddKeyboardState(down, pressed, released, VK_LEFT);
-		AddKeyboardState(down, pressed, released, 'A');
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_LEFT);
+			AddKeyboardState(down, pressed, released, 'A');
+		}
 		break;
 	case ACTION_MENU_RIGHT:
-		AddKeyboardState(down, pressed, released, VK_RIGHT);
-		AddKeyboardState(down, pressed, released, 'D');
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_RIGHT);
+			AddKeyboardState(down, pressed, released, 'D');
+		}
 		break;
 	case ACTION_MENU_LEFT_SCROLL:
-		AddKeyboardState(down, pressed, released, 'Q');
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, 'Q');
+		}
 		break;
 	case ACTION_MENU_RIGHT_SCROLL:
-		AddKeyboardState(down, pressed, released, 'E');
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, 'E');
+		}
 		break;
 	case ACTION_MENU_PAGEUP:
-		AddKeyboardState(down, pressed, released, VK_PRIOR);
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_PRIOR);
+		}
 		break;
 	case ACTION_MENU_PAGEDOWN:
-		AddKeyboardState(down, pressed, released, VK_NEXT);
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_NEXT);
+		}
 		break;
 	case ACTION_MENU_OK:
-		AddKeyboardState(down, pressed, released, VK_RETURN);
-		AddKeyboardState(down, pressed, released, VK_SPACE);
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_RETURN);
+			AddKeyboardState(down, pressed, released, VK_SPACE);
+		}
 		break;
 	case ACTION_MENU_CANCEL:
 	case ACTION_MENU_B:
 		AddKeyboardState(down, pressed, released, VK_ESCAPE);
-		AddKeyboardState(down, pressed, released, VK_BACK);
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_BACK);
+		}
 		break;
 	}
 }
@@ -1228,6 +1300,18 @@ void UIController::handleKeyPress(unsigned int iPad, unsigned int key)
 	if((int)iPad == ProfileManager.GetPrimaryPad())
 	{
 		const bool menuDisplayed = GetMenuDisplayed(iPad) || m_groups[(int)eUIGroup_Fullscreen]->GetMenuDisplayed();
+		UIScene *menuScene = NULL;
+
+		if(m_groups[(int)eUIGroup_Fullscreen]->GetMenuDisplayed())
+		{
+			menuScene = GetActiveGroupScene(m_groups[(int)eUIGroup_Fullscreen]);
+		}
+		else
+		{
+			menuScene = GetActiveGroupScene(m_groups[(int)(iPad + 1)]);
+		}
+
+		const bool textInputFocused = IsFocusedTextInput(menuScene);
 
 		if(key == ACTION_MENU_OK)
 		{
@@ -1257,7 +1341,12 @@ void UIController::handleKeyPress(unsigned int iPad, unsigned int key)
 				}
 			}
 		}
-		ApplyWindowsMenuKeyboardFallback(key, down, pressed, released);
+		else if(menuDisplayed && key == ACTION_MENU_RIGHT_SCROLL)
+		{
+			down = down || Mouse::isButtonDown(1);
+			pressed = pressed || Mouse::isButtonPressed(1);
+		}
+		ApplyWindowsMenuKeyboardFallback(key, down, pressed, released, textInputFocused);
 		ApplyWindowsMenuMouseWheelFallback(key, menuDisplayed, down, pressed);
 	}
 #endif

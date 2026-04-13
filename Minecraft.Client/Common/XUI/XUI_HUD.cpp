@@ -120,6 +120,22 @@ HRESULT CXuiSceneHud::OnCustomMessage_TickScene()
 		m_hudGroup.SetPosition(&pos);
 	}
 
+	// Keep the XUI crosshair centered in the active HUD scene instead of inheriting stale layout offsets.
+	{
+		float sceneWidth = 0.0f;
+		float sceneHeight = 0.0f;
+		GetBounds(&sceneWidth, &sceneHeight);
+
+		D3DXVECTOR3 scale;
+		XuiElementGetScale(m_crosshair.m_hObj, &scale);
+
+		D3DXVECTOR3 crosshairPos;
+		m_crosshair.GetPosition(&crosshairPos);
+		crosshairPos.x = (sceneWidth * 0.5f) - (8.0f * scale.x);
+		crosshairPos.y = (sceneHeight * 0.5f) - (8.0f * scale.y);
+		m_crosshair.SetPosition(&crosshairPos);
+	}
+
 	// Update inventory
 	float opacity = 1.0f;
 	GetOpacity(&opacity);

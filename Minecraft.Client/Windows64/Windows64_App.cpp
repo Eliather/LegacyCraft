@@ -70,8 +70,7 @@ void CConsoleMinecraftApp::TemporaryCreateGameStart()
 	app.ClearTerrainFeaturePosition();
 	wstring wWorldName = L"TestWorld";
 
-	StorageManager.ResetSaveData();
-	StorageManager.SetSaveTitle(wWorldName.c_str());
+	app.PrepareNewSaveData(wWorldName.c_str());
 
 	bool isFlat = false;
 	__int64 seedValue = 0; // BiomeSource::findSeed(isFlat?LevelType::lvl_flat:LevelType::lvl_normal);	// 4J - was (new Random())->nextLong() - now trying to actually find a seed to suit our requirements

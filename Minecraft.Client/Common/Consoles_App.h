@@ -389,6 +389,10 @@ public:
 	bool IsInBannedLevelList(int iPad, PlayerUID xuid, char *pszLevelName);
 	void RemoveLevelFromBannedLevelList(int iPad, PlayerUID xuid, char *pszLevelName);
 	void InvalidateBannedList(int iPad);
+	void SetPreparedSaveTitle(LPCWSTR pwchSaveTitle);
+	LPCWSTR GetPreparedSaveTitle(void) const;
+	void SetPreparedSaveIdentity(LPCWSTR pwchSaveTitle, LPCSTR pszPreferredSaveId = NULL);
+	void PrepareNewSaveData(LPCWSTR pwchDefaultSaveName);
 	void SetUniqueMapName(char *pszUniqueMapName);
 	char *GetUniqueMapName(void);
 #ifdef _XBOX_ONE
@@ -661,7 +665,8 @@ private:
 
 
 	bool m_bRead_BannedListA[XUSER_MAX_COUNT];
-	char m_pszUniqueMapName[14];
+	wstring m_wsPreparedSaveTitle;
+	char m_pszUniqueMapName[15];
 	bool m_BanListCheck[XUSER_MAX_COUNT];
 
 public:

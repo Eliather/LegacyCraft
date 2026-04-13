@@ -81,7 +81,20 @@ void PreLoginPacket::read(DataInputStream *dis) //throws IOException
 	m_texturePackId = *(DWORD *)&texturePackId;
 
 	// Set the name of the map so we can check it for players banned lists
-	app.SetUniqueMapName((char *)m_szUniqueSaveName);
+	bool hasUniqueSaveName = false;
+	for(DWORD i = 0; i < m_iSaveNameLen; ++i)
+	{
+		if(m_szUniqueSaveName[i] != 0)
+		{
+			hasUniqueSaveName = true;
+			break;
+		}
+	}
+
+	if(hasUniqueSaveName)
+	{
+		app.SetUniqueMapName((char *)m_szUniqueSaveName);
+	}
 }
 
 void PreLoginPacket::write(DataOutputStream *dos) //throws IOException 

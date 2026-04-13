@@ -22,6 +22,13 @@ private:
 
 	wstring m_worldName;
 	wstring m_seed;
+	size_t m_worldNameCursorIndex;
+	bool m_bWorldNameFocusedLastTick;
+#ifdef _WINDOWS64
+	bool m_bWorldNameDeleteHeld;
+	int m_iWorldNameDeleteHeldKey;
+	DWORD m_dwNextWorldNameDeleteRepeatTick;
+#endif
 
 	UIControl m_controlMainPanel;
 	UIControl_Label m_labelWorldName, m_labelSeed, m_labelRandomSeed;
@@ -29,7 +36,7 @@ private:
 	UIControl_TextInput m_editWorldName, m_editSeed;
 	UIControl_Slider m_sliderDifficulty;
 	
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined _XBOX_ONE || defined _WINDOWS64
 	UIControl_CheckBox m_checkboxOnline;
 #endif
 
@@ -46,7 +53,7 @@ private:
 			UI_MAP_ELEMENT( m_texturePackList, "TexturePackSelector")
 			UI_MAP_ELEMENT( m_buttonGamemode, "GameModeToggle")
 			
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined _XBOX_ONE || defined _WINDOWS64
 			UI_MAP_ELEMENT( m_checkboxOnline, "CheckboxOnline")
 #endif
 			UI_MAP_ELEMENT( m_buttonMoreOptions, "MoreOptions")
@@ -82,6 +89,7 @@ protected:
 	
 	virtual void handleTimerComplete(int id);
 	virtual void handleGainFocus(bool navBack);
+	virtual void handleFocusChange(F64 controlId, F64 childId);
 
 public:
 	// INPUT
@@ -90,6 +98,14 @@ public:
 private:
 	void StartSharedLaunchFlow();
 	bool IsLocalMultiplayerAvailable();
+	void setWorldNameValue(const wstring &worldName);
+	void refreshWorldNameTextInputDisplay();
+#ifdef _WINDOWS64
+	bool deleteWorldNameCharacterBackward();
+	bool deleteWorldNameCharacterForward();
+	void updateHeldWorldNameDelete();
+	void processDirectWorldNameTyping();
+#endif
 
 #ifdef _DURANGO
 	static void checkPrivilegeCallback(LPVOID lpParam, bool hasPrivilege, int iPad);
@@ -104,12 +120,6 @@ protected:
 	static void CreateGame(UIScene_CreateWorldMenu* pClass, DWORD dwLocalUsersMask);
 	static int ConfirmCreateReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
 	static int StartGame_SignInReturned(void *pParam,bool bContinue, int iPad);
-	static int MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EMessageResult result);
-
-#ifdef __ORBIS__
-	//static int PSPlusReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
-	static int ContinueOffline(void *pParam,int iPad,C4JStorage::EMessageResult result);
-#endif
 
 	virtual void checkStateAndStartGame();
 };

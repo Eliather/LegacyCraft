@@ -14,6 +14,7 @@ protected:
 	CXuiControl m_hudHolder; // Contains the HUD group to enable moving all elements together
 	CXuiControl m_hudGroup; // Contains all the HUD elements except crosshair, in a group that scales
 	CXuiControl m_hudScaleGroup; // Contains all the HUD elements except crosshair
+	CXuiControl m_crosshair;
 	CXuiControl m_hotbarGroup;
 	CXuiCtrlSlotItem *m_hotbarIcon[9];
 	CXuiProgressBar m_ExperienceProgress;
@@ -40,6 +41,7 @@ protected:
 	XUI_END_MSG_MAP()
 	
 	BEGIN_CONTROL_MAP()
+		MAP_CONTROL(IDC_Crosshair, m_crosshair)
 		MAP_CONTROL(IDC_HudHolder, m_hudHolder)
 		BEGIN_MAP_CHILD_CONTROLS(m_hudHolder)
 			MAP_CONTROL(IDC_HudGroup, m_hudGroup)

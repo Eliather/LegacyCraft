@@ -1719,15 +1719,13 @@ void UIScene_MainMenu::LoadTrial(void)
 
 	app.ClearTerrainFeaturePosition();
 
-	StorageManager.ResetSaveData();
+	app.PrepareNewSaveData(L"Tutorial");
 
 	ProfileManager.StartTrialGame();
 
 	StorageManager.SetSaveDisabled(true);
 
 	app.SetGameHostOption(eGameHostOption_DisableSaving, 1);
-
-	StorageManager.SetSaveTitle(L"Tutorial");
 
 	app.SetAutosaveTimerTime();
 

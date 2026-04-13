@@ -19,6 +19,361 @@
 unsigned int ConsoleSaveFileSplit::pagesCommitted = 0;
 void *ConsoleSaveFileSplit::pvHeap = NULL;
 
+#ifdef _WINDOWS64
+namespace
+{
+	void RefreshStorageSaveTitleFromActiveLevel()
+	{
+		MinecraftServer *server = MinecraftServer::getInstance();
+		if(server == NULL || server->levels[0] == NULL || server->levels[0]->getLevelData() == NULL)
+		{
+			return;
+		}
+
+		const wstring levelName = server->levels[0]->getLevelData()->getLevelName();
+		if(levelName.empty())
+		{
+			return;
+		}
+
+		StorageManager.SetSaveTitle(levelName.c_str());
+
+		const char *preparedSaveId = app.GetUniqueMapName();
+		if(preparedSaveId != NULL && preparedSaveId[0] != 0)
+		{
+			StorageManager.SetSaveUniqueFilename((char *)preparedSaveId);
+		}
+	}
+
+	bool IsTimestampLikeSaveId(const std::string &value)
+	{
+		if(value.length() != 14)
+		{
+			return false;
+		}
+
+		for(size_t i = 0; i < value.length(); ++i)
+		{
+			if(value[i] < '0' || value[i] > '9')
+			{
+				return false;
+			}
+		}
+
+		const int year = (value[0] - '0') * 1000 + (value[1] - '0') * 100 + (value[2] - '0') * 10 + (value[3] - '0');
+		const int month = (value[4] - '0') * 10 + (value[5] - '0');
+		const int day = (value[6] - '0') * 10 + (value[7] - '0');
+		const int hour = (value[8] - '0') * 10 + (value[9] - '0');
+		const int minute = (value[10] - '0') * 10 + (value[11] - '0');
+		const int second = (value[12] - '0') * 10 + (value[13] - '0');
+
+		return year >= 2000 && year <= 2099 &&
+			month >= 1 && month <= 12 &&
+			day >= 1 && day <= 31 &&
+			hour >= 0 && hour <= 23 &&
+			minute >= 0 && minute <= 59 &&
+			second >= 0 && second <= 59;
+	}
+
+	std::string GetPreparedWindows64SaveId()
+	{
+		const char *preparedSaveId = app.GetUniqueMapName();
+		if(preparedSaveId != NULL && preparedSaveId[0] != 0)
+		{
+			return preparedSaveId;
+		}
+
+		char uniqueFilename[64];
+		ZeroMemory(uniqueFilename, sizeof(uniqueFilename));
+		if(StorageManager.GetSaveUniqueFilename(uniqueFilename) && uniqueFilename[0] != 0)
+		{
+			return uniqueFilename;
+		}
+
+		return std::string();
+	}
+
+	bool MoveWindows64StorageFileReplacing(const File &sourceFile, const File &targetFile)
+	{
+		return MoveFileExA(
+			wstringtofilename(sourceFile.getPath()),
+			wstringtofilename(targetFile.getPath()),
+			MOVEFILE_COPY_ALLOWED | MOVEFILE_REPLACE_EXISTING) != 0;
+	}
+
+	wchar_t ToLowerAscii(wchar_t ch)
+	{
+		if(ch >= L'A' && ch <= L'Z')
+		{
+			return (wchar_t)(ch - L'A' + L'a');
+		}
+
+		return ch;
+	}
+
+	bool EqualsIgnoreCaseAscii(const std::wstring &a, const std::wstring &b)
+	{
+		if(a.length() != b.length())
+		{
+			return false;
+		}
+
+		for(size_t i = 0; i < a.length(); ++i)
+		{
+			if(ToLowerAscii(a[i]) != ToLowerAscii(b[i]))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool RenameWindows64SaveDirectoryCaseOnly(const File &storageRoot, const std::wstring &sourceDirName, const std::wstring &targetDirName)
+	{
+		if(sourceDirName.empty() || targetDirName.empty() || sourceDirName == targetDirName)
+		{
+			return false;
+		}
+
+		File sourceDir(storageRoot, sourceDirName);
+		if(!sourceDir.exists() || !sourceDir.isDirectory())
+		{
+			return false;
+		}
+
+		wchar_t tempName[64];
+		swprintf(tempName, 64, L"%s__casefix_%lu", sourceDirName.c_str(), (unsigned long)GetTickCount());
+
+		File tempDir(storageRoot, tempName);
+		if(tempDir.exists())
+		{
+			return false;
+		}
+
+		File targetDir(storageRoot, targetDirName);
+		if(targetDir.exists())
+		{
+			return false;
+		}
+
+		if(!sourceDir.renameTo(tempDir))
+		{
+			return false;
+		}
+
+		if(!tempDir.renameTo(targetDir))
+		{
+			tempDir.renameTo(sourceDir);
+			return false;
+		}
+
+		return true;
+	}
+
+	void ResolveActiveWindows64SaveDirectory(const File &storageRoot, const std::wstring &preferredDirName, std::wstring &activeDirName)
+	{
+		vector<File *> *storageFolders = storageRoot.listFiles();
+		if(storageFolders == NULL)
+		{
+			return;
+		}
+
+		std::wstring newestDirName;
+		__int64 newestModifiedTime = -1;
+		for(vector<File *>::iterator it = storageFolders->begin(); it != storageFolders->end(); ++it)
+		{
+			File *storageDir = *it;
+			if(storageDir == NULL)
+			{
+				continue;
+			}
+
+			File saveDataFile(*storageDir, L"saveData.ms");
+			if(storageDir->isDirectory() && saveDataFile.exists() && saveDataFile.isFile())
+			{
+				const __int64 modifiedTime = saveDataFile.lastModified();
+				if(newestDirName.empty() || modifiedTime > newestModifiedTime)
+				{
+					newestModifiedTime = modifiedTime;
+					newestDirName = storageDir->getName();
+				}
+			}
+
+			delete storageDir;
+		}
+
+		delete storageFolders;
+
+		if(newestDirName.empty())
+		{
+			return;
+		}
+
+		activeDirName = preferredDirName.empty() ? newestDirName : preferredDirName;
+		if(activeDirName == newestDirName)
+		{
+			return;
+		}
+
+		if(EqualsIgnoreCaseAscii(activeDirName, newestDirName))
+		{
+			if(RenameWindows64SaveDirectoryCaseOnly(storageRoot, newestDirName, activeDirName))
+			{
+				return;
+			}
+
+			activeDirName = newestDirName;
+			return;
+		}
+
+		File sourceDir(storageRoot, newestDirName);
+		File targetDir(storageRoot, activeDirName);
+		if(!targetDir.exists())
+		{
+			sourceDir.renameTo(targetDir);
+			return;
+		}
+
+		vector<File *> *sourceEntries = sourceDir.listFiles();
+		if(sourceEntries == NULL)
+		{
+			return;
+		}
+
+		for(vector<File *>::iterator it = sourceEntries->begin(); it != sourceEntries->end(); ++it)
+		{
+			File *sourceEntry = *it;
+			if(sourceEntry == NULL)
+			{
+				continue;
+			}
+
+			File targetEntry(targetDir, sourceEntry->getName());
+			if(sourceEntry->isFile())
+			{
+				MoveWindows64StorageFileReplacing(*sourceEntry, targetEntry);
+			}
+			else if(sourceEntry->isDirectory() && !targetEntry.exists())
+			{
+				sourceEntry->renameTo(targetEntry);
+			}
+
+			delete sourceEntry;
+		}
+
+		delete sourceEntries;
+		RemoveDirectory(wstringtofilename(sourceDir.getPath()));
+	}
+
+	void RemoveWindows64SaveDisplayNameSidecar()
+	{
+		File storageRoot(L"Windows64\\GameHDD");
+		if(!storageRoot.exists() || !storageRoot.isDirectory())
+		{
+			return;
+		}
+
+		const std::string preparedSaveId = GetPreparedWindows64SaveId();
+		std::wstring activeDirName;
+		if(!preparedSaveId.empty() && !IsTimestampLikeSaveId(preparedSaveId))
+		{
+			ResolveActiveWindows64SaveDirectory(storageRoot, filenametowstring(preparedSaveId.c_str()), activeDirName);
+		}
+		else
+		{
+			ResolveActiveWindows64SaveDirectory(storageRoot, std::wstring(), activeDirName);
+		}
+
+		if(activeDirName.empty())
+		{
+			return;
+		}
+
+		File targetDir(storageRoot, activeDirName);
+		if(!targetDir.exists() || !targetDir.isDirectory())
+		{
+			return;
+		}
+
+		File displayNameFile(targetDir, L"display_name.txt");
+		if(displayNameFile.exists() && displayNameFile.isFile())
+		{
+			displayNameFile._delete();
+		}
+	}
+
+	std::string SanitizeLifecycleLogValue(const std::string &value)
+	{
+		std::string sanitized;
+		sanitized.reserve(value.length());
+		for(size_t i = 0; i < value.length(); ++i)
+		{
+			const unsigned char ch = (unsigned char)value[i];
+			if(ch == '\r' || ch == '\n' || ch == '\t')
+			{
+				sanitized.push_back(' ');
+			}
+			else if(ch >= 32 || ch >= 128)
+			{
+				sanitized.push_back((char)ch);
+			}
+		}
+		return sanitized;
+	}
+
+	void AppendStorageSaveLifecycleLog(const char *saveType, ConsoleSaveFile *saveFile, bool bRes)
+	{
+		File savesDir(L"Saves");
+		if(!savesDir.exists())
+		{
+			savesDir.mkdir();
+		}
+
+		File logFile(savesDir, L"StorageSaveLifecycle.log");
+		HANDLE logHandle = CreateFile(
+			wstringtofilename(logFile.getPath()),
+			FILE_APPEND_DATA,
+			FILE_SHARE_READ,
+			NULL,
+			OPEN_ALWAYS,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL);
+
+		if(logHandle == INVALID_HANDLE_VALUE)
+		{
+			return;
+		}
+
+		SYSTEMTIME localTime;
+		GetLocalTime(&localTime);
+
+		std::string logicalName = SanitizeLifecycleLogValue(wstringtofilename(saveFile->getFilename()));
+		std::string uniqueName = SanitizeLifecycleLogValue(GetPreparedWindows64SaveId());
+		const bool hasUniqueFilename = !uniqueName.empty();
+
+		char line[1024];
+		sprintf_s(
+			line,
+			"%04d-%02d-%02d %02d:%02d:%02d type=%s result=%d logicalName=%s uniqueFilename=%s\r\n",
+			(int)localTime.wYear,
+			(int)localTime.wMonth,
+			(int)localTime.wDay,
+			(int)localTime.wHour,
+			(int)localTime.wMinute,
+			(int)localTime.wSecond,
+			saveType,
+			bRes ? 1 : 0,
+			logicalName.c_str(),
+			hasUniqueFilename ? uniqueName.c_str() : "<none>");
+
+		DWORD bytesWritten = 0;
+		WriteFile(logHandle, line, (DWORD)strlen(line), &bytesWritten, NULL);
+		CloseHandle(logHandle);
+	}
+}
+#endif
+
 ConsoleSaveFileSplit::RegionFileReference::RegionFileReference(int index, unsigned int regionIndex,  unsigned int length/*=0*/, unsigned char *data/*=NULL*/)
 {
 	fileEntry = new FileEntry();
@@ -1441,6 +1796,9 @@ void ConsoleSaveFileSplit::Flush(bool autosave, bool updateThumbnail)
 		bool validSave = StorageManager.GetSaveUniqueNumber(&saveOrCheckpointId);
 		TelemetryManager->RecordLevelSaveOrCheckpoint(ProfileManager.GetPrimaryPad(), saveOrCheckpointId, compLength+8);
 
+#ifdef _WINDOWS64
+		RefreshStorageSaveTitleFromActiveLevel();
+#endif
 		// save the data
 		StorageManager.SaveSaveData( &ConsoleSaveFileSplit::SaveSaveDataCallback, this );
 #ifndef _CONTENT_PACKAGE
@@ -1459,6 +1817,13 @@ void ConsoleSaveFileSplit::Flush(bool autosave, bool updateThumbnail)
 int ConsoleSaveFileSplit::SaveSaveDataCallback(LPVOID lpParam,bool bRes)
 {
 	ConsoleSaveFileSplit *pClass=(ConsoleSaveFileSplit *)lpParam;
+#ifdef _WINDOWS64
+	if(bRes)
+	{
+		RemoveWindows64SaveDisplayNameSidecar();
+	}
+	AppendStorageSaveLifecycleLog("split", pClass, bRes);
+#endif
 	
 	// Don't save sub files on autosave (their always being saved anyway)
 	if (!pClass->m_autosave)

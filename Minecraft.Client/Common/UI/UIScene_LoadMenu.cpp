@@ -5,15 +5,10 @@
 #include "..\..\TexturePackRepository.h"
 #include "..\..\Options.h"
 #include "..\..\MinecraftServer.h"
+#include "..\..\..\Minecraft.World\FileInputStream.h"
 #include "..\..\..\Minecraft.World\LevelSettings.h"
 #include "..\..\..\Minecraft.World\StringHelpers.h"
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
-#include "Common\Network\Sony\SonyHttp.h"
-#endif
 #include "..\..\DLCTexturePack.h"
-#if defined(__ORBIS__) || defined(__PSVITA__)
-#include <ces.h>
-#endif
 
 #define GAME_CREATE_ONLINE_TIMER_ID 0
 #define GAME_CREATE_ONLINE_TIMER_TIME 100
@@ -21,6 +16,30 @@
 #ifdef _XBOX
 #define CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID 1
 #define CHECKFORAVAILABLETEXTUREPACKS_TIMER_TIME 50
+#endif
+
+#ifdef _WINDOWS64
+namespace
+{
+	std::wstring Utf8ToWideString(const char *value)
+	{
+		if(value == NULL || value[0] == 0)
+		{
+			return std::wstring();
+		}
+
+		const int wideLength = MultiByteToWideChar(CP_UTF8, 0, value, -1, NULL, 0);
+		if(wideLength <= 1)
+		{
+			return convStringToWstring(value);
+		}
+
+		std::wstring wideValue(wideLength, L'\0');
+		MultiByteToWideChar(CP_UTF8, 0, value, -1, &wideValue[0], wideLength);
+		wideValue.resize(wideLength - 1);
+		return wideValue;
+	}
+}
 #endif
 
 int UIScene_LoadMenu::m_iDifficultyTitleSettingA[4]=
@@ -103,6 +122,11 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 	m_bRebuildTouchBoxes = false;
 	m_bThumbnailGetFailed = false;
 	m_seed = 0;
+#ifdef _WINDOWS64
+	m_bWindows64DirectDiskSave = false;
+	ZeroMemory(m_windows64DirectSaveId, sizeof(m_windows64DirectSaveId));
+	ZeroMemory(m_windows64DirectSaveName, sizeof(m_windows64DirectSaveName));
+#endif
 
 	m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
 	// 4J-PB - read the settings for the online flag. We'll only save this setting if the user changed it.
@@ -137,7 +161,7 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 	}
 
 	
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined _XBOX_ONE || defined _WINDOWS64
 	if(getSceneResolution() == eSceneResolution_1080)
 	{
 		// Set up online game checkbox
@@ -190,26 +214,28 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 	}
 	else
 	{
-
-#if defined(__PS3__) || defined(__ORBIS__)|| defined(_DURANGO) || defined (__PSVITA__)
+#ifdef _WINDOWS64
+		if(params->saveDetails != NULL)
+		{
+			m_labelGameName.init(params->saveDetails->UTF8SaveName);
+			m_bRetrievingSaveThumbnail = false;
+			app.SetPreparedSaveIdentity(Utf8ToWideString(params->saveDetails->UTF8SaveName).c_str(), params->saveDetails->UTF8SaveFilename);
+			if(m_iSaveGameInfoIndex < 0)
+			{
+				m_bWindows64DirectDiskSave = true;
+				strncpy(m_windows64DirectSaveId, params->saveDetails->UTF8SaveFilename, MAX_SAVEFILENAME_LENGTH - 1);
+				strncpy(m_windows64DirectSaveName, params->saveDetails->UTF8SaveName, 127);
+			}
+		}
+#else
+#ifdef _DURANGO
 		// convert to utf16
 		uint16_t u16Message[MAX_SAVEFILENAME_LENGTH];
 		size_t srclen,dstlen;
 		srclen=MAX_SAVEFILENAME_LENGTH;
 		dstlen=MAX_SAVEFILENAME_LENGTH;
-#ifdef __PS3__
-		L10nResult lres= UTF8stoUTF16s((uint8_t *)params->saveDetails->UTF8SaveFilename,&srclen,u16Message,&dstlen);
-#elif defined(_DURANGO) 
 		// Already utf16 on durango
 		memcpy(u16Message,params->saveDetails->UTF16SaveFilename, MAX_SAVEFILENAME_LENGTH);
-#else // __ORBIS__
-		{
-			SceCesUcsContext Context;
-			sceCesUcsContextInit( &Context );
-			uint32_t utf8Len, utf16Len;
-			sceCesUtf8StrToUtf16Str(&Context, (uint8_t *)params->saveDetails->UTF8SaveFilename, srclen, &utf8Len, u16Message, dstlen, &utf16Len);
-		}
-#endif
 		m_thumbnailName = (wchar_t *)u16Message;
 		if(params->saveDetails->pbThumbnailData)
 		{
@@ -236,6 +262,7 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 #else
 
 		m_labelGameName.init(params->saveDetails->UTF8SaveName);
+#endif
 #endif
 #endif
 	}
@@ -279,11 +306,7 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 		// 4J-PB - there may be texture packs we don't have, so use the info from TMS for this
 
 		// 4J-PB - Any texture packs available that we don't have installed?
-#if defined(__PS3__) || defined(__ORBIS__)
-		if(!m_bAvailableTexturePacksChecked && app.GetCommerceProductListRetrieved()&& app.GetCommerceProductListInfoRetrieved())
-#else
 		if(!m_bAvailableTexturePacksChecked)
-#endif
 		{		
 			DLC_INFO *pDLCInfo=NULL;
 
@@ -294,13 +317,8 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 			for(unsigned int i = 0; i < app.GetDLCInfoTexturesOffersCount(); ++i)
 			{
 				bTexturePackAlreadyListed=false;
-#if defined(__PS3__) || defined(__ORBIS__)
-				char *pchName=app.GetDLCInfoTextures(i);
-				pDLCInfo=app.GetDLCInfo(pchName);
-#else
 				ULONGLONG ull=app.GetDLCInfoTexturesFullOffer(i);
 				pDLCInfo=app.GetDLCInfoForFullOfferID(ull);
-#endif
 
 				for(unsigned int i = 0; i < texturePacksCount; ++i)
 				{
@@ -330,13 +348,8 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 				for(unsigned int i = 0; i < app.GetDLCInfoTexturesOffersCount(); ++i)
 				{
 					bTexturePackAlreadyListed=false;
-#if defined(__PS3__) || defined(__ORBIS__)
-					char *pchName=app.GetDLCInfoTextures(i);
-					pDLCInfo=app.GetDLCInfo(pchName);
-#else
 					ULONGLONG ull=app.GetDLCInfoTexturesFullOffer(i);
 					pDLCInfo=app.GetDLCInfoForFullOfferID(ull);
-#endif
 
 					if(pDLCInfo)
 					{
@@ -425,7 +438,7 @@ void UIScene_LoadMenu::tick()
 		ZeroMemory(szSeed,50);
 		app.GetImageTextData(m_pbThumbnailData,m_uiThumbnailSize,(unsigned char *)&szSeed,uiHostOptions,bHostOptionsRead,m_MoreOptionsParams.dwTexturePack);
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 		sscanf_s(szSeed, "%I64d", &m_seed);
 #endif
 
@@ -522,56 +535,8 @@ void UIScene_LoadMenu::tick()
 		ui.NavigateToScene(ProfileManager.GetPrimaryPad(),eUIScene_QuadrantSignin,&info);
 	}
 
-#ifdef __ORBIS__
-	// check the status of the PSPlus common dialog
-	switch (sceNpCommerceDialogUpdateStatus())
-	{
-	case SCE_COMMON_DIALOG_STATUS_FINISHED:
-		{
-			SceNpCommerceDialogResult Result;
-			sceNpCommerceDialogGetResult(&Result);
-			sceNpCommerceDialogTerminate();
-
-			if(Result.authorized)
-			{
-				ProfileManager.PsPlusUpdate(ProfileManager.GetPrimaryPad(), &Result);
-				// they just became a PSPlus member
-				LoadDataComplete(this);
-			}
-			else
-			{
-				// continue offline?
-				UINT uiIDA[1];
-				uiIDA[0]=IDS_PRO_NOTONLINE_DECLINE;
-
-				// Give the player a warning about the texture pack missing
-				ui.RequestMessageBox(IDS_PLAY_OFFLINE,IDS_NO_PLAYSTATIONPLUS, uiIDA, 1, ProfileManager.GetPrimaryPad(),&UIScene_LoadMenu::ContinueOffline,this,app.GetStringTable(), 0, 0, false);
-			}
-		}
-		break;
-	default:
-		break;
-	}
-#endif
-
 	UIScene::tick();
 }
-
-#ifdef __ORBIS__
-int UIScene_LoadMenu::ContinueOffline(void *pParam,int iPad,C4JStorage::EMessageResult result)
-{
-	UIScene_LoadMenu* pClass = (UIScene_LoadMenu*)pParam;
-
-	// results switched for this dialog
-	if(result==C4JStorage::EMessage_ResultAccept) 
-	{
-		pClass->m_MoreOptionsParams.bOnlineGame=false;
-		pClass->LoadDataComplete(pClass);
-	}
-	return 0;
-}
-
-#endif
 
 void UIScene_LoadMenu::handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled)
 {
@@ -590,9 +555,6 @@ void UIScene_LoadMenu::handleInput(int iPad, int key, bool repeat, bool pressed,
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		
 	// 4J-JEV: Inform user why their game must be offline.
 #if defined _XBOX_ONE
@@ -611,7 +573,7 @@ void UIScene_LoadMenu::handleInput(int iPad, int key, bool repeat, bool pressed,
 	case ACTION_MENU_OTHER_STICK_DOWN:
 		sendInputToMovie(key, repeat, pressed, released);
 		
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined _XBOX_ONE || defined _WINDOWS64
 		if(getSceneResolution() == eSceneResolution_1080)
 		{
 			bool bOnlineGame = m_checkboxOnline.IsChecked();
@@ -800,15 +762,9 @@ void UIScene_LoadMenu::StartSharedLaunchFlow()
 				UINT uiIDA[1];
 				uiIDA[0]=IDS_CONFIRM_OK;
 				ui.RequestMessageBox(IDS_WARNING_DLC_TRIALTEXTUREPACK_TITLE, IDS_USING_TRIAL_TEXUREPACK_WARNING, uiIDA, 1, m_iPad,&TrialTexturePackWarningReturned,this,app.GetStringTable(),NULL,0,false);
-#elif defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
-				// trial pack warning
-				UINT uiIDA[2];
-				uiIDA[0]=IDS_CONFIRM_OK;
-				uiIDA[1]=IDS_CONFIRM_CANCEL;
-				ui.RequestMessageBox(IDS_WARNING_DLC_TRIALTEXTUREPACK_TITLE, IDS_USING_TRIAL_TEXUREPACK_WARNING, uiIDA, 2, m_iPad,&TrialTexturePackWarningReturned,this,app.GetStringTable(),NULL,0,false);
 #endif
 
-#if defined _XBOX_ONE || defined __ORBIS__
+#if defined _XBOX_ONE
 				StorageManager.SetSaveDisabled(true);
 #endif
 				return;
@@ -816,7 +772,7 @@ void UIScene_LoadMenu::StartSharedLaunchFlow()
 		}			
 	}
 
-#if defined _XBOX_ONE || defined __ORBIS__
+#if defined _XBOX_ONE
 	app.SetGameHostOption(eGameHostOption_DisableSaving, m_MoreOptionsParams.bDisableSaving?1:0);
 
 	StorageManager.SetSaveDisabled(m_MoreOptionsParams.bDisableSaving);
@@ -866,16 +822,6 @@ void UIScene_LoadMenu::handleTouchBoxRebuild()
 
 void UIScene_LoadMenu::handleTimerComplete(int id)
 {
-#ifdef __PSVITA__
-	// we cannot rebuild touch boxes in an iggy callback because it requires further iggy calls
-	if(m_bRebuildTouchBoxes)
-	{
-		GetMainPanel()->UpdateControl();
-		ui.TouchBoxRebuild(this);
-		m_bRebuildTouchBoxes = false;
-	}
-#endif
-
 	switch(id)
 	{
 	case GAME_CREATE_ONLINE_TIMER_ID:
@@ -905,7 +851,7 @@ void UIScene_LoadMenu::handleTimerComplete(int id)
 					m_MoreOptionsParams.bInviteOnly = FALSE;
 					m_MoreOptionsParams.bAllowFriendsOfFriends = FALSE;
 				}
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined _XBOX_ONE || defined _WINDOWS64
 				if(getSceneResolution() == eSceneResolution_1080)
 				{
 					m_checkboxOnline.SetEnable(bMultiplayerAllowed);
@@ -921,44 +867,6 @@ void UIScene_LoadMenu::handleTimerComplete(int id)
 #ifdef _XBOX
 	case CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID:
 		{
-
-#if defined(__PS3__) || defined(__ORBIS__)
-			for(int i=0;i<m_iTexturePacksNotInstalled;i++)
-			{
-				if(m_iConfigA[i]!=-1)
-				{
-					DLC_INFO *pDLCInfo=app.GetDLCInfoFromTPackID(m_iConfigA[i]);
-
-					if(pDLCInfo)
-					{
-						// retrieve the image - if we haven't already
-						wstring textureName = filenametowstring(pDLCInfo->chImageURL);
-
-						if(hasRegisteredSubstitutionTexture(textureName)==false)
-						{
-							PBYTE pbImageData;
-							int iImageDataBytes=0;
-							SonyHttp::getDataFromURL(pDLCInfo->chImageURL,(void **)&pbImageData,&iImageDataBytes);
-
-							if(iImageDataBytes!=0)
-							{
-								// set the image	
-								registerSubstitutionTexture(textureName,pbImageData,iImageDataBytes,true);
-								// add an item in
-								m_texturePackList.addPack(m_iConfigA[i],textureName);
-								m_iConfigA[i]=-1;
-							}
-						}
-						else
-						{
-							// already have the image, so add an item in
-							m_texturePackList.addPack(m_iConfigA[i],textureName);
-							m_iConfigA[i]=-1;
-						}
-					}
-				}
-			}
-
 			bool bAllDone=true;
 			for(int i=0;i<m_iTexturePacksNotInstalled;i++)
 			{
@@ -973,7 +881,6 @@ void UIScene_LoadMenu::handleTimerComplete(int id)
 				// kill this timer
 				killTimer(CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID);
 			}
-#endif
 
 		}
 		break;
@@ -1018,6 +925,13 @@ void UIScene_LoadMenu::LaunchGame(void)
 					{
 
 						// set the save to load
+#ifdef _WINDOWS64
+						if(m_bWindows64DirectDiskSave)
+						{
+							LoadDataComplete(this);
+							return;
+						}
+#endif
 						PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
 #ifndef _DURANGO
 						app.DebugPrintf("Loading save s [%s]\n",pSaveDetails->SaveInfoA[(int)m_iSaveGameInfoIndex].UTF8SaveTitle,pSaveDetails->SaveInfoA[(int)m_iSaveGameInfoIndex].UTF8SaveFilename);
@@ -1059,6 +973,13 @@ void UIScene_LoadMenu::LaunchGame(void)
 		else
 		{
 			// set the save to load
+#ifdef _WINDOWS64
+			if(m_bWindows64DirectDiskSave)
+			{
+				LoadDataComplete(this);
+				return;
+			}
+#endif
 			PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
 #ifndef _DURANGO
 			app.DebugPrintf("Loading save %s [%s]\n",pSaveDetails->SaveInfoA[(int)m_iSaveGameInfoIndex].UTF8SaveTitle,pSaveDetails->SaveInfoA[(int)m_iSaveGameInfoIndex].UTF8SaveFilename);
@@ -1118,6 +1039,13 @@ int UIScene_LoadMenu::ConfirmLoadReturned(void *pParam,int iPad,C4JStorage::EMes
 		else
 		{
 			// set the save to load
+#ifdef _WINDOWS64
+			if(pClass->m_bWindows64DirectDiskSave)
+			{
+				LoadDataComplete(pClass);
+				return 0;
+			}
+#endif
 			PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
 #ifndef _DURANGO
 			app.DebugPrintf("Loading save %s [%s]\n",pSaveDetails->SaveInfoA[(int)pClass->m_iSaveGameInfoIndex].UTF8SaveTitle,pSaveDetails->SaveInfoA[(int)pClass->m_iSaveGameInfoIndex].UTF8SaveFilename);
@@ -1173,65 +1101,18 @@ int UIScene_LoadMenu::LoadDataComplete(void *pParam)
 		// If this is an online game but not all players are signed in to Live, stop!
 		if (isOnlineGame && !isSignedInLive)
 		{
-#ifdef __ORBIS__
-			assert(iPadNotSignedInLive != -1);
-			// Check if PSN is unavailable because of age restriction
-			int npAvailability = ProfileManager.getNPAvailability(iPadNotSignedInLive);
-			if (npAvailability == SCE_NP_ERROR_AGE_RESTRICTION)
-			{
-				pClass->m_bIgnoreInput = false;
-				// 4J Stu - This is a bit messy and is due to the library incorrectly returning false for IsSignedInLive if the npAvailability isn't SCE_OK
-				UINT uiIDA[1];
-				uiIDA[0]=IDS_OK;
-				ui.RequestMessageBox(IDS_ONLINE_SERVICE_TITLE, IDS_CONTENT_RESTRICTION, uiIDA, 1, iPadNotSignedInLive, NULL, NULL, app.GetStringTable());
-			}
-			else
-			{
-				pClass->m_bIgnoreInput=true;
-				UINT uiIDA[2];
-				uiIDA[0] = IDS_PRO_NOTONLINE_ACCEPT;
-				uiIDA[1] = IDS_CANCEL;
-				ui.RequestMessageBox( IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, iPadNotSignedInLive, &UIScene_LoadMenu::MustSignInReturnedPSN, pClass, app.GetStringTable(), NULL, 0, false);
-			}
-		return 0;
-#else
 			pClass->m_bIgnoreInput=false;
 			UINT uiIDA[1];
 			uiIDA[0]=IDS_CONFIRM_OK;
 			ui.RequestMessageBox( IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA,1,ProfileManager.GetPrimaryPad(),NULL,NULL, app.GetStringTable(),NULL,0,false);
 			return 0;
-#endif
 		}
 
 		// Check if user-created content is allowed, as we cannot play multiplayer if it's not
 		bool noUGC = false;
 		BOOL pccAllowed = TRUE;
 		BOOL pccFriendsAllowed = TRUE;
-		bool bContentRestricted = false;
 		ProfileManager.AllowedPlayerCreatedContent(ProfileManager.GetPrimaryPad(),false,&pccAllowed,&pccFriendsAllowed);
-#if defined(__PS3__) || defined(__PSVITA__)
-		if(isOnlineGame)
-		{
-			ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),false,NULL,&bContentRestricted,NULL);
-		}
-#endif
-
-#ifdef __ORBIS__
-		bool bPlayStationPlus=true;
-		int iPadWithNoPlaystationPlus=0;
-		for(unsigned int i = 0; i < XUSER_MAX_COUNT; ++i)
-		{
-			if(ProfileManager.IsSignedIn(i) && ((i == iPrimaryPad) || isLocalMultiplayerAvailable))
-			{
-				if(!ProfileManager.HasPlayStationPlus(i))
-				{
-					bPlayStationPlus=false;
-					iPadWithNoPlaystationPlus=i;
-					break;
-				}
-			}
-		}
-#endif
 		noUGC = !pccAllowed && !pccFriendsAllowed;
 
 		if(!isOnlineGame || !isLocalMultiplayerAvailable)
@@ -1244,52 +1125,8 @@ int UIScene_LoadMenu::LoadDataComplete(void *pParam)
 
 				pClass->m_bIgnoreInput=false;
 			}
-			else if(isOnlineGame && bContentRestricted )
-			{
-				pClass->setVisible( true );
-
-				ui.RequestContentRestrictedMessageBox();
-				pClass->m_bIgnoreInput=false;
-			}
-#ifdef __ORBIS__
-			else if(isOnlineGame && (bPlayStationPlus==false))
-			{
-				pClass->setVisible( true );
-				pClass->m_bIgnoreInput=false;
-
-				// 4J-PB - we're not allowed to show the text Playstation Plus - have to call the upsell all the time!
-				// upsell psplus
-				int32_t iResult=sceNpCommerceDialogInitialize();
-
-				SceNpCommerceDialogParam param;
-				sceNpCommerceDialogParamInitialize(&param);
-				param.mode=SCE_NP_COMMERCE_DIALOG_MODE_PLUS;
-				param.features = SCE_NP_PLUS_FEATURE_REALTIME_MULTIPLAY; 
-				param.userId = ProfileManager.getUserID(iPadWithNoPlaystationPlus);
-
-				iResult=sceNpCommerceDialogOpen(&param);
-
-// 				UINT uiIDA[2];
-// 				uiIDA[0]=IDS_PLAY_OFFLINE;
-// 				uiIDA[1]=IDS_PLAYSTATIONPLUS_SIGNUP;
-// 				ui.RequestMessageBox( IDS_FAILED_TO_CREATE_GAME_TITLE, IDS_NO_PLAYSTATIONPLUS, uiIDA,2,ProfileManager.GetPrimaryPad(),&UIScene_LoadMenu::PSPlusReturned,pClass, app.GetStringTable(),NULL,0,false);
-			}
-
-#endif		
 			else
 			{
-				
-#if defined(__ORBIS__) || defined(__PSVITA__)
-				if(isOnlineGame)
-				{
-					bool chatRestricted = false;
-					ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),false,&chatRestricted,NULL,NULL);
-					if(chatRestricted)
-					{
-						ProfileManager.DisplaySystemMessage( SCE_MSG_DIALOG_SYSMSG_TYPE_TRC_PSN_CHAT_RESTRICTION, ProfileManager.GetPrimaryPad() );
-					}
-				}
-#endif
 				DWORD dwLocalUsersMask = CGameNetworkManager::GetLocalPlayerMask(ProfileManager.GetPrimaryPad());
 
 				// No guest problems so we don't need to force a sign-in of players here
@@ -1305,36 +1142,6 @@ int UIScene_LoadMenu::LoadDataComplete(void *pParam)
 				ui.RequestUGCMessageBox();
 				pClass->m_bIgnoreInput=false;
 			}
-			else if(isOnlineGame && bContentRestricted )
-			{
-				pClass->setVisible( true );
-				ui.RequestContentRestrictedMessageBox();
-				pClass->m_bIgnoreInput=false;
-			}
-#ifdef __ORBIS__
-			else if(bPlayStationPlus==false)
-			{
-				pClass->setVisible( true );
-				pClass->m_bIgnoreInput=false;
-
-				// 4J-PB - we're not allowed to show the text Playstation Plus - have to call the upsell all the time!
-				// upsell psplus
-				int32_t iResult=sceNpCommerceDialogInitialize();
-
-				SceNpCommerceDialogParam param;
-				sceNpCommerceDialogParamInitialize(&param);
-				param.mode=SCE_NP_COMMERCE_DIALOG_MODE_PLUS;
-				param.features = SCE_NP_PLUS_FEATURE_REALTIME_MULTIPLAY; 
-				param.userId = ProfileManager.getUserID(iPadWithNoPlaystationPlus);
-
-				iResult=sceNpCommerceDialogOpen(&param);
-
-// 				UINT uiIDA[2];
-// 				uiIDA[0]=IDS_PLAY_OFFLINE;
-// 				uiIDA[1]=IDS_PLAYSTATIONPLUS_SIGNUP;
-// 				ui.RequestMessageBox( IDS_FAILED_TO_CREATE_GAME_TITLE, IDS_NO_PLAYSTATIONPLUS, uiIDA,2,ProfileManager.GetPrimaryPad(),&UIScene_LoadMenu::PSPlusReturned,pClass, app.GetStringTable(),NULL,0,false);
-			}
-#endif
 			else
 			{
 				pClass->m_bRequestQuadrantSignin = true;
@@ -1370,14 +1177,6 @@ int UIScene_LoadMenu::LoadSaveDataReturned(void *pParam,bool bIsCorrupt, bool bI
 	{
 		// messagebox
 		pClass->m_bIgnoreInput=false;
-
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
-		// show the message that trophies are disabled
-		UINT uiIDA[1];
-		uiIDA[0]=IDS_CONFIRM_OK;
-		ui.RequestMessageBox(IDS_SAVEDATA_COPIED_TITLE, IDS_SAVEDATA_COPIED_TEXT, uiIDA, 1, 
-			pClass->m_iPad,&UIScene_LoadMenu::TrophyDialogReturned,pClass, app.GetStringTable());
-#endif
 	}
 
 
@@ -1417,21 +1216,106 @@ int UIScene_LoadMenu::DeleteSaveDataReturned(void *pParam,bool bSuccess)
 	return 0;
 }
 
+#ifdef _WINDOWS64
+void UIScene_LoadMenu::StartGameFromWindows64DirectDiskSave(DWORD dwLocalUsersMask)
+{
+	File storageRoot(L"Windows64\\GameHDD");
+	File storageDir(storageRoot, filenametowstring(m_windows64DirectSaveId));
+	File saveDataFile(storageDir, L"saveData.ms");
+
+	if(!saveDataFile.exists() || !saveDataFile.isFile())
+	{
+		m_bIgnoreInput = false;
+		UINT uiIDA[1];
+		uiIDA[0]=IDS_CONFIRM_OK;
+		ui.RequestMessageBox(IDS_STORAGEDEVICEPROBLEM_TITLE, IDS_FAILED_TO_LOADSAVE_TEXT, uiIDA, 1, m_iPad, NULL, NULL, app.GetStringTable(), NULL, 0, false);
+		return;
+	}
+
+	StorageManager.ResetSaveData();
+	app.SetPreparedSaveIdentity(Utf8ToWideString(m_windows64DirectSaveName).c_str(), m_windows64DirectSaveId);
+
+	__int64 fileSize = saveDataFile.length();
+	if(fileSize <= 0)
+	{
+		m_bIgnoreInput = false;
+		UINT uiIDA[1];
+		uiIDA[0]=IDS_CONFIRM_OK;
+		ui.RequestMessageBox(IDS_STORAGEDEVICEPROBLEM_TITLE, IDS_FAILED_TO_LOADSAVE_TEXT, uiIDA, 1, m_iPad, NULL, NULL, app.GetStringTable(), NULL, 0, false);
+		return;
+	}
+
+	FileInputStream fis(saveDataFile);
+	byteArray ba((unsigned int)fileSize);
+	fis.read(ba);
+	fis.close();
+
+	bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && m_MoreOptionsParams.bOnlineGame;
+	bool isPrivate = (app.GetGameSettings(m_iPad,eGameSetting_InviteOnly)>0)?true:false;
+
+	NetworkGameInitData *param = new NetworkGameInitData();
+	param->seed = m_seed;
+	param->saveData = new LoadSaveDataThreadParam(ba.data, ba.length, Utf8ToWideString(m_windows64DirectSaveName));
+	param->texturePackId = m_MoreOptionsParams.dwTexturePack;
+
+	Minecraft *pMinecraft = Minecraft::GetInstance();
+	pMinecraft->skins->selectTexturePackById(m_MoreOptionsParams.dwTexturePack);
+
+	app.SetGameHostOption(eGameHostOption_Difficulty,Minecraft::GetInstance()->options->difficulty);
+	app.SetGameHostOption(eGameHostOption_FriendsOfFriends,app.GetGameSettings(m_iPad,eGameSetting_FriendsOfFriends));
+	app.SetGameHostOption(eGameHostOption_Gamertags,app.GetGameSettings(m_iPad,eGameSetting_GamertagsVisible));
+	app.SetGameHostOption(eGameHostOption_BedrockFog,app.GetGameSettings(m_iPad,eGameSetting_BedrockFog)?1:0);
+	app.SetGameHostOption(eGameHostOption_PvP,m_MoreOptionsParams.bPVP);
+	app.SetGameHostOption(eGameHostOption_TrustPlayers,m_MoreOptionsParams.bTrust);
+	app.SetGameHostOption(eGameHostOption_FireSpreads,m_MoreOptionsParams.bFireSpreads);
+	app.SetGameHostOption(eGameHostOption_TNT,m_MoreOptionsParams.bTNT);
+	app.SetGameHostOption(eGameHostOption_HostCanFly,m_MoreOptionsParams.bHostPrivileges);
+	app.SetGameHostOption(eGameHostOption_HostCanChangeHunger,m_MoreOptionsParams.bHostPrivileges);
+	app.SetGameHostOption(eGameHostOption_HostCanBeInvisible,m_MoreOptionsParams.bHostPrivileges);
+	app.SetResetNether((m_MoreOptionsParams.bResetNether==TRUE)?true:false);
+	app.ClearTerrainFeaturePosition();
+	app.SetGameHostOption(eGameHostOption_GameType,m_bGameModeSurvival?GameType::SURVIVAL->getId():GameType::CREATIVE->getId());
+
+	g_NetworkManager.HostGame(dwLocalUsersMask,isClientSide,isPrivate,MINECRAFT_NET_MAX_PLAYERS,0);
+
+	param->settings = app.GetGameHostOption( eGameHostOption_All );
+
+#ifndef _XBOX
+	g_NetworkManager.FakeLocalPlayerJoined();
+#endif
+
+	LoadingInputParams *loadingParams = new LoadingInputParams();
+	loadingParams->func = &CGameNetworkManager::RunNetworkGameThreadProc;
+	loadingParams->lpParam = (LPVOID)param;
+
+	app.SetAutosaveTimerTime();
+
+	UIFullscreenProgressCompletionData *completionData = new UIFullscreenProgressCompletionData();
+	completionData->bShowBackground=TRUE;
+	completionData->bShowLogo=TRUE;
+	completionData->type = e_ProgressCompletion_CloseAllPlayersUIScenes;
+	completionData->iPad = DEFAULT_XUI_MENU_USER;
+	loadingParams->completionData = completionData;
+
+	ui.NavigateToScene(ProfileManager.GetPrimaryPad(),eUIScene_FullscreenProgress, loadingParams);
+}
+#endif
+
 // 4J Stu - Shared functionality that is the same whether we needed a quadrant sign-in or not
 void UIScene_LoadMenu::StartGameFromSave(UIScene_LoadMenu* pClass, DWORD dwLocalUsersMask)
 {
+#ifdef _WINDOWS64
+	if(pClass->m_bWindows64DirectDiskSave)
+	{
+		pClass->StartGameFromWindows64DirectDiskSave(dwLocalUsersMask);
+		return;
+	}
+#endif
 	INT saveOrCheckpointId = 0;
 	bool validSave = StorageManager.GetSaveUniqueNumber(&saveOrCheckpointId);
 	TelemetryManager->RecordLevelResume(pClass->m_iPad, eSen_FriendOrMatch_Playing_With_Invited_Friends, eSen_CompeteOrCoop_Coop_and_Competitive, app.GetGameSettings(pClass->m_iPad,eGameSetting_Difficulty), app.GetLocalPlayerCount(), g_NetworkManager.GetOnlinePlayerCount(), saveOrCheckpointId);
 
 	bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && pClass->m_MoreOptionsParams.bOnlineGame;
-#ifdef __PSVITA__
-	if(CGameNetworkManager::usingAdhocMode())
-	{
-		if(SQRNetworkManager_AdHoc_Vita::GetAdhocStatus())// && pClass->m_MoreOptionsParams.bOnlineGame)
-			isClientSide = true;
-	}
-#endif // __PSVITA__
 
 	bool isPrivate = (app.GetGameSettings(pClass->m_iPad,eGameSetting_InviteOnly)>0)?true:false;
 
@@ -1549,9 +1433,7 @@ void UIScene_LoadMenu::LoadLevelGen(LevelGenerationOptions *levelGen)
 	//File saveFile( L"Tutorial\\Tutorial" );
 	//LoadSaveFromDisk(&saveFile);
 
-	StorageManager.ResetSaveData();
-	// Make our next save default to the name of the level
-	StorageManager.SetSaveTitle(levelGen->getDefaultSaveName().c_str());
+	app.PrepareNewSaveData(levelGen->getDefaultSaveName().c_str());
 
 	bool isPrivate = (app.GetGameSettings(m_iPad,eGameSetting_InviteOnly)>0)?true:false;
 
@@ -1652,35 +1534,11 @@ int UIScene_LoadMenu::StartGame_SignInReturned(void *pParam,bool bContinue, int 
 			// If this is an online game but not all players are signed in to Live, stop!
 			if (isOnlineGame && !isSignedInLive)
 			{
-#ifdef __ORBIS__
-				assert(iPadNotSignedInLive != -1);
-
-				// Check if PSN is unavailable because of age restriction
-				int npAvailability = ProfileManager.getNPAvailability(iPadNotSignedInLive);
-				if (npAvailability == SCE_NP_ERROR_AGE_RESTRICTION)
-				{
-					pClass->m_bIgnoreInput = false;
-					// 4J Stu - This is a bit messy and is due to the library incorrectly returning false for IsSignedInLive if the npAvailability isn't SCE_OK
-					UINT uiIDA[1];
-					uiIDA[0]=IDS_OK;
-					ui.RequestMessageBox(IDS_ONLINE_SERVICE_TITLE, IDS_CONTENT_RESTRICTION, uiIDA, 1, iPadNotSignedInLive, NULL, NULL, app.GetStringTable());
-				}
-				else
-				{
-					pClass->m_bIgnoreInput=true;
-					UINT uiIDA[2];
-					uiIDA[0] = IDS_PRO_NOTONLINE_ACCEPT;
-					uiIDA[1] = IDS_CANCEL;
-					ui.RequestMessageBox( IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, iPadNotSignedInLive, &UIScene_LoadMenu::MustSignInReturnedPSN, pClass, app.GetStringTable(), NULL, 0, false);
-				}
-				return 0;
-#else
 				pClass->m_bIgnoreInput=false;
 				UINT uiIDA[1];
 				uiIDA[0]=IDS_CONFIRM_OK;
 				ui.RequestMessageBox( IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA,1,ProfileManager.GetPrimaryPad(),NULL,NULL, app.GetStringTable(),NULL,0,false);
 				return 0;
-#endif
 			}
 
 			// Check if user-created content is allowed, as we cannot play multiplayer if it's not
@@ -1712,24 +1570,6 @@ int UIScene_LoadMenu::StartGame_SignInReturned(void *pParam,bool bContinue, int 
 			}
 			else
 			{
-#if defined( __ORBIS__) || defined(__PSVITA__)
-				if(isOnlineGame)
-				{
-					// show the chat restriction message for all users that it applies to
-					for(unsigned int i = 0; i < XUSER_MAX_COUNT; i++)
-					{
-						if(ProfileManager.IsSignedInLive(i))
-						{
-							bool chatRestricted = false;
-							ProfileManager.GetChatAndContentRestrictions(i,false,&chatRestricted,NULL,NULL);
-							if(chatRestricted)
-							{
-								ProfileManager.DisplaySystemMessage( SCE_MSG_DIALOG_SYSMSG_TYPE_TRC_PSN_CHAT_RESTRICTION, i );
-							}
-						}
-					}
-				}
-#endif
 				// This is NOT called from a storage manager thread, and is in fact called from the main thread in the Profile library tick. Therefore we use the main threads IntCache.
 				StartGameFromSave(pClass, dwLocalUsersMask);
 			}
@@ -1748,7 +1588,7 @@ void UIScene_LoadMenu::handleGainFocus(bool navBack)
 	if(navBack)
 	{
 		
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined _XBOX_ONE || defined _WINDOWS64
 		if(getSceneResolution() == eSceneResolution_1080)
 		{
 			m_checkboxOnline.setChecked(m_MoreOptionsParams.bOnlineGame == TRUE);
@@ -1756,49 +1596,3 @@ void UIScene_LoadMenu::handleGainFocus(bool navBack)
 #endif
 	}
 }
-
-#ifdef __ORBIS__
-int UIScene_LoadMenu::MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EMessageResult result)
-{
-    UIScene_LoadMenu* pClass = (UIScene_LoadMenu *)pParam;
-	pClass->m_bIgnoreInput = false;
-
-    if(result==C4JStorage::EMessage_ResultAccept) 
-    {
-        SQRNetworkManager_Orbis::AttemptPSNSignIn(&UIScene_LoadMenu::StartGame_SignInReturned, pClass, false, iPad);
-    }
-
-    return 0;
-}
-
-// int UIScene_LoadMenu::PSPlusReturned(void *pParam,int iPad,C4JStorage::EMessageResult result)
-// {
-// 	int32_t iResult;
-// 	UIScene_LoadMenu *pClass = (UIScene_LoadMenu *)pParam;
-// 
-// 	// continue offline, or upsell PS Plus?
-// 	if(result==C4JStorage::EMessage_ResultDecline) 
-// 	{
-// 		// upsell psplus
-// 		iResult=sceNpCommerceDialogInitialize();
-// 
-// 		SceNpCommerceDialogParam param;
-// 		sceNpCommerceDialogParamInitialize(&param);
-// 		param.mode=SCE_NP_COMMERCE_DIALOG_MODE_PLUS;
-// 		param.features = SCE_NP_PLUS_FEATURE_REALTIME_MULTIPLAY; 
-// 		param.userId = ProfileManager.getUserID(pClass->m_iPad);
-// 
-// 
-// 		iResult=sceNpCommerceDialogOpen(&param);
-// 	}
-// 	else if(result==C4JStorage::EMessage_ResultAccept) 
-// 	{
-// 		// continue offline
-// 		pClass->m_MoreOptionsParams.bOnlineGame=false;
-// 		pClass->LoadDataComplete(pClass);
-// 	}
-// 
-// 	pClass->m_bIgnoreInput=false;
-// 	return 0;
-// }
-#endif

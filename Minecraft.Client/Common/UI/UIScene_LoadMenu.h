@@ -23,7 +23,7 @@ private:
 	UIControl_Slider m_sliderDifficulty;
 	UIControl_BitmapIcon m_bitmapIcon;
 	
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined _XBOX_ONE || defined _WINDOWS64
 	UIControl_CheckBox m_checkboxOnline;
 #endif
 
@@ -36,7 +36,7 @@ private:
 			UI_MAP_ELEMENT( m_texturePackList, "TexturePackSelector")
 			UI_MAP_ELEMENT( m_buttonGamemode, "GameModeToggle")
 			
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined _XBOX_ONE || defined _WINDOWS64
 			UI_MAP_ELEMENT( m_checkboxOnline, "CheckboxOnline")
 #endif
 			UI_MAP_ELEMENT( m_buttonMoreOptions, "MoreOptions")
@@ -63,9 +63,6 @@ private:
 	bool m_bThumbnailGetFailed;
 	__int64 m_seed;
 
-#ifdef __PS3__
-	std::vector<SonyCommerce::ProductInfo>*m_pvProductInfo;
-#endif
 	//int *m_iConfigA; // track the texture packs that we don't have installed
 
 	PBYTE m_pbThumbnailData;
@@ -73,6 +70,11 @@ private:
 	wstring m_thumbnailName;
 
 	bool m_bRebuildTouchBoxes;
+#ifdef _WINDOWS64
+	bool m_bWindows64DirectDiskSave;
+	char m_windows64DirectSaveId[MAX_SAVEFILENAME_LENGTH];
+	char m_windows64DirectSaveName[128];
+#endif
 public:
 	UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLayer);
 	
@@ -106,6 +108,9 @@ private:
 	virtual void checkStateAndStartGame();
 	void LoadLevelGen(LevelGenerationOptions *levelGen);
 	void LaunchGame(void);
+#ifdef _WINDOWS64
+	void StartGameFromWindows64DirectDiskSave(DWORD dwLocalUsersMask);
+#endif
 
 #ifdef _DURANGO
 	static void checkPrivilegeCallback(LPVOID lpParam, bool hasPrivilege, int iPad);
@@ -120,11 +125,6 @@ private:
 	static int CheckResetNetherReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
 	static int DeleteSaveDialogReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
 	static int DeleteSaveDataReturned(void *pParam,bool bSuccess);
-	static int MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EMessageResult result);
-#ifdef __ORBIS__
-	//static int PSPlusReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
-	static int ContinueOffline(void *pParam,int iPad,C4JStorage::EMessageResult result);
-#endif
 
 public:
 	static int StartGame_SignInReturned(LPVOID pParam, bool, int);
