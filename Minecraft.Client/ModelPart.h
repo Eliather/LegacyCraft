@@ -54,6 +54,7 @@ public:
     void render(float scale, bool usecompiled,bool bHideParentBodyPart=false);
     void renderRollable(float scale, bool usecompiled);
     void translateTo(float scale);
+    void resetGeometry();
     ModelPart *setTexSize(int xs, int ys);
     void mimic(ModelPart *o);
 	void compile(float scale);

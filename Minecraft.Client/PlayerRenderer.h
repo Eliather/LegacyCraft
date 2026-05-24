@@ -16,11 +16,14 @@ private:
 
 public:
 	PlayerRenderer();
+	void SetSlimArmVariant(bool bSlimArms);
 
 	static unsigned int getNametagColour(int index);
 
 private:
 	static const wstring MATERIAL_NAMES[5];
+	static bool shouldUseSlimArms(shared_ptr<Player> player);
+	void applyArmModelVariant(bool bSlimArms);
 
 protected:
 	virtual int prepareArmor(shared_ptr<Mob> _player, int layer, float a);

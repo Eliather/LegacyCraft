@@ -5,6 +5,7 @@
 #include "ModelPart.h"
 #include "LocalPlayer.h"
 #include "MultiPlayerLocalPlayer.h"
+#include "UserData_Info.h"
 #include "entityRenderDispatcher.h"
 #include "..\Minecraft.World\net.minecraft.world.entity.h"
 #include "..\Minecraft.World\net.minecraft.world.entity.player.h"
@@ -32,9 +33,32 @@ const wstring PlayerRenderer::MATERIAL_NAMES[5] = { L"cloth", L"chain", L"iron",
 PlayerRenderer::PlayerRenderer() : MobRenderer( new HumanoidModel(0), 0.5f )
 {
     humanoidModel = (HumanoidModel *) model;
+	armorParts1 = new HumanoidModel(1.0f);
+	armorParts2 = new HumanoidModel(0.5f);
+	armor = armorParts1;
+}
 
-    armorParts1 = new HumanoidModel(1.0f);
-    armorParts2 = new HumanoidModel(0.5f);
+bool PlayerRenderer::shouldUseSlimArms(shared_ptr<Player> player)
+{
+	if (player == NULL)
+	{
+		return false;
+	}
+
+	return dynamic_pointer_cast<LocalPlayer>(player) != NULL && UserData_Info::GetSkinSlim();
+}
+
+void PlayerRenderer::SetSlimArmVariant(bool bSlimArms)
+{
+	applyArmModelVariant(bSlimArms);
+}
+
+void PlayerRenderer::applyArmModelVariant(bool bSlimArms)
+{
+	humanoidModel->SetSlimArms(bSlimArms);
+	armorParts1->SetSlimArms(bSlimArms);
+	armorParts2->SetSlimArms(bSlimArms);
+	armor = armorParts1;
 }
 
 unsigned int PlayerRenderer::getNametagColour(int index)
@@ -133,6 +157,8 @@ void PlayerRenderer::render(shared_ptr<Entity> _mob, double x, double y, double 
 	shared_ptr<Player> mob = dynamic_pointer_cast<Player>(_mob);
 
 	if(mob->hasInvisiblePrivilege()) return;
+
+	applyArmModelVariant(shouldUseSlimArms(mob));
 
     shared_ptr<ItemInstance> item = mob->inventory->getSelected();
     armorParts1->holdingRightHand = armorParts2->holdingRightHand = humanoidModel->holdingRightHand = item != NULL ? 1 : 0;
@@ -529,6 +555,8 @@ void PlayerRenderer::scale(shared_ptr<Mob> player, float a)
 
 void PlayerRenderer::renderHand()
 {
+	applyArmModelVariant(shouldUseSlimArms(Minecraft::GetInstance()->player));
+
 	humanoidModel->m_uiAnimOverrideBitmask = Minecraft::GetInstance()->player->getAnimOverrideBitmask();
 	armorParts1->eating = armorParts2->eating = humanoidModel->eating = humanoidModel->idle = false;
     humanoidModel->attackTime = 0;

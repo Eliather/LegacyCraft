@@ -7,7 +7,7 @@ namespace UserData_Info
 	struct Data
 	{
 		std::wstring playerName;
-		bool modelType;
+		bool skinSlim;
 		unsigned char languageId;
 		unsigned int skinId;
 		unsigned char gamma;
@@ -20,6 +20,7 @@ namespace UserData_Info
 	const Data &GetData();
 	std::wstring GetPlayerName();
 	const char *GetPlayerNameAnsi();
+	bool GetSkinSlim();
 	bool GetModelType();
 	unsigned char GetLanguageId();
 	unsigned int GetSkinId();
@@ -27,6 +28,7 @@ namespace UserData_Info
 	unsigned char GetFov();
 
 	void SetPlayerName(const std::wstring &playerName);
+	void SetSkinSlim(bool skinSlim);
 	void SetModelType(bool modelType);
 	void SetLanguageId(unsigned char languageId);
 	void SetSkinId(unsigned int skinId);

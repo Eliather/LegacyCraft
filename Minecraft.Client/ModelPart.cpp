@@ -2,6 +2,7 @@
 #include "TexOffs.h"
 #include "ModelPart.h"
 #include "Cube.h"
+#include "MemoryTracker.h"
 
 const float ModelPart::RAD = (180.0f / PI);
 
@@ -281,6 +282,23 @@ void ModelPart::translateTo(float scale)
 	else 
 	{
 	}
+}
+
+void ModelPart::resetGeometry()
+{
+	if (compiled && list != 0)
+	{
+		MemoryTracker::releaseLists(list);
+		list = 0;
+	}
+
+	for (unsigned int i = 0; i < cubes.size(); i++)
+	{
+		delete cubes[i];
+	}
+
+	cubes.clear();
+	compiled = false;
 }
 
 void ModelPart::compile(float scale) 

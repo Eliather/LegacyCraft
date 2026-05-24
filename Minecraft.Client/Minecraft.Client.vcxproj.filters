@@ -738,7 +738,19 @@
     <ClCompile Include="ChangeNameButton.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="CustomCheckbox.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CustomGenericBackground.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClInclude Include="ChangeNameButton.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CustomCheckbox.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CustomGenericBackground.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <None Include="Xbox\res\audio\minecraft.xsb">

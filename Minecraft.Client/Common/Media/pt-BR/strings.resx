@@ -4454,4 +4454,6 @@ Todos os Baús Ender em um mundo são vinculados; itens colocados em um Baú End
   </data>
 <data name="IDS_CHANGE_NAME_BUTTON"><value>Alterar Nome</value>
   </data>
+<data name="IDS_SLIM_SKIN"><value>Skin fina</value>
+  </data>
 </root>

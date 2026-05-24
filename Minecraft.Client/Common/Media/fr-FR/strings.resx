@@ -4466,4 +4466,6 @@ Tous les coffres du Néant d'un monde sont liés. Les objets placés dans un cof
   </data>
 <data name="IDS_CHANGE_NAME_BUTTON"><value>Changer de nom</value>
   </data>
+<data name="IDS_SLIM_SKIN"><value>Skin fine</value>
+  </data>
 </root>

@@ -1,4 +1,8 @@
 #pragma once
+#if defined(_WINDOWS64)
+#include "..\..\CustomCheckbox.h"
+#include "..\..\CustomGenericBackground.h"
+#endif
 #include "..\..\..\Minecraft.World\Definitions.h"
 #include "UIScene.h"
 #include "UIControl_PlayerSkinPreview.h"
@@ -123,6 +127,7 @@ public:
 #endif
 
 	virtual void tick();
+	virtual void render(S32 width, S32 height, C4JRender::eViewportType viewport);
 	
 	virtual void updateTooltips();
 	virtual void updateComponents();
@@ -161,6 +166,10 @@ private:
 	void setCentreLabel(const wstring &label);
 	void setRightLabel(const wstring &label);
 
+#if defined(_WINDOWS64)
+	void setupSlimSkinOverlay(S32 width, S32 height);
+#endif
+
 	virtual void HandleDLCMountingComplete();
 	virtual void HandleDLCInstalled();
 #ifdef _XBOX_ONE
@@ -181,6 +190,11 @@ private:
 
 #ifdef __ORBIS__
 	bool m_bErrorDialogRunning;
+#endif
+
+#if defined(_WINDOWS64)
+	CustomGenericBackground m_slimSkinBackground;
+	CustomCheckbox m_slimSkinCheckbox;
 #endif
 
 #ifdef __PSVITA__

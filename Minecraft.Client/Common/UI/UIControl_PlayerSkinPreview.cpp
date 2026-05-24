@@ -7,6 +7,7 @@
 #include "..\..\Lighting.h"
 #include "..\..\ModelPart.h"
 #include "..\..\Options.h"
+#include "..\..\UserData_Info.h"
 #include "..\..\..\Minecraft.World\net.minecraft.world.entity.player.h"
 #include "UIControl_PlayerSkinPreview.h"
 
@@ -336,6 +337,12 @@ void UIControl_PlayerSkinPreview::render(EntityRenderer *renderer, double x, dou
 {
 	glPushMatrix();
 	glDisable(GL_CULL_FACE);
+
+	PlayerRenderer *playerRenderer = dynamic_cast<PlayerRenderer *>(renderer);
+	if(playerRenderer != NULL)
+	{
+		playerRenderer->SetSlimArmVariant(UserData_Info::GetSkinSlim());
+	}
 
 	HumanoidModel *model = (HumanoidModel *)renderer->getModel();
 

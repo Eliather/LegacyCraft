@@ -21,7 +21,7 @@ namespace
 		char magic[4];
 		unsigned int version;
 		char playerName[17];
-		unsigned char modelType;
+		unsigned char skinSlim;
 		unsigned char languageId;
 		unsigned char gamma;
 		unsigned char fov;
@@ -120,7 +120,7 @@ namespace
 		if(validateSkin && !SkinExists(g_userData.skinId))
 		{
 			g_userData.skinId = kDefaultSkinId;
-			g_userData.modelType = false;
+			g_userData.skinSlim = false;
 			changed = true;
 		}
 
@@ -170,7 +170,7 @@ namespace
 		{
 			parsed.playerName.push_back((wchar_t)(unsigned char)fileData.playerName[i]);
 		}
-		parsed.modelType = (fileData.modelType != 0);
+		parsed.skinSlim = (fileData.skinSlim != 0);
 		
 		if (fileData.version >= 2)
 		{
@@ -215,7 +215,7 @@ void UserData_Info::EnsureLoaded()
 	else
 	{
 		g_userData.playerName = kDefaultPlayerName;
-		g_userData.modelType = false;
+		g_userData.skinSlim = false;
 		g_userData.languageId = MINECRAFT_LANGUAGE_SPANISH;
 		g_userData.skinId = kDefaultSkinId;
 	}
@@ -236,7 +236,7 @@ void UserData_Info::Save()
 	memcpy(fileData.magic, "UDAT", 4);
 	fileData.version = kUserDataInfoVersion;
 	memcpy(fileData.playerName, g_userDataPlayerNameAnsi, sizeof(fileData.playerName) - 1);
-	fileData.modelType = g_userData.modelType ? 1 : 0;
+	fileData.skinSlim = g_userData.skinSlim ? 1 : 0;
 	fileData.languageId = g_userData.languageId;
 	fileData.gamma = g_userData.gamma;
 	fileData.fov = g_userData.fov;
@@ -273,10 +273,15 @@ const char *UserData_Info::GetPlayerNameAnsi()
 	return g_userDataPlayerNameAnsi;
 }
 
-bool UserData_Info::GetModelType()
+bool UserData_Info::GetSkinSlim()
 {
 	EnsureLoaded();
-	return g_userData.modelType;
+	return g_userData.skinSlim;
+}
+
+bool UserData_Info::GetModelType()
+{
+	return GetSkinSlim();
 }
 
 unsigned char UserData_Info::GetLanguageId()
@@ -314,11 +319,16 @@ void UserData_Info::SetPlayerName(const std::wstring &playerName)
 	Save();
 }
 
-void UserData_Info::SetModelType(bool modelType)
+void UserData_Info::SetSkinSlim(bool skinSlim)
 {
 	EnsureLoaded();
-	g_userData.modelType = modelType;
+	g_userData.skinSlim = skinSlim;
 	Save();
+}
+
+void UserData_Info::SetModelType(bool modelType)
+{
+	SetSkinSlim(modelType);
 }
 
 void UserData_Info::SetLanguageId(unsigned char languageId)

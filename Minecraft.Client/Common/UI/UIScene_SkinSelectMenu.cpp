@@ -1,6 +1,16 @@
 #include "stdafx.h"
 #include "UI.h"
 #include "UIScene_SkinSelectMenu.h"
+#if defined(_WINDOWS64)
+#include "..\..\Minecraft.h"
+#include "..\..\Tesselator.h"
+#include "..\..\UserData_Info.h"
+#include "..\..\Windows64Media\strings.h"
+
+#ifndef GL_SCISSOR_TEST
+#define GL_SCISSOR_TEST 0x0C11
+#endif
+#endif
 #include "..\..\..\Minecraft.World\StringHelpers.h"
 #ifdef __ORBIS__
 #include <error_dialog.h>
@@ -12,6 +22,113 @@
 #define SKIN_SELECT_PACK_FAVORITES 1
 //#define SKIN_SELECT_PACK_PLAYER_CUSTOM 1
 #define SKIN_SELECT_MAX_DEFAULTS 2
+
+#if defined(_WINDOWS64)
+namespace
+{
+	const float kSlimSkinPanelWidth = 320.0f;
+	const float kSlimSkinPanelHeight = 52.0f;
+	const float kSlimSkinPanelRightMargin = 28.0f;
+	const float kSlimSkinPanelBottomMargin = 30.0f;
+	const float kSlimSkinPanelMinX = 20.0f;
+	const float kSlimSkinPanelMinY = 20.0f;
+	const float kSlimSkinPanelPaddingLeft = 14.0f;
+	const float kSlimSkinCheckboxSize = 24.0f;
+
+	const wchar_t *GetSlimSkinCheckboxLabel()
+	{
+		LPCWSTR localised = app.GetString(IDS_SLIM_SKIN);
+		if(localised != NULL && localised[0] != 0)
+		{
+			return localised;
+		}
+
+		switch(XGetLanguage())
+		{
+		case XC_LANGUAGE_GERMAN:
+			return L"Schmale Skin";
+		case XC_LANGUAGE_FRENCH:
+			return L"Skin fine";
+		case XC_LANGUAGE_SPANISH:
+			return L"Skin Delgada";
+		case XC_LANGUAGE_ITALIAN:
+			return L"Skin stretta";
+		case XC_LANGUAGE_PORTUGUESE:
+		case MINECRAFT_LANGUAGE_BRAZILIAN:
+			return L"Skin fina";
+		case XC_LANGUAGE_JAPANESE:
+			return L"\u7D30\u3044\u30B9\u30AD\u30F3";
+		case XC_LANGUAGE_KOREAN:
+			return L"\uC2AC\uB9BC \uC2A4\uD0A8";
+		case XC_LANGUAGE_TCHINESE:
+		case XC_LANGUAGE_SCHINESE:
+			return L"\u7E96\u7D30\u9020\u578B";
+		default:
+			return L"Slim Skin";
+		}
+	}
+
+	void DrawSlimSkinPanelBackdrop(float x, float y, float width, float height)
+	{
+		Tesselator *t = Tesselator::getInstance();
+		if(t == NULL || width <= 0.0f || height <= 0.0f)
+		{
+			return;
+		}
+
+		const float shadowOffset = 2.0f;
+		const float inset = 2.0f;
+
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable(GL_TEXTURE_2D);
+
+		t->begin();
+		t->color(0, 0, 0, 64);
+		t->vertex(x + shadowOffset,         y + height + shadowOffset, 0.0f);
+		t->vertex(x + width + shadowOffset, y + height + shadowOffset, 0.0f);
+		t->vertex(x + width + shadowOffset, y + shadowOffset,          0.0f);
+		t->vertex(x + shadowOffset,         y + shadowOffset,          0.0f);
+		t->end();
+
+		t->begin();
+		t->color(36, 36, 36, 168);
+		t->vertex(x,         y + height, 0.0f);
+		t->vertex(x + width, y + height, 0.0f);
+		t->vertex(x + width, y,          0.0f);
+		t->vertex(x,         y,          0.0f);
+		t->end();
+
+		t->begin();
+		t->color(198, 198, 198, 220);
+		t->vertex(x + inset,         y + height - inset, 0.0f);
+		t->vertex(x + width - inset, y + height - inset, 0.0f);
+		t->vertex(x + width - inset, y + inset,          0.0f);
+		t->vertex(x + inset,         y + inset,          0.0f);
+		t->end();
+
+		t->begin();
+		t->color(255, 255, 255, 220);
+		t->vertex(x + inset,         y + 4.0f,           0.0f);
+		t->vertex(x + width - inset, y + 4.0f,           0.0f);
+		t->vertex(x + width - inset, y + inset,          0.0f);
+		t->vertex(x + inset,         y + inset,          0.0f);
+		t->end();
+
+		t->begin();
+		t->color(0, 0, 0, 180);
+		t->vertex(x + inset,         y + height - inset, 0.0f);
+		t->vertex(x + width - inset, y + height - inset, 0.0f);
+		t->vertex(x + width - inset, y + height - 4.0f, 0.0f);
+		t->vertex(x + inset,         y + height - 4.0f, 0.0f);
+		t->end();
+
+		glEnable(GL_TEXTURE_2D);
+		glDisable(GL_BLEND);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+	}
+}
+#endif
 
 WCHAR *UIScene_SkinSelectMenu::wchDefaultNamesA[]=
 {
@@ -76,6 +193,11 @@ UIScene_SkinSelectMenu::UIScene_SkinSelectMenu(int iPad, void *initData, UILayer
 	m_leftLabel = L"";
 	m_centreLabel = L"";
 	m_rightLabel = L"";
+
+#if defined(_WINDOWS64)
+	m_slimSkinCheckbox.SetChecked(UserData_Info::GetSkinSlim());
+	m_slimSkinCheckbox.SetStringId(IDS_SLIM_SKIN);
+#endif
 
 #ifdef __PSVITA__
 		// initialise vita tab  controls with ids
@@ -159,6 +281,21 @@ void UIScene_SkinSelectMenu::tick()
 {
 	UIScene::tick();
 
+#if defined(_WINDOWS64)
+	if(!m_bIgnoreInput)
+	{
+		Minecraft *minecraft = Minecraft::GetInstance();
+		if(minecraft != NULL && minecraft->textures != NULL)
+		{
+			setupSlimSkinOverlay(minecraft->width_phys, minecraft->height_phys);
+			if(m_slimSkinCheckbox.Update(minecraft))
+			{
+				UserData_Info::SetSkinSlim(m_slimSkinCheckbox.IsChecked());
+			}
+		}
+	}
+#endif
+
 	if(m_bSkinIndexChanged)
 	{
 		m_bSkinIndexChanged = false;
@@ -181,6 +318,52 @@ void UIScene_SkinSelectMenu::tick()
 		}
 	}
 
+#endif
+}
+
+void UIScene_SkinSelectMenu::render(S32 width, S32 height, C4JRender::eViewportType viewport)
+{
+	UIScene::render(width, height, viewport);
+
+#if defined(_WINDOWS64)
+	Minecraft *minecraft = Minecraft::GetInstance();
+	if(minecraft == NULL || minecraft->textures == NULL)
+	{
+		return;
+	}
+
+	setupSlimSkinOverlay(minecraft->width_phys, minecraft->height_phys);
+
+	ui.setupCustomDrawGameState();
+	ui.setupRenderPosition(viewport);
+
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_LIGHTING);
+	glDisable(GL_FOG);
+	glDisable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_ALPHA_TEST);
+	glAlphaFunc(GL_GREATER, 0.0f);
+	glEnable(GL_TEXTURE_2D);
+	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+	DrawSlimSkinPanelBackdrop(
+		m_slimSkinBackground.GetX(),
+		m_slimSkinBackground.GetY(),
+		m_slimSkinBackground.GetWidth(),
+		m_slimSkinBackground.GetHeight());
+
+	m_slimSkinBackground.Render(minecraft, (int)viewport);
+	if(minecraft->font != NULL)
+	{
+		m_slimSkinCheckbox.Render(minecraft, minecraft->font, GetSlimSkinCheckboxLabel(), (int)viewport);
+	}
+	else
+	{
+		m_slimSkinCheckbox.Render(minecraft, (int)viewport);
+	}
 #endif
 }
 
@@ -741,6 +924,32 @@ void UIScene_SkinSelectMenu::customDraw(IggyCustomDrawCallbackRegion *region)
 		ui.endCustomDraw(region);
 	}
 }
+
+#if defined(_WINDOWS64)
+void UIScene_SkinSelectMenu::setupSlimSkinOverlay(S32 width, S32 height)
+{
+	float panelX = (float)width - kSlimSkinPanelWidth - kSlimSkinPanelRightMargin;
+	float panelY = (float)height - kSlimSkinPanelHeight - kSlimSkinPanelBottomMargin;
+	if(panelX < kSlimSkinPanelMinX) panelX = kSlimSkinPanelMinX;
+	if(panelY < kSlimSkinPanelMinY) panelY = kSlimSkinPanelMinY;
+
+	const float checkboxY = panelY + ((kSlimSkinPanelHeight - kSlimSkinCheckboxSize) * 0.5f);
+
+	m_slimSkinBackground.Setup(
+		panelX,
+		panelY,
+		kSlimSkinPanelWidth,
+		kSlimSkinPanelHeight,
+		CustomGenericBackground::eTextureSet_Recessed);
+
+	m_slimSkinCheckbox.Setup(
+		panelX + kSlimSkinPanelPaddingLeft,
+		checkboxY,
+		kSlimSkinCheckboxSize,
+		kSlimSkinCheckboxSize,
+		IDS_SLIM_SKIN);
+}
+#endif
 
 void UIScene_SkinSelectMenu::handleSkinIndexChanged()
 {
@@ -1785,6 +1994,10 @@ void UIScene_SkinSelectMenu::handleReload()
 	m_leftLabel = L"";
 	m_centreLabel = L"";
 	m_rightLabel = L"";
+
+#if defined(_WINDOWS64)
+	m_slimSkinCheckbox.SetChecked(UserData_Info::GetSkinSlim());
+#endif
 
 	handlePackIndexChanged();
 }

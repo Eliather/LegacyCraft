@@ -17,6 +17,8 @@ public:
 	float eating_swing;	// 4J added
 	unsigned int m_uiAnimOverrideBitmask; // 4J added
 	float m_fYOffset; // 4J added
+	float m_fGrow;
+	bool m_bSlimArms;
 	enum animbits
 	{
 		eAnim_ArmsDown =0,
@@ -50,6 +52,7 @@ public:
 
 
 	void _init(float g, float yOffset, int texWidth, int texHeight);	// 4J added
+	void rebuildArmGeometry(float g);
     HumanoidModel();
     HumanoidModel(float g);
     HumanoidModel(float g, float yOffset, int texWidth, int texHeight);
@@ -62,4 +65,6 @@ public:
 
 // Add new bits to models
 	ModelPart * AddOrRetrievePart(SKIN_BOX *pBox);
+	void SetSlimArms(bool bSlimArms);
+	bool HasSlimArms() const { return m_bSlimArms; }
 };

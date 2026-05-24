@@ -64,6 +64,8 @@ void HumanoidModel::_init(float g, float yOffset, int texWidth, int texHeight)
 	this->texHeight = texHeight;
 
 	m_fYOffset=yOffset;
+	m_fGrow = g;
+	m_bSlimArms = false;
     cloak = new ModelPart(this, 0, 0);
     cloak->addHumanoidBox(-5, -0, -1, 10, 16, 1, g); // Cloak
 
@@ -83,13 +85,9 @@ void HumanoidModel::_init(float g, float yOffset, int texWidth, int texHeight)
     body->setPos(0, 0 + yOffset, 0);
 
     arm0 = new ModelPart(this, 24 + 16, 16);
-    arm0->addHumanoidBox(-3, -2, -2, 4, 12, 4, g); // Arm0
-    arm0->setPos(-5, 2 + yOffset, 0);
-
     arm1 = new ModelPart(this, 24 + 16, 16);
     arm1->bMirror = true;
-    arm1->addHumanoidBox(-1, -2, -2, 4, 12, 4, g); // Arm1
-    arm1->setPos(5, 2 + yOffset, 0);
+	rebuildArmGeometry(g);
 
     leg0 = new ModelPart(this, 0, 16);
     leg0->addHumanoidBox(-2, 0, -2, 4, 12, 4, g); // Leg0
@@ -125,6 +123,22 @@ void HumanoidModel::_init(float g, float yOffset, int texWidth, int texHeight)
 	m_uiAnimOverrideBitmask = 0L;
 }
 
+void HumanoidModel::rebuildArmGeometry(float g)
+{
+	const float armWidth = m_bSlimArms ? 3.0f : 4.0f;
+	const float rightArmX = m_bSlimArms ? -2.0f : -3.0f;
+	const float leftArmX = -1.0f;
+
+	arm0->resetGeometry();
+	arm0->addHumanoidBox(rightArmX, -2, -2, (int)armWidth, 12, 4, g); // Arm0
+	arm0->setPos(-5, 2 + m_fYOffset, 0);
+
+	arm1->resetGeometry();
+	arm1->bMirror = true;
+	arm1->addHumanoidBox(leftArmX, -2, -2, (int)armWidth, 12, 4, g); // Arm1
+	arm1->setPos(5, 2 + m_fYOffset, 0);
+}
+
 HumanoidModel::HumanoidModel() : Model()
 {
 	_init(0, 0, 64, 32);
@@ -138,6 +152,17 @@ HumanoidModel::HumanoidModel(float g) : Model()
 HumanoidModel::HumanoidModel(float g, float yOffset, int texWidth, int texHeight) : Model()
 {
 	_init(g,yOffset,texWidth,texHeight);
+}
+
+void HumanoidModel::SetSlimArms(bool bSlimArms)
+{
+	if (m_bSlimArms == bSlimArms)
+	{
+		return;
+	}
+
+	m_bSlimArms = bSlimArms;
+	rebuildArmGeometry(m_fGrow);
 }
 
 void HumanoidModel::render(shared_ptr<Entity> entity, float time, float r, float bob, float yRot, float xRot, float scale, bool usecompiled)

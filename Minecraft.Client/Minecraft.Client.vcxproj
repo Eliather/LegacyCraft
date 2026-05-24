@@ -1797,6 +1797,8 @@
     <ClInclude Include="User.h" />
     <ClInclude Include="UserData_Info.h" />
     <ClInclude Include="ChangeNameButton.h" />
+    <ClInclude Include="CustomCheckbox.h" />
+    <ClInclude Include="CustomGenericBackground.h" />
     <ClInclude Include="CustomGenericButton.h" />
     <ClInclude Include="CustomSlider.h" />
     <ClInclude Include="Vertex.h" />
@@ -4030,6 +4032,8 @@
     <ClCompile Include="User.cpp" />
     <ClCompile Include="UserData_Info.cpp" />
     <ClCompile Include="ChangeNameButton.cpp" />
+    <ClCompile Include="CustomCheckbox.cpp" />
+    <ClCompile Include="CustomGenericBackground.cpp" />
     <ClCompile Include="CustomGenericButton.cpp" />
     <ClCompile Include="CustomSlider.cpp" />
     <ClCompile Include="Vertex.cpp" />
