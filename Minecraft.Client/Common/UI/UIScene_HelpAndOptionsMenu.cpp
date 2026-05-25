@@ -383,6 +383,10 @@ void UIScene_HelpAndOptionsMenu::updateTooltips()
 void UIScene_HelpAndOptionsMenu::updateComponents()
 {
 	bool bNotInGame = (Minecraft::GetInstance()->level == NULL);
+	m_bNotInGame = bNotInGame;
+#if defined(_WINDOWS64)
+	m_parentLayer->showComponent(m_iPad, eUIComponent_MenuBackground, !bNotInGame && !g_bEnableHelpAndOptionsSFW);
+#endif
 	if(bNotInGame)
 	{
 		m_parentLayer->showComponent(m_iPad, eUIComponent_Panorama, true);
@@ -590,39 +594,41 @@ void UIScene_HelpAndOptionsMenu::tick()
 
 void UIScene_HelpAndOptionsMenu::render(S32 width, S32 height, C4JRender::eViewportType viewport)
 {
-	UIScene::render(width, height, viewport);
-
 #if defined(_WINDOWS64)
-	if(g_bEnableHelpAndOptionsSFW) return;
+	if(!g_bEnableHelpAndOptionsSFW)
+	{
+		Minecraft *minecraft = Minecraft::GetInstance();
+		if(minecraft == NULL || minecraft->textures == NULL || minecraft->font == NULL) return;
 
-	Minecraft *minecraft = Minecraft::GetInstance();
-	if(minecraft == NULL || minecraft->textures == NULL || minecraft->font == NULL) return;
+		const bool creditsVisible = ShouldShowHAOCredits();
+		const bool debugVisible = ShouldShowHAODebug();
 
-	const bool creditsVisible = ShouldShowHAOCredits();
-	const bool debugVisible = ShouldShowHAODebug();
+		SetupHAOCustomControls(creditsVisible, debugVisible);
+		SyncHAOLanguageSlider(m_iPad);
 
-	SetupHAOCustomControls(creditsVisible, debugVisible);
-	SyncHAOLanguageSlider(m_iPad);
+		// HelpAndOptions has no iggy custom-draw region like MainMenu's "Splash",
+		// so prepare the game render state manually before drawing code-driven widgets.
+		ui.setupCustomDrawGameState();
+		ui.setupRenderPosition(viewport);
 
-	// HelpAndOptions has no iggy custom-draw region like MainMenu's "Splash",
-	// so prepare the game render state manually before drawing code-driven widgets.
-	ui.setupCustomDrawGameState();
-	ui.setupRenderPosition(viewport);
+		glDisable(GL_DEPTH_TEST);
+		glDisable(GL_CULL_FACE);
+		glDisable(GL_LIGHTING);
+		glDisable(GL_FOG);
+		glDisable(GL_SCISSOR_TEST);
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glEnable(GL_ALPHA_TEST);
+		glAlphaFunc(GL_GREATER, 0.0f);
+		glEnable(GL_TEXTURE_2D);
+		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
-	glDisable(GL_DEPTH_TEST);
-	glDisable(GL_CULL_FACE);
-	glDisable(GL_LIGHTING);
-	glDisable(GL_FOG);
-	glDisable(GL_SCISSOR_TEST);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_ALPHA_TEST);
-	glAlphaFunc(GL_GREATER, 0.0f);
-	glEnable(GL_TEXTURE_2D);
-	glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-	DrawHAOCustomControls(minecraft, viewport, creditsVisible, debugVisible);
+		DrawHAOCustomControls(minecraft, viewport, creditsVisible, debugVisible);
+		return;
+	}
 #endif
+
+	UIScene::render(width, height, viewport);
 }
 
 void UIScene_HelpAndOptionsMenu::customDraw(IggyCustomDrawCallbackRegion *region)
