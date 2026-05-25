@@ -40,12 +40,16 @@ public:
 	
 	virtual void updateTooltips();
 	virtual void updateComponents();
+	virtual void handleReload();
 
 protected:
 	// TODO: This should be pure virtual in this class
 	virtual wstring getMoviePath();
 
 public:
+	virtual void tick();
+	virtual void render(S32 width, S32 height, C4JRender::eViewportType viewport);
+
 	// INPUT
 	virtual void handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled);
 

@@ -4474,4 +4474,10 @@ Todos los cofres de Ender de un mundo están vinculados, y los objetos que conti
 </data>
 <data name="IDS_SLIM_SKIN"><value>Skin Delgada</value>
 </data>
+<data name="IDS_INTERFACE"><value>Interfaz</value>
+</data>
+<data name="IDS_BRIGHTNESS"><value>Brillo</value>
+</data>
+<data name="IDS_RENDER_DISTANCE"><value>Distancia de renderizado</value>
+</data>
 </root>

@@ -4465,4 +4465,10 @@ OK を選択すると、この世界でのプレイを終了します</value>
   </data>
 <data name="IDS_SLIM_SKIN"><value>&#x7D30;&#x3044;&#x30B9;&#x30AD;&#x30F3;</value>
   </data>
+<data name="IDS_INTERFACE"><value>&#x30A4;&#x30F3;&#x30BF;&#x30FC;&#x30D5;&#x30A7;&#x30A4;&#x30B9;</value>
+  </data>
+<data name="IDS_BRIGHTNESS"><value>&#x660E;&#x308B;&#x3055;</value>
+  </data>
+<data name="IDS_RENDER_DISTANCE"><value>&#x63CF;&#x753B;&#x8DDD;&#x96E2;</value>
+  </data>
 </root>

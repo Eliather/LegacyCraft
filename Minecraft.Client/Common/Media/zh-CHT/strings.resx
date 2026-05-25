@@ -4465,4 +4465,10 @@ Xbox One 主機上的 Minecraft 預設為多人遊戲。如果您選擇高畫質
   </data>
 <data name="IDS_SLIM_SKIN"><value>&#x7E96;&#x7D30;&#x9020;&#x578B;</value>
   </data>
+<data name="IDS_INTERFACE"><value>&#x4ECB;&#x9762;</value>
+  </data>
+<data name="IDS_BRIGHTNESS"><value>&#x4EAE;&#x5EA6;</value>
+  </data>
+<data name="IDS_RENDER_DISTANCE"><value>&#x6E32;&#x67D3;&#x8DDD;&#x96E2;</value>
+  </data>
 </root>

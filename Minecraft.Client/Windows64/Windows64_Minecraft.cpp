@@ -24,6 +24,7 @@
 #include "..\..\Minecraft.World\Socket.h"
 #include "..\..\Minecraft.World\ThreadName.h"
 #include "..\..\Minecraft.Client\StatsCounter.h"
+#include "..\..\Minecraft.Client\GameRenderer.h"
 #include "..\ConnectScreen.h"
 //#include "Social\SocialManager.h"
 //#include "Leaderboards\LeaderboardManager.h"
@@ -742,6 +743,10 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	app.InitGameSettings();
 	UserData_Info::EnsureLoaded();
+	if(pMinecraft != NULL && pMinecraft->gameRenderer != NULL)
+	{
+		pMinecraft->gameRenderer->SetFovVal((float)UserData_Info::GetFov());
+	}
 	app.SetPlayerSkin(ProfileManager.GetPrimaryPad(), (DWORD)UserData_Info::GetSkinId());
 	app.InitialiseTips();
 

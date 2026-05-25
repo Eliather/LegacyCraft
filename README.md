@@ -188,6 +188,28 @@ La opcion `Slim Skin / Skin Delgada` ya esta conectada de punta a punta:
 
 ---
 
+### `Interface` - acceso directo y menu custom
+
+En `Help & Options`, el boton que antes entraba a `Credits` ahora usa la cadena corta
+`Interface / Interfaz` (`IDS_INTERFACE`) y navega directo a `UIScene_SettingsUIMenu`.
+
+En `Windows64`, `UIScene_SettingsUIMenu` ya no depende de los controles Iggy para el
+contenido principal:
+
+- renderiza un `CustomGenericBackground` grande centrado
+- muestra 6 `CustomSlider` code-driven
+- aplica cambios en vivo a:
+  - `FOV` (`30` a `120`), persistido en `UserData_Info` y aplicado a `GameRenderer`
+  - `Brightness / Brillo` (`0` a `100`) usando `eGameSetting_Gamma`
+  - `Render Distance / Distancia de renderizado` como placeholder visual por ahora
+  - `Animated Character`
+  - `UI Size`
+  - `UI Size Splitscreen`
+
+La ruta original de Iggy sigue intacta para las otras plataformas.
+
+---
+
 ## Cambios en `UIScene_MainMenu`
 
 - **6 botones de menú custom** con `CustomGenericButton::SetupMenuButton()`, reemplazando los botones originales de Iggy/Flash

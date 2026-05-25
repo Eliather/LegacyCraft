@@ -4472,4 +4472,10 @@ Alle Endertruhen in einer Welt sind verknüpft, sodass Gegenstände, die in eine
   </data>
 <data name="IDS_SLIM_SKIN"><value>Schmale Skin</value>
   </data>
+<data name="IDS_INTERFACE"><value>Oberfläche</value>
+  </data>
+<data name="IDS_BRIGHTNESS"><value>Helligkeit</value>
+  </data>
+<data name="IDS_RENDER_DISTANCE"><value>Renderdistanz</value>
+  </data>
 </root>

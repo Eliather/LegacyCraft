@@ -78,6 +78,83 @@ unsigned int CMinecraftApp::m_uiLastSignInData = 0;
 const float CMinecraftApp::fSafeZoneX = 64.0f; // 5% of 1280
 const float CMinecraftApp::fSafeZoneY = 36.0f; // 5% of 720
 
+namespace
+{
+	const wchar_t *GetCustomStringFallback(int iID)
+	{
+		unsigned char languageId = UserData_Info::GetLanguageId();
+		if(languageId == MINECRAFT_LANGUAGE_DEFAULT)
+		{
+			languageId = (unsigned char)XGetLanguage();
+		}
+
+		switch(iID)
+		{
+		case IDS_INTERFACE:
+			switch(languageId)
+			{
+			case MINECRAFT_LANGUAGE_GERMAN:    return L"Oberfl\u00E4che";
+			case MINECRAFT_LANGUAGE_FRENCH:    return L"Interface";
+			case MINECRAFT_LANGUAGE_SPANISH:   return L"Interfaz";
+			case MINECRAFT_LANGUAGE_ITALIAN:   return L"Interfaccia";
+			case MINECRAFT_LANGUAGE_PORTUGUESE:
+			case MINECRAFT_LANGUAGE_BRAZILIAN: return L"Interface";
+			case MINECRAFT_LANGUAGE_JAPANESE:  return L"\u30A4\u30F3\u30BF\u30FC\u30D5\u30A7\u30A4\u30B9";
+			case MINECRAFT_LANGUAGE_KOREAN:    return L"\uC778\uD130\uD398\uC774\uC2A4";
+			case MINECRAFT_LANGUAGE_TCHINESE:  return L"\u4ECB\u9762";
+			default:                           return L"Interface";
+			}
+
+		case IDS_SLIM_SKIN:
+			switch(languageId)
+			{
+			case MINECRAFT_LANGUAGE_GERMAN:    return L"Schmale Skin";
+			case MINECRAFT_LANGUAGE_FRENCH:    return L"Skin fine";
+			case MINECRAFT_LANGUAGE_SPANISH:   return L"Skin Delgada";
+			case MINECRAFT_LANGUAGE_ITALIAN:   return L"Skin stretta";
+			case MINECRAFT_LANGUAGE_PORTUGUESE:
+			case MINECRAFT_LANGUAGE_BRAZILIAN: return L"Skin fina";
+			case MINECRAFT_LANGUAGE_JAPANESE:  return L"\u7D30\u3044\u30B9\u30AD\u30F3";
+			case MINECRAFT_LANGUAGE_KOREAN:    return L"\uC2AC\uB9BC \uC2A4\uD0A8";
+			case MINECRAFT_LANGUAGE_TCHINESE:  return L"\u7E96\u7D30\u9020\u578B";
+			default:                           return L"Slim Skin";
+			}
+
+		case IDS_BRIGHTNESS:
+			switch(languageId)
+			{
+			case MINECRAFT_LANGUAGE_GERMAN:    return L"Helligkeit";
+			case MINECRAFT_LANGUAGE_FRENCH:    return L"Luminosit\u00E9";
+			case MINECRAFT_LANGUAGE_SPANISH:   return L"Brillo";
+			case MINECRAFT_LANGUAGE_ITALIAN:   return L"Luminosit\u00E0";
+			case MINECRAFT_LANGUAGE_PORTUGUESE:
+			case MINECRAFT_LANGUAGE_BRAZILIAN: return L"Brilho";
+			case MINECRAFT_LANGUAGE_JAPANESE:  return L"\u660E\u308B\u3055";
+			case MINECRAFT_LANGUAGE_KOREAN:    return L"\uBC1D\uAE30";
+			case MINECRAFT_LANGUAGE_TCHINESE:  return L"\u4EAE\u5EA6";
+			default:                           return L"Brightness";
+			}
+
+		case IDS_RENDER_DISTANCE:
+			switch(languageId)
+			{
+			case MINECRAFT_LANGUAGE_GERMAN:    return L"Renderdistanz";
+			case MINECRAFT_LANGUAGE_FRENCH:    return L"Distance de rendu";
+			case MINECRAFT_LANGUAGE_SPANISH:   return L"Distancia de renderizado";
+			case MINECRAFT_LANGUAGE_ITALIAN:   return L"Distanza di rendering";
+			case MINECRAFT_LANGUAGE_PORTUGUESE:
+			case MINECRAFT_LANGUAGE_BRAZILIAN: return L"Dist\u00E2ncia de renderiza\u00E7\u00E3o";
+			case MINECRAFT_LANGUAGE_JAPANESE:  return L"\u63CF\u753B\u8DDD\u96E2";
+			case MINECRAFT_LANGUAGE_KOREAN:    return L"\uB80C\uB354 \uAC70\uB9AC";
+			case MINECRAFT_LANGUAGE_TCHINESE:  return L"\u6E32\u67D3\u8DDD\u96E2";
+			default:                           return L"Render Distance";
+			}
+		}
+
+		return L"";
+	}
+}
+
 int CMinecraftApp::s_iHTMLFontSizesA[eHTMLSize_COUNT] =
 {
 #ifdef _XBOX
@@ -306,7 +383,18 @@ LPCWSTR CMinecraftApp::GetString(int iID)
 {
 	//return L"Degisiklikler ve Yenilikler";
 	//return L"��������";
-	return app.m_stringTable->getString(iID);
+	LPCWSTR localised = L"";
+	if(app.m_stringTable != NULL)
+	{
+		localised = app.m_stringTable->getString(iID);
+	}
+
+	if(localised != NULL && localised[0] != 0)
+	{
+		return localised;
+	}
+
+	return GetCustomStringFallback(iID);
 }
 
 void CMinecraftApp::SetAction(int iPad, eXuiAction action, LPVOID param)

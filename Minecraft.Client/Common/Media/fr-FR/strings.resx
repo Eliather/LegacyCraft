@@ -4468,4 +4468,10 @@ Tous les coffres du Néant d'un monde sont liés. Les objets placés dans un cof
   </data>
 <data name="IDS_SLIM_SKIN"><value>Skin fine</value>
   </data>
+<data name="IDS_INTERFACE"><value>Interface</value>
+  </data>
+<data name="IDS_BRIGHTNESS"><value>Luminosit&#233;</value>
+  </data>
+<data name="IDS_RENDER_DISTANCE"><value>Distance de rendu</value>
+  </data>
 </root>

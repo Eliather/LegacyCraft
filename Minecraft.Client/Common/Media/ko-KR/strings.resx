@@ -4466,4 +4466,10 @@ Ender에 들어서면 친구가 그들의 지도에서 요새 내부에 있는 E
   </data>
 <data name="IDS_SLIM_SKIN"><value>&#xC2AC;&#xB9BC; &#xC2A4;&#xD0A8;</value>
   </data>
+<data name="IDS_INTERFACE"><value>&#xC778;&#xD130;&#xD398;&#xC774;&#xC2A4;</value>
+  </data>
+<data name="IDS_BRIGHTNESS"><value>&#xBC1D;&#xAE30;</value>
+  </data>
+<data name="IDS_RENDER_DISTANCE"><value>&#xB80C;&#xB354; &#xAC70;&#xB9AC;</value>
+  </data>
 </root>

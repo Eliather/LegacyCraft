@@ -33,6 +33,19 @@ namespace
 	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov };
 	char g_userDataPlayerNameAnsi[17] = "Steve";
 
+	unsigned char ClampFovValue(unsigned char fov)
+	{
+		if(fov < 30)
+		{
+			return 30;
+		}
+		if(fov > 120)
+		{
+			return 120;
+		}
+		return fov;
+	}
+
 	bool IsAllowedPlayerNameChar(wchar_t ch)
 	{
 		return ((ch >= L'0' && ch <= L'9') ||
@@ -121,6 +134,13 @@ namespace
 		{
 			g_userData.skinId = kDefaultSkinId;
 			g_userData.skinSlim = false;
+			changed = true;
+		}
+
+		const unsigned char validatedFov = ClampFovValue(g_userData.fov);
+		if(validatedFov != g_userData.fov)
+		{
+			g_userData.fov = validatedFov;
 			changed = true;
 		}
 
@@ -356,6 +376,6 @@ void UserData_Info::SetGamma(unsigned char gamma)
 void UserData_Info::SetFov(unsigned char fov)
 {
 	EnsureLoaded();
-	g_userData.fov = fov;
+	g_userData.fov = ClampFovValue(fov);
 	Save();
 }

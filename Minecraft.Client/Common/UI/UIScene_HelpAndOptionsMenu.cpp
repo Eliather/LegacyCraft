@@ -64,7 +64,7 @@ namespace
 
 	bool ShouldShowHAOCredits()
 	{
-		return app.GetLocalPlayerCount() <= 1;
+		return true;
 	}
 
 	bool ShouldShowHAODebug()
@@ -83,7 +83,7 @@ namespace
 		case eHAO_HowToPlay: return app.GetString(IDS_HOW_TO_PLAY);
 		case eHAO_Controls:  return app.GetString(IDS_CONTROLS);
 		case eHAO_Settings:  return app.GetString(IDS_SETTINGS);
-		case eHAO_Credits:   return app.GetString(IDS_CREDITS);
+		case eHAO_Credits:   return app.GetString(IDS_INTERFACE);
 		case eHAO_Debug:     return app.GetString(IDS_DEBUG_SETTINGS);
 		default:             return L"";
 		}
@@ -297,7 +297,7 @@ UIScene_HelpAndOptionsMenu::UIScene_HelpAndOptionsMenu(int iPad, void *initData,
 	m_buttons[BUTTON_HAO_HOWTOPLAY].init(app.GetString(IDS_HOW_TO_PLAY), BUTTON_HAO_HOWTOPLAY);
 	m_buttons[BUTTON_HAO_CONTROLS].init(app.GetString(IDS_CONTROLS), BUTTON_HAO_CONTROLS);
 	m_buttons[BUTTON_HAO_SETTINGS].init(app.GetString(IDS_SETTINGS), BUTTON_HAO_SETTINGS);
-	m_buttons[BUTTON_HAO_CREDITS].init(app.GetString(IDS_CREDITS), BUTTON_HAO_CREDITS);
+	m_buttons[BUTTON_HAO_CREDITS].init(app.GetString(IDS_INTERFACE), BUTTON_HAO_CREDITS);
 	m_buttons[BUTTON_HAO_DEBUG].init(app.GetString(IDS_DEBUG_SETTINGS), BUTTON_HAO_DEBUG);
 
 	removeControl(&m_buttons[BUTTON_HAO_REINSTALL], false);
@@ -328,8 +328,6 @@ UIScene_HelpAndOptionsMenu::UIScene_HelpAndOptionsMenu(int iPad, void *initData,
 
 	if(app.GetLocalPlayerCount() > 1)
 	{
-		removeControl(&m_buttons[BUTTON_HAO_CREDITS], false);
-
 #if TO_BE_IMPLEMENTED
 		app.AdjustSplitscreenScene(m_hObj, &m_OriginalPosition, m_iPad, false);
 #endif
@@ -423,8 +421,6 @@ void UIScene_HelpAndOptionsMenu::handleReload()
 
 	if(app.GetLocalPlayerCount() > 1)
 	{
-		removeControl(&m_buttons[BUTTON_HAO_CREDITS], false);
-
 #if TO_BE_IMPLEMENTED
 		app.AdjustSplitscreenScene(m_hObj, &m_OriginalPosition, m_iPad, false);
 #endif
@@ -523,7 +519,7 @@ void UIScene_HelpAndOptionsMenu::handlePress(F64 controlId, F64 childId)
 		ui.NavigateToScene(m_iPad, eUIScene_SettingsMenu);
 		break;
 	case BUTTON_HAO_CREDITS:
-		ui.NavigateToScene(m_iPad, eUIScene_Credits);
+		ui.NavigateToScene(m_iPad, eUIScene_SettingsUIMenu);
 		break;
 	case BUTTON_HAO_REINSTALL:
 		ui.NavigateToScene(m_iPad, eUIScene_ReinstallMenu);
@@ -582,7 +578,7 @@ void UIScene_HelpAndOptionsMenu::tick()
 		}
 		if(creditsVisible && g_haoButtons[eHAO_Credits].Update(minecraft))
 		{
-			ui.NavigateToScene(m_iPad, eUIScene_Credits);
+			ui.NavigateToScene(m_iPad, eUIScene_SettingsUIMenu);
 		}
 		if(debugVisible && g_haoButtons[eHAO_Debug].Update(minecraft))
 		{

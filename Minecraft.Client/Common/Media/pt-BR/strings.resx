@@ -4456,4 +4456,10 @@ Todos os Baús Ender em um mundo são vinculados; itens colocados em um Baú End
   </data>
 <data name="IDS_SLIM_SKIN"><value>Skin fina</value>
   </data>
+<data name="IDS_INTERFACE"><value>Interface</value>
+  </data>
+<data name="IDS_BRIGHTNESS"><value>Brilho</value>
+  </data>
+<data name="IDS_RENDER_DISTANCE"><value>Dist&#226;ncia de renderiza&#231;&#227;o</value>
+  </data>
 </root>

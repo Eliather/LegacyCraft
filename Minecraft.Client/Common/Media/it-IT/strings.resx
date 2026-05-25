@@ -4462,4 +4462,10 @@ Tutti i forzieri di Ender presenti in un mondo sono collegati tra loro, quindi p
   </data>
 <data name="IDS_SLIM_SKIN"><value>Skin stretta</value>
   </data>
+<data name="IDS_INTERFACE"><value>Interfaccia</value>
+  </data>
+<data name="IDS_BRIGHTNESS"><value>Luminosit&#224;</value>
+  </data>
+<data name="IDS_RENDER_DISTANCE"><value>Distanza di rendering</value>
+  </data>
 </root>
