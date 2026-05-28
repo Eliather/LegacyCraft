@@ -426,8 +426,36 @@ void MultiPlayerLevel::removeEntity(shared_ptr<Entity> e)
         reEntries.erase(it);
     }
 
-    Level::removeEntity(e);
+	// Deliberate removals must not stay marked as forced, otherwise entityRemoved()
+	// will immediately queue them for re-entry again on the next client tick.
     forced.erase(e);
+    Level::removeEntity(e);
+
+	AUTO_VAR(reIt, reEntries.find(e));
+	if (reIt!=reEntries.end())
+	{
+		reEntries.erase(reIt);
+	}
+}
+
+void MultiPlayerLevel::removeEntityImmediately(shared_ptr<Entity> e)
+{
+	AUTO_VAR(it, reEntries.find(e));
+	if (it!=reEntries.end())
+	{
+		reEntries.erase(it);
+	}
+
+	// Respawn and dimension-transfer removals should fully detach the local player
+	// from client-side forced tracking before the replacement entity is created.
+	forced.erase(e);
+	Level::removeEntityImmediately(e);
+
+	AUTO_VAR(reIt, reEntries.find(e));
+	if (reIt!=reEntries.end())
+	{
+		reEntries.erase(reIt);
+	}
 }
 
 void MultiPlayerLevel::entityAdded(shared_ptr<Entity> e)
@@ -912,4 +940,3 @@ void MultiPlayerLevel::removeUnusedTileEntitiesInRegion(int x0, int y0, int z0, 
 
 	LeaveCriticalSection(&m_tileEntityListCS);
 }
-

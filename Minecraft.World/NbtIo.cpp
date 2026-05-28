@@ -51,6 +51,10 @@ byteArray NbtIo::compress(CompoundTag *tag)
 CompoundTag *NbtIo::read(DataInput *dis)
 {
 	Tag *tag = Tag::readNamedTag(dis);
+	if(tag == NULL)
+	{
+		return NULL;
+	}
 
 	if( tag->getId() == Tag::TAG_Compound ) return (CompoundTag *)tag;
 

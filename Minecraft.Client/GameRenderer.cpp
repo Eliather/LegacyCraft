@@ -49,6 +49,55 @@
 #include "TexturePackRepository.h"
 #include "TexturePack.h"
 
+namespace
+{
+	int ClampConfiguredRenderDistance(int viewDistance)
+	{
+		if(viewDistance >= 0 && viewDistance <= 3)
+		{
+			static const int kLegacyRenderDistances[4] = { 18, 12, 8, 4 };
+			return kLegacyRenderDistances[viewDistance];
+		}
+		if(viewDistance < 4)
+		{
+			return 4;
+		}
+		if(viewDistance > 32)
+		{
+			return 32;
+		}
+		return viewDistance;
+	}
+
+	int GetVisibleRenderDistanceChunks(int viewDistance)
+	{
+		int visibleChunks = ClampConfiguredRenderDistance(viewDistance) - 2;
+		if(visibleChunks < 2)
+		{
+			visibleChunks = 2;
+		}
+		return visibleChunks;
+	}
+
+	int GetLegacyRenderDistanceTier(int viewDistance)
+	{
+		const int visibleChunks = GetVisibleRenderDistanceChunks(viewDistance);
+		if(visibleChunks >= 16)
+		{
+			return 0;
+		}
+		if(visibleChunks >= 8)
+		{
+			return 1;
+		}
+		if(visibleChunks >= 4)
+		{
+			return 2;
+		}
+		return 3;
+	}
+}
+
 bool GameRenderer::anaglyph3d = false;
 int GameRenderer::anaglyphPass = 0;
 
@@ -280,7 +329,7 @@ void GameRenderer::tick(bool first)		// 4J - add bFirst
 	}
 
 	float brr = mc->level->getBrightness(Mth::floor(mc->cameraTargetPlayer->x), Mth::floor(mc->cameraTargetPlayer->y), Mth::floor(mc->cameraTargetPlayer->z));
-	float whiteness = (3 - mc->options->viewDistance) / 3.0f;
+	float whiteness = (3 - GetLegacyRenderDistanceTier(mc->options->viewDistance)) / 3.0f;
 	float fogBrT = brr * (1 - whiteness) + whiteness;
 	fogBr += (fogBrT - fogBr) * 0.1f;
 
@@ -647,7 +696,7 @@ void GameRenderer::getFovAndAspect(float& fov, float& aspect, float a, bool appl
 
 void GameRenderer::setupCamera(float a, int eye)
 {
-	renderDistance = (float)(16 * 16 >> (mc->options->viewDistance));
+	renderDistance = (float)(GetVisibleRenderDistanceChunks(mc->options->viewDistance) * 16);
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 
@@ -1295,7 +1344,7 @@ void GameRenderer::renderLevel(float a, __int64 until)
 		Camera::prepare(mc->player, mc->player->ThirdPersonView() == 2);
 
 		Frustum::getFrustum();
-		if (mc->options->viewDistance < 2)
+		if (GetLegacyRenderDistanceTier(mc->options->viewDistance) < 2)
 		{
 			setupFog(-1, a);
 			levelRenderer->renderSky(a);
@@ -1798,7 +1847,7 @@ void GameRenderer::setupClearColor(float a)
 	Level *level = mc->level;
 	shared_ptr<Mob> player = mc->cameraTargetPlayer;
 
-	float whiteness = 1.0f / (4 - mc->options->viewDistance);
+	float whiteness = 1.0f / (4 - GetLegacyRenderDistanceTier(mc->options->viewDistance));
 	whiteness = 1 - (float) pow((double)whiteness, 0.25);
 
 	Vec3 *skyColor = level->getSkyColor(mc->cameraTargetPlayer, a);
@@ -1811,7 +1860,7 @@ void GameRenderer::setupClearColor(float a)
 	fg = (float) fogColor->y;
 	fb = (float) fogColor->z;
 
-    if (mc->options->viewDistance < 2)
+    if (GetLegacyRenderDistanceTier(mc->options->viewDistance) < 2)
 	{
 		Vec3 *sunAngle = Mth::sin(level->getSunAngle(a)) > 0 ? Vec3::newTemp(-1, 0, 0) : Vec3::newTemp(1, 0, 0);
         float d = (float) player->getViewVector(a)->dot(sunAngle);

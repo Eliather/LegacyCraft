@@ -34,12 +34,23 @@ public:
 	void load(DataInput *dis)
 	{
         tags.clear();
-        Tag *tag;
-        while ((tag = Tag::readNamedTag(dis))->getId() != Tag::TAG_End)
+        while (true)
 		{
+			Tag *tag = Tag::readNamedTag(dis);
+			if(tag == NULL)
+			{
+				tags.clear();
+				return;
+			}
+
+			if(tag->getId() == Tag::TAG_End)
+			{
+				delete tag;
+				return;
+			}
+
 			tags[tag->getName()] = tag;
         }
-		delete tag;
     }
 
     vector<Tag *> *getAllTags()		// 4J - was collection

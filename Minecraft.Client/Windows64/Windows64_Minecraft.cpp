@@ -743,6 +743,15 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	app.InitGameSettings();
 	UserData_Info::EnsureLoaded();
+	if(pMinecraft != NULL && pMinecraft->options != NULL)
+	{
+		const int renderDistance = (int)UserData_Info::GetRenderDistance();
+		if(pMinecraft->options->viewDistance != renderDistance)
+		{
+			pMinecraft->options->viewDistance = renderDistance;
+			pMinecraft->options->save();
+		}
+	}
 	if(pMinecraft != NULL && pMinecraft->gameRenderer != NULL)
 	{
 		pMinecraft->gameRenderer->SetFovVal((float)UserData_Info::GetFov());

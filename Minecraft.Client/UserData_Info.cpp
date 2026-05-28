@@ -13,7 +13,8 @@ namespace
 	const unsigned int kDefaultSkinId = eDefaultSkins_Skin0;
 	const unsigned char kDefaultGamma = 0;
 	const unsigned char kDefaultFov = 70;
-	const unsigned int kUserDataInfoVersion = 3;
+	const unsigned char kDefaultRenderDistance = 18;
+	const unsigned int kUserDataInfoVersion = 4;
 
 #pragma pack(push, 1)
 	struct UserDataInfoFile
@@ -26,11 +27,12 @@ namespace
 		unsigned char gamma;
 		unsigned char fov;
 		unsigned int skinId;
+		unsigned char renderDistance;
 	};
 #pragma pack(pop)
 
 	bool g_userDataLoaded = false;
-	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov };
+	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance };
 	char g_userDataPlayerNameAnsi[17] = "Steve";
 
 	unsigned char ClampFovValue(unsigned char fov)
@@ -44,6 +46,24 @@ namespace
 			return 120;
 		}
 		return fov;
+	}
+
+	unsigned char ClampRenderDistanceValue(unsigned char renderDistance)
+	{
+		if(renderDistance <= 3)
+		{
+			static const unsigned char kLegacyRenderDistances[4] = { 18, 12, 8, 4 };
+			return kLegacyRenderDistances[renderDistance];
+		}
+		if(renderDistance < 4)
+		{
+			return 4;
+		}
+		if(renderDistance > 32)
+		{
+			return 32;
+		}
+		return renderDistance;
 	}
 
 	bool IsAllowedPlayerNameChar(wchar_t ch)
@@ -144,6 +164,13 @@ namespace
 			changed = true;
 		}
 
+		const unsigned char validatedRenderDistance = ClampRenderDistanceValue(g_userData.renderDistance);
+		if(validatedRenderDistance != g_userData.renderDistance)
+		{
+			g_userData.renderDistance = validatedRenderDistance;
+			changed = true;
+		}
+
 		SyncPlayerNameAnsi();
 		return changed;
 	}
@@ -158,28 +185,32 @@ namespace
 		}
 
 		LARGE_INTEGER fileSize = {0};
-		if(!GetFileSizeEx(hFile, &fileSize) || fileSize.QuadPart != sizeof(UserDataInfoFile))
+		if(!GetFileSizeEx(hFile, &fileSize) || fileSize.QuadPart < 8 || fileSize.QuadPart > sizeof(UserDataInfoFile))
 		{
 			CloseHandle(hFile);
 			return false;
 		}
 
+		memset(&fileOut, 0, sizeof(fileOut));
+
+		const DWORD bytesToRead = (DWORD)fileSize.QuadPart;
 		DWORD bytesRead = 0;
-		if(!ReadFile(hFile, &fileOut, sizeof(UserDataInfoFile), &bytesRead, NULL))
+		if(!ReadFile(hFile, &fileOut, bytesToRead, &bytesRead, NULL))
 		{
 			CloseHandle(hFile);
 			return false;
 		}
 
 		CloseHandle(hFile);
-		return (bytesRead == sizeof(UserDataInfoFile));
+		return (bytesRead == bytesToRead);
 	}
 
 	void ParseBinaryFile(const UserDataInfoFile &fileData)
 	{
-		UserData_Info::Data parsed = { kDefaultPlayerName, false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov };
+		UserData_Info::Data parsed = { kDefaultPlayerName, false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance };
 
-		if(memcmp(fileData.magic, "UDAT", 4) != 0 || (fileData.version != 1 && fileData.version != 2 && fileData.version != kUserDataInfoVersion))
+		if(memcmp(fileData.magic, "UDAT", 4) != 0 ||
+			(fileData.version != 1 && fileData.version != 2 && fileData.version != 3 && fileData.version != kUserDataInfoVersion))
 		{
 			g_userData = parsed;
 			return;
@@ -212,6 +243,15 @@ namespace
 			parsed.fov = kDefaultFov;
 		}
 
+		if(fileData.version >= 4)
+		{
+			parsed.renderDistance = fileData.renderDistance;
+		}
+		else
+		{
+			parsed.renderDistance = kDefaultRenderDistance;
+		}
+
 		parsed.skinId = fileData.skinId;
 
 		g_userData = parsed;
@@ -238,6 +278,9 @@ void UserData_Info::EnsureLoaded()
 		g_userData.skinSlim = false;
 		g_userData.languageId = MINECRAFT_LANGUAGE_SPANISH;
 		g_userData.skinId = kDefaultSkinId;
+		g_userData.gamma = kDefaultGamma;
+		g_userData.fov = kDefaultFov;
+		g_userData.renderDistance = kDefaultRenderDistance;
 	}
 
 	if(ValidateData(false))
@@ -260,6 +303,7 @@ void UserData_Info::Save()
 	fileData.languageId = g_userData.languageId;
 	fileData.gamma = g_userData.gamma;
 	fileData.fov = g_userData.fov;
+	fileData.renderDistance = g_userData.renderDistance;
 	fileData.skinId = g_userData.skinId;
 
 	const std::wstring path = GetUserDataInfoPath();
@@ -322,6 +366,12 @@ unsigned char UserData_Info::GetFov()
 	return g_userData.fov;
 }
 
+unsigned char UserData_Info::GetRenderDistance()
+{
+	EnsureLoaded();
+	return g_userData.renderDistance;
+}
+
 unsigned int UserData_Info::GetSkinId()
 {
 	EnsureLoaded();
@@ -377,5 +427,12 @@ void UserData_Info::SetFov(unsigned char fov)
 {
 	EnsureLoaded();
 	g_userData.fov = ClampFovValue(fov);
+	Save();
+}
+
+void UserData_Info::SetRenderDistance(unsigned char renderDistance)
+{
+	EnsureLoaded();
+	g_userData.renderDistance = ClampRenderDistanceValue(renderDistance);
 	Save();
 }

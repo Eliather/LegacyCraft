@@ -770,31 +770,87 @@ int PlayerChunkMap::convertChunkRangeToBlock(int radius)
 // AP added for Vita so the range can be increased once the level starts
 void PlayerChunkMap::setRadius(int newRadius)
 {
-	if( radius != newRadius )
+	if(newRadius < MIN_VIEW_DISTANCE)
 	{
-		PlayerList* players = level->getServer()->getPlayerList();
-		for( int i = 0;i < players->players.size();i += 1 )
-		{
-			shared_ptr<ServerPlayer> player = players->players[i];
-			if( player->level == level )
-			{
-				int xc = ((int) player->x) >> 4;
-				int zc = ((int) player->z) >> 4;
+		newRadius = MIN_VIEW_DISTANCE;
+	}
+	else if(newRadius > MAX_VIEW_DISTANCE)
+	{
+		newRadius = MAX_VIEW_DISTANCE;
+	}
 
-				for (int x = xc - newRadius; x <= xc + newRadius; x++)
-					for (int z = zc - newRadius; z <= zc + newRadius; z++)
-					{ 
-						// check if this chunk is outside the old radius area
-						if ( x < xc - radius || x > xc + radius || z < zc - radius || z > zc + radius )
-						{
-							getChunkAndAddPlayer(x, z, player);
-						}
-					}
-			}
+	if(radius == newRadius)
+	{
+		return;
+	}
+
+	const int oldRadius = radius;
+
+	for(AUTO_VAR(it, players.begin()); it != players.end(); ++it)
+	{
+		shared_ptr<ServerPlayer> player = *it;
+		if(player == NULL || player->level != level)
+		{
+			continue;
 		}
 
-		assert(radius <= MAX_VIEW_DISTANCE);
-		assert(radius >= MIN_VIEW_DISTANCE);
-		this->radius = newRadius;
+		int xc = ((int) player->x) >> 4;
+		int zc = ((int) player->z) >> 4;
+
+		if(newRadius > oldRadius)
+		{
+			for(int x = xc - newRadius; x <= xc + newRadius; x++)
+			{
+				for(int z = zc - newRadius; z <= zc + newRadius; z++)
+				{
+					// Check if this chunk is outside the old radius area.
+					if(x < xc - oldRadius || x > xc + oldRadius || z < zc - oldRadius || z > zc + oldRadius)
+					{
+						getChunkAndAddPlayer(x, z, player);
+					}
+				}
+			}
+		}
+		else
+		{
+			for(int x = xc - oldRadius; x <= xc + oldRadius; x++)
+			{
+				for(int z = zc - oldRadius; z <= zc + oldRadius; z++)
+				{
+					// Check if this chunk falls outside the new radius area.
+					if(x < xc - newRadius || x > xc + newRadius || z < zc - newRadius || z > zc + newRadius)
+					{
+						getChunkAndRemovePlayer(x, z, player);
+					}
+				}
+			}
+		}
 	}
+
+	for(AUTO_VAR(it, addRequests.begin()); it != addRequests.end();)
+	{
+		shared_ptr<ServerPlayer> player = it->player;
+		if(player == NULL || player->level != level)
+		{
+			it = addRequests.erase(it);
+			continue;
+		}
+
+		const int xc = ((int)player->x) >> 4;
+		const int zc = ((int)player->z) >> 4;
+		const int xd = it->x - xc;
+		const int zd = it->z - zc;
+		if(xd < -newRadius || xd > newRadius || zd < -newRadius || zd > newRadius)
+		{
+			it = addRequests.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	assert(newRadius <= MAX_VIEW_DISTANCE);
+	assert(newRadius >= MIN_VIEW_DISTANCE);
+	this->radius = newRadius;
 }

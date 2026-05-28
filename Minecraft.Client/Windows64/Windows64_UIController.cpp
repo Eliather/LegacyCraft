@@ -48,7 +48,7 @@ void ConsoleUIController::init(ID3D11Device *dev, ID3D11DeviceContext *ctx, ID3D
 	Flash file. There's more info in the documentation about how to
 	determine how big they should be. But for now, we'll just set them
 	really big so if you substitute a different file it should work. */
-	gdraw_D3D11_SetResourceLimits(GDRAW_D3D11_RESOURCE_vertexbuffer, 5000,  16 * 1024 * 1024);
+	gdraw_D3D11_SetResourceLimits(GDRAW_D3D11_RESOURCE_vertexbuffer, 5000,  64 * 1024 * 1024);
 	gdraw_D3D11_SetResourceLimits(GDRAW_D3D11_RESOURCE_texture     , 5000, 128 * 1024 * 1024);
 	gdraw_D3D11_SetResourceLimits(GDRAW_D3D11_RESOURCE_rendertarget,   10,  32 * 1024 * 1024);
 

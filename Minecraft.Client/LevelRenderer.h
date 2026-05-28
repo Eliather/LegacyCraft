@@ -45,6 +45,8 @@ public:
 	static const int CHUNK_Y_COUNT = Level::maxBuildHeight / CHUNK_SIZE;
 #if defined _XBOX_ONE
 	static const int MAX_COMMANDBUFFER_ALLOCATIONS = 512 * 1024 * 1024;		// 4J - added
+#elif defined _WINDOWS64
+	static const int MAX_COMMANDBUFFER_ALLOCATIONS = 1024 * 1024 * 1024;		// Windows64
 #elif defined __ORBIS__
 	static const int MAX_COMMANDBUFFER_ALLOCATIONS = 448 * 1024 * 1024;		// 4J - added - hard limit is 512 so giving a lot of headroom here for fragmentation (have seen 16MB lost to fragmentation in multiplayer crash dump before)
 #elif defined __PS3__
@@ -208,7 +210,7 @@ public:
 	// This is the TOTAL area of columns of chunks to be allocated for render round the players. So for one player, it would be a region of
 	// sqrt(PLAYER_RENDER_AREA) x sqrt(PLAYER_RENDER_AREA)
 #ifdef _LARGE_WORLDS
-	static const int	PLAYER_VIEW_DISTANCE = 18; // Straight line distance from centre to extent of visible world
+	static const int	PLAYER_VIEW_DISTANCE = 32; // Maximum straight line distance from centre to extent of visible world
 	static const int	PLAYER_RENDER_AREA = (PLAYER_VIEW_DISTANCE * PLAYER_VIEW_DISTANCE * 4);
 #else
 	static const int	PLAYER_RENDER_AREA = 400;

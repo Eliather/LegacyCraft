@@ -269,7 +269,7 @@ void Tile::staticCtor()
 	Tile::gravel = (new GravelTile(13))							->setDestroyTime(0.6f)->setSoundType(Tile::SOUND_GRAVEL)->setTextureName(L"gravel")->setDescriptionId(IDS_TILE_GRAVEL)->setUseDescriptionId(IDS_DESC_GRAVEL);
 	Tile::treeTrunk = (new TreeTile(17))->setDestroyTime(2.0f)	->setSoundType(Tile::SOUND_WOOD)->setTextureName(L"log")->setDescriptionId(IDS_TILE_LOG)->sendTileData()->setUseDescriptionId(IDS_DESC_LOG);
 	// 4J - for leaves, have specified that only the data bits that encode the type of leaf are important to be sent
-	Tile::leaves = (LeafTile *)(new LeafTile(18))				->setDestroyTime(0.2f)->setLightBlock(1)->setSoundType(Tile::SOUND_GRASS)->setTextureName(L"leaves")->setDescriptionId(IDS_TILE_LEAVES)->sendTileData(LeafTile::LEAF_TYPE_MASK)->setUseDescriptionId(IDS_DESC_LEAVES);
+	Tile::leaves = (LeafTile *)(new LeafTile(18))				->setDestroyTime(0.2f)->setLightBlock(1)->setSoundType(Tile::SOUND_GRASS)->setTextureName(L"leaves")->setDescriptionId(IDS_TILE_LEAVES)->sendTileData(LeafTile::LEAF_TYPE_MASK)->setUseDescriptionId(IDS_DESC_LEAVES)->disableMipmap();
 	Tile::sponge = (new Sponge(19))								->setDestroyTime(0.6f)->setSoundType(Tile::SOUND_GRASS)->setTextureName(L"sponge")->setDescriptionId(IDS_TILE_SPONGE)->setUseDescriptionId(IDS_DESC_SPONGE);
 	Tile::glass = (new GlassTile(20, Material::glass, false))	->setDestroyTime(0.3f)->setSoundType(Tile::SOUND_GLASS)->setTextureName(L"glass")->setDescriptionId(IDS_TILE_GLASS)->setUseDescriptionId(IDS_DESC_GLASS);
 	Tile::dispenser = (new DispenserTile(23))					->setDestroyTime(3.5f)->setSoundType(Tile::SOUND_STONE)->setTextureName(L"dispenser")->setDescriptionId(IDS_TILE_DISPENSER)->sendTileData()->setUseDescriptionId(IDS_DESC_DISPENSER);
@@ -738,45 +738,7 @@ bool Tile::isSolidFace(LevelSource *level, int x, int y, int z, int face)
 
 Icon *Tile::getTexture(LevelSource *level, int x, int y, int z, int face)
 {
-	// 4J - addition here to make rendering big blocks of leaves more efficient. Normally leaves never consider themselves as solid, so
-	// blocks of leaves will have all sides of each block completely visible. Changing to consider as solid if this block is surrounded by
-	// other leaves (or solid things). This is paired with another change in  Level::isSolidRenderTile/Region::isSolidRenderTile which makes things solid
-	// code-wise (ie for determining visible sides of neighbouring blocks). This change just makes the texture a solid one (tex + 1) which
-	// we already have in the texture map for doing non-fancy graphics. Note: this tile-specific code is here rather than making some new virtual
-	// method in the tiles, for the sake of efficiency - I don't imagine we'll be doing much more of this sort of thing
-
-	int tileId = level->getTile(x, y, z);
 	int tileData = level->getData(x, y, z);
-
-	if( tileId == Tile::leaves_Id )
-	{
-		bool opaque = true;
-
-		int axo[6] = { 1,-1, 0, 0, 0, 0};
-		int ayo[6] = { 0, 0, 1,-1, 0, 0};
-		int azo[6] = { 0, 0, 0, 0, 1,-1};
-		for( int i = 0; (i < 6) && opaque; i++ )
-		{
-			int t = level->getTile(x + axo[i], y + ayo[i] , z + azo[i]);
-			if( ( t != Tile::leaves_Id ) && ( ( Tile::tiles[t] == NULL ) || !Tile::tiles[t]->isSolidRender() ) )
-			{
-				opaque = false;
-			}
-		}
-
-		Icon *icon = NULL;
-		if(opaque)
-		{
-			Tile::leaves->setFancy(false);
-			icon = getTexture(face, tileData);
-			Tile::leaves->setFancy(true);
-		}
-		else
-		{
-			icon = getTexture(face, tileData);
-		}
-		return icon;
-	}
 	return getTexture(face, tileData);
 }
 

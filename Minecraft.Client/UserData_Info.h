@@ -12,6 +12,7 @@ namespace UserData_Info
 		unsigned int skinId;
 		unsigned char gamma;
 		unsigned char fov;
+		unsigned char renderDistance;
 	};
 
 	void EnsureLoaded();
@@ -26,6 +27,7 @@ namespace UserData_Info
 	unsigned int GetSkinId();
 	unsigned char GetGamma();
 	unsigned char GetFov();
+	unsigned char GetRenderDistance();
 
 	void SetPlayerName(const std::wstring &playerName);
 	void SetSkinSlim(bool skinSlim);
@@ -34,4 +36,5 @@ namespace UserData_Info
 	void SetSkinId(unsigned int skinId);
 	void SetGamma(unsigned char gamma);
 	void SetFov(unsigned char fov);
+	void SetRenderDistance(unsigned char renderDistance);
 }

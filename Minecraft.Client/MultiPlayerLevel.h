@@ -61,6 +61,7 @@ private:
 public:
 	virtual bool addEntity(shared_ptr<Entity> e);
     virtual void removeEntity(shared_ptr<Entity> e);
+	virtual void removeEntityImmediately(shared_ptr<Entity> e);
 protected:
 	virtual void entityAdded(shared_ptr<Entity> e);
     virtual void entityRemoved(shared_ptr<Entity> e);

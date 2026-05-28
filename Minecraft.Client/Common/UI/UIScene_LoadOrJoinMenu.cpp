@@ -695,8 +695,63 @@ namespace
 		return DeleteWindows64DirectoryTreeByPath(storageDirPath, gameHddRootPath);
 	}
 
+	bool TryResolveWindows64SaveTitleFromBytesUnsafe(void *saveData, DWORD fileSize, std::string &resolvedTitle)
+	{
+		resolvedTitle.clear();
+		if(saveData == NULL || fileSize == 0)
+		{
+			return false;
+		}
+
+		DirectoryLevelStorageSource levelStorageSource(File(L"."));
+		LevelData *levelData = NULL;
+
+		{
+			ConsoleSaveFileOriginal saveFile(L"", saveData, fileSize, false, SAVE_FILE_PLATFORM_LOCAL);
+			levelData = levelStorageSource.getDataTagFor(&saveFile, L"");
+
+#ifdef SPLIT_SAVES
+			if(levelData == NULL)
+			{
+				ConsoleSaveFileSplit splitSaveFile(&saveFile);
+				levelData = levelStorageSource.getDataTagFor(&splitSaveFile, L"");
+			}
+#endif
+		}
+
+		if(levelData != NULL)
+		{
+			const std::wstring levelName = trimString(levelData->getLevelName());
+			delete levelData;
+
+			if(!levelName.empty())
+			{
+				resolvedTitle = WideStringToUtf8(levelName);
+				return !resolvedTitle.empty();
+			}
+		}
+
+		return false;
+	}
+
+	bool TryResolveWindows64SaveTitleFromBytes(void *saveData, DWORD fileSize, std::string &resolvedTitle)
+	{
+		bool success = false;
+		__try
+		{
+			success = TryResolveWindows64SaveTitleFromBytesUnsafe(saveData, fileSize, resolvedTitle);
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			success = false;
+		}
+
+		return success;
+	}
+
 	bool TryResolveWindows64SaveTitleFromStoragePath(const std::wstring &storageDirPath, std::string &resolvedTitle)
 	{
+		resolvedTitle.clear();
 		const std::wstring saveDataPath = CombineWindows64Path(storageDirPath, L"saveData.ms");
 		if(!Windows64PathIsFile(saveDataPath))
 		{
@@ -709,37 +764,7 @@ namespace
 			return false;
 		}
 
-		DirectoryLevelStorageSource levelStorageSource(File(L"."));
-		LevelData *levelData = NULL;
-
-		{
-			ConsoleSaveFileOriginal saveFile(L"", &saveBytes[0], (DWORD)saveBytes.size(), false, SAVE_FILE_PLATFORM_LOCAL);
-			levelData = levelStorageSource.getDataTagFor(&saveFile, L"");
-		}
-
-#ifdef SPLIT_SAVES
-		if(levelData == NULL)
-		{
-			ConsoleSaveFileSplit splitSaveFile(L"", &saveBytes[0], (DWORD)saveBytes.size(), false, SAVE_FILE_PLATFORM_LOCAL);
-			levelData = levelStorageSource.getDataTagFor(&splitSaveFile, L"");
-		}
-#endif
-
-		if(levelData == NULL)
-		{
-			return false;
-		}
-
-		const std::wstring levelName = trimString(levelData->getLevelName());
-		delete levelData;
-
-		if(levelName.empty())
-		{
-			return false;
-		}
-
-		resolvedTitle = WideStringToUtf8(levelName);
-		return !resolvedTitle.empty();
+		return TryResolveWindows64SaveTitleFromBytes(&saveBytes[0], (DWORD)saveBytes.size(), resolvedTitle);
 	}
 
 	bool TryResolveWindows64SaveTitleFromStorage(const File &storageDir, std::string &resolvedTitle)
@@ -814,11 +839,16 @@ namespace
 					entry.displayTitle.clear();
 					if(!TryResolveWindows64SaveTitleFromStoragePath(storageDirPath, entry.displayTitle))
 					{
-						SAVE_INFO generatedSaveInfo;
-						ZeroMemory(&generatedSaveInfo, sizeof(generatedSaveInfo));
-						strncpy(generatedSaveInfo.UTF8SaveFilename, entry.saveId.c_str(), MAX_SAVEFILENAME_LENGTH - 1);
-						strncpy(generatedSaveInfo.UTF8SaveTitle, entry.saveId.c_str(), MAX_DISPLAYNAME_LENGTH - 1);
-						entry.displayTitle = IsTimestampLikeSaveId(entry.saveId) ? GetGeneratedSaveDisplayTitle(generatedSaveInfo) : entry.saveId;
+						const wchar_t *damagedTitle = app.GetString(IDS_CORRUPT_OR_DAMAGED_SAVE_TITLE);
+						if(damagedTitle != NULL && damagedTitle[0] != 0)
+						{
+							entry.displayTitle = WideStringToUtf8(damagedTitle);
+						}
+
+						if(entry.displayTitle.empty())
+						{
+							entry.displayTitle = "Damaged Save";
+						}
 					}
 
 					entries.push_back(entry);

@@ -68,9 +68,6 @@ private:
 public:
 	void makeCopyForRebuild(Chunk *source);
 	void rebuild();
-#ifdef __PS3__
-	void rebuild_SPU();
-#endif // __PS3__
 	float distanceToSqr(shared_ptr<Entity> player) const;
     float squishedDistanceToSqr(shared_ptr<Entity> player);
     void reset();

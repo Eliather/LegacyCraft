@@ -99,6 +99,27 @@ const int LevelRenderer::MAX_LEVEL_RENDER_SIZE[3] = { 80, 44, 44 };
 const int LevelRenderer::DIMENSION_OFFSETS[3] = { 0, (80 * 80 * CHUNK_Y_COUNT) ,  (80 * 80 * CHUNK_Y_COUNT) + ( 44 * 44 * CHUNK_Y_COUNT ) };
 #endif
 
+namespace
+{
+	int ClampLevelRenderDistance(int viewDistance)
+	{
+		if(viewDistance >= 0 && viewDistance <= 3)
+		{
+			static const int kLegacyRenderDistances[4] = { 18, 12, 8, 4 };
+			return kLegacyRenderDistances[viewDistance];
+		}
+		if(viewDistance < 4)
+		{
+			return 4;
+		}
+		if(viewDistance > 32)
+		{
+			return 32;
+		}
+		return viewDistance;
+	}
+}
+
 LevelRenderer::LevelRenderer(Minecraft *mc, Textures *textures)
 {
 	breakingTextures = NULL;
@@ -414,10 +435,20 @@ void LevelRenderer::allChanged(int playerIndex)
 	Minecraft::GetInstance()->gameRenderer->DisableUpdateThread();
 
 	Tile::leaves->setFancy(mc->options->fancyGraphics);
-	lastViewDistance = mc->options->viewDistance;
+	lastViewDistance = ClampLevelRenderDistance(mc->options->viewDistance);
 
-	// Calculate size of area we can render based on number of players we need to render for
-	int dist = (int)sqrtf( (float)PLAYER_RENDER_AREA / (float)activePlayers() );
+	// Calculate size of area we can render based on user-configured view distance and active players.
+	int playerCount = activePlayers();
+	if(playerCount < 1)
+	{
+		playerCount = 1;
+	}
+	const int configuredViewDistance = ClampLevelRenderDistance(mc->options->viewDistance);
+	int dist = (int)((float)(configuredViewDistance * 2) / sqrtf((float)playerCount));
+	if(dist < 2)
+	{
+		dist = 2;
+	}
 
 	// AP - poor little Vita just can't cope with such a big area
 #ifdef __PSVITA__
@@ -678,7 +709,7 @@ int LevelRenderer::render(shared_ptr<Mob> player, int layer, double alpha, bool 
 	{
 		allChanged();
 	}
-	else if (mc->options->viewDistance != lastViewDistance)
+	else if (ClampLevelRenderDistance(mc->options->viewDistance) != lastViewDistance)
 	{
 		allChanged();
 	}

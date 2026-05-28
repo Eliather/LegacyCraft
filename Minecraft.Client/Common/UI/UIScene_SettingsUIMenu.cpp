@@ -3,6 +3,9 @@
 #include "UIScene_SettingsUIMenu.h"
 #include "..\..\Minecraft.h"
 #include "..\..\GameRenderer.h"
+#include "..\..\LevelRenderer.h"
+#include "..\..\MinecraftServer.h"
+#include "..\..\PlayerList.h"
 #include "..\..\Options.h"
 #include "..\..\UserData_Info.h"
 
@@ -43,6 +46,9 @@ namespace
 	const float kSettingsUISliderWidth = 640.0f;
 	const float kSettingsUISliderHeight = 36.0f;
 	const float kSettingsUISliderGap = 18.0f;
+	const int kSettingsUIRenderDistanceMin = 4;
+	const int kSettingsUIRenderDistanceDefault = 18;
+	const int kSettingsUIRenderDistanceMax = 32;
 
 	int ClampSettingsUIFov(int fov)
 	{
@@ -55,6 +61,24 @@ namespace
 			return 120;
 		}
 		return fov;
+	}
+
+	int ClampSettingsUIRenderDistance(int renderDistance)
+	{
+		if(renderDistance >= 0 && renderDistance <= 3)
+		{
+			static const int kLegacyRenderDistances[4] = { 18, 12, 8, 4 };
+			return kLegacyRenderDistances[renderDistance];
+		}
+		if(renderDistance < kSettingsUIRenderDistanceMin)
+		{
+			return kSettingsUIRenderDistanceMin;
+		}
+		if(renderDistance > kSettingsUIRenderDistanceMax)
+		{
+			return kSettingsUIRenderDistanceMax;
+		}
+		return renderDistance;
 	}
 
 	int GetSettingsUIGameSetting(ESettingsUICustomSlider slider)
@@ -91,7 +115,7 @@ namespace
 		case eSettingsUICustomSlider_Gamma:
 			return 100;
 		case eSettingsUICustomSlider_RenderDistance:
-			return 3;
+			return kSettingsUIRenderDistanceMax - kSettingsUIRenderDistanceMin;
 		case eSettingsUICustomSlider_UISize:
 		case eSettingsUICustomSlider_UISizeSplitscreen:
 			return 2;
@@ -122,9 +146,9 @@ namespace
 			Minecraft *minecraft = Minecraft::GetInstance();
 			if(minecraft != NULL && minecraft->options != NULL)
 			{
-				return minecraft->options->viewDistance & 0x03;
+				return ClampSettingsUIRenderDistance(minecraft->options->viewDistance) - kSettingsUIRenderDistanceMin;
 			}
-			return 0;
+			return ClampSettingsUIRenderDistance((int)UserData_Info::GetRenderDistance()) - kSettingsUIRenderDistanceMin;
 		}
 
 		const int settingId = GetSettingsUIGameSetting(slider);
@@ -229,6 +253,30 @@ namespace
 		}
 		if(slider == eSettingsUICustomSlider_RenderDistance)
 		{
+			Minecraft *minecraft = Minecraft::GetInstance();
+			if(minecraft == NULL || minecraft->options == NULL)
+			{
+				return;
+			}
+
+			const int renderDistance = value + kSettingsUIRenderDistanceMin;
+			if(minecraft->options->viewDistance == renderDistance)
+			{
+				return;
+			}
+
+			UserData_Info::SetRenderDistance((unsigned char)renderDistance);
+			minecraft->options->viewDistance = renderDistance;
+			minecraft->options->save();
+			MinecraftServer *server = MinecraftServer::getInstance();
+			if(server != NULL && server->getPlayers() != NULL)
+			{
+				server->getPlayers()->setViewDistance(renderDistance);
+			}
+			if(minecraft->levelRenderer != NULL && minecraft->level != NULL)
+			{
+				minecraft->levelRenderer->allChanged();
+			}
 			return;
 		}
 
@@ -272,7 +320,8 @@ namespace
 
 		if(slider == eSettingsUICustomSlider_RenderDistance)
 		{
-			return std::wstring(baseLabel);
+			_snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"%ls: %d", baseLabel, value + kSettingsUIRenderDistanceMin);
+			return std::wstring(buffer);
 		}
 
 		if(IsSettingsUIBooleanSlider(slider))

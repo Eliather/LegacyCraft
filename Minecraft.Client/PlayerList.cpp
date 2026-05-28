@@ -11,6 +11,8 @@
 #include "PendingConnection.h"
 #include "PlayerConnection.h"
 #include "EntityTracker.h"
+#include "Minecraft.h"
+#include "Options.h"
 #include "..\Minecraft.World\net.minecraft.world.level.storage.h"
 #include "..\Minecraft.World\net.minecraft.world.level.dimension.h"
 #include "..\Minecraft.World\ArrayWithLength.h"
@@ -29,6 +31,28 @@
 #elif defined(__PS3__) || defined(__ORBIS__)
 #include "Common\Network\Sony\NetworkPlayerSony.h"
 #endif
+
+namespace
+{
+	int ClampServerViewDistance(int viewDistance)
+	{
+		if(viewDistance >= 0 && viewDistance <= 3)
+		{
+			static const int kLegacyRenderDistances[4] = { 18, 12, 8, 4 };
+			viewDistance = kLegacyRenderDistances[viewDistance];
+		}
+
+		if(viewDistance < PlayerChunkMap::MIN_VIEW_DISTANCE)
+		{
+			return PlayerChunkMap::MIN_VIEW_DISTANCE;
+		}
+		if(viewDistance > PlayerChunkMap::MAX_VIEW_DISTANCE)
+		{
+			return PlayerChunkMap::MAX_VIEW_DISTANCE;
+		}
+		return viewDistance;
+	}
+}
 
 // 4J - this class is fairly substantially altered as there didn't seem any point in porting code for banning, whitelisting, ops etc.
 
@@ -49,6 +73,13 @@ PlayerList::PlayerList(MinecraftServer *server)
 #else
 	viewDistance = 10;
 #endif
+
+	Minecraft *minecraft = Minecraft::GetInstance();
+	if(minecraft != NULL && minecraft->options != NULL)
+	{
+		viewDistance = minecraft->options->viewDistance;
+	}
+	viewDistance = ClampServerViewDistance(viewDistance);
 
     //int viewDistance = server->settings->getInt(L"view-distance", 10);
 
@@ -1450,5 +1481,28 @@ bool PlayerList::isXuidBanned(PlayerUID xuid)
 // AP added for Vita so the range can be increased once the level starts
 void PlayerList::setViewDistance(int newViewDistance)
 {
+	newViewDistance = ClampServerViewDistance(newViewDistance);
+	if(viewDistance == newViewDistance)
+	{
+		return;
+	}
+
 	viewDistance = newViewDistance;
+
+	if(server == NULL)
+	{
+		return;
+	}
+
+	for(unsigned int i = 0; i < server->levels.length; ++i)
+	{
+		ServerLevel *level = server->levels[i];
+		if(level == NULL)
+		{
+			continue;
+		}
+
+		level->getTracker()->updateMaxRange();
+		level->getChunkMap()->setRadius(viewDistance);
+	}
 }

@@ -86,15 +86,17 @@ Tag *Tag::readNamedTag(DataInput *dis)
 	if(type == 255)
 	{
 		app.DebugPrintf("readNamedTag read a type of 255\n");
-#ifndef _CONTENT_PACKAGE
-		__debugbreak();
-#endif
-		return new EndTag();
+		return NULL;
 	}
 
 	wstring name = dis->readUTF();//new String(bytes, "UTF-8");
 
 	Tag *tag = newTag(type, name);
+	if(tag == NULL)
+	{
+		app.DebugPrintf("readNamedTag encountered invalid tag type %d\n", (int)type);
+		return NULL;
+	}
 	//        short length = dis.readShort();
 	//        byte[] bytes = new byte[length];
 	//        dis.readFully(bytes);

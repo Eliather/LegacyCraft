@@ -4,6 +4,7 @@
 #include "IUIScene_PauseMenu.h"
 #include "..\..\Minecraft.h"
 #include "..\..\MultiplayerLocalPlayer.h"
+#include "..\Tutorial\Tutorial.h"
 
 UIScene_DeathMenu::UIScene_DeathMenu(int iPad, void *initData, UILayer *parentLayer) : UIScene(iPad, parentLayer)
 {
@@ -20,10 +21,12 @@ UIScene_DeathMenu::UIScene_DeathMenu(int iPad, void *initData, UILayer *parentLa
 	Minecraft *pMinecraft = Minecraft::GetInstance();
 	if(pMinecraft != NULL && pMinecraft->localgameModes[iPad] != NULL )
 	{
-		TutorialMode *gameMode = (TutorialMode *)pMinecraft->localgameModes[iPad];
-
-		// This just allows it to be shown
-		gameMode->getTutorial()->showTutorialPopup(false);
+		Tutorial *tutorial = pMinecraft->localgameModes[iPad]->getTutorial();
+		if(tutorial != NULL)
+		{
+			// This just allows it to be shown
+			tutorial->showTutorialPopup(false);
+		}
 	}
 }
 
@@ -32,10 +35,12 @@ UIScene_DeathMenu::~UIScene_DeathMenu()
 	Minecraft *pMinecraft = Minecraft::GetInstance();
 	if(pMinecraft != NULL && pMinecraft->localgameModes[m_iPad] != NULL )
 	{
-		TutorialMode *gameMode = (TutorialMode *)pMinecraft->localgameModes[m_iPad];
-
-		// This just allows it to be shown
-		gameMode->getTutorial()->showTutorialPopup(true);
+		Tutorial *tutorial = pMinecraft->localgameModes[m_iPad]->getTutorial();
+		if(tutorial != NULL)
+		{
+			// This just allows it to be shown
+			tutorial->showTutorialPopup(true);
+		}
 	}
 }
 

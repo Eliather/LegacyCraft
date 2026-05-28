@@ -5,9 +5,13 @@
 #include "..\..\TexturePackRepository.h"
 #include "..\..\Options.h"
 #include "..\..\MinecraftServer.h"
+#include "..\..\..\Minecraft.World\ConsoleSaveFileOriginal.h"
+#include "..\..\..\Minecraft.World\ConsoleSaveFileSplit.h"
 #include "..\..\..\Minecraft.World\FileInputStream.h"
+#include "..\..\..\Minecraft.World\LevelData.h"
 #include "..\..\..\Minecraft.World\LevelSettings.h"
 #include "..\..\..\Minecraft.World\StringHelpers.h"
+#include "..\..\..\Minecraft.World\DirectoryLevelStorageSource.h"
 #include "..\..\DLCTexturePack.h"
 
 #define GAME_CREATE_ONLINE_TIMER_ID 0
@@ -38,6 +42,120 @@ namespace
 		MultiByteToWideChar(CP_UTF8, 0, value, -1, &wideValue[0], wideLength);
 		wideValue.resize(wideLength - 1);
 		return wideValue;
+	}
+
+	std::string WideStringToUtf8(const std::wstring &value)
+	{
+		if(value.empty())
+		{
+			return std::string();
+		}
+
+		const int utf8Length = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, NULL, 0, NULL, NULL);
+		if(utf8Length <= 1)
+		{
+			return std::string();
+		}
+
+		std::string utf8Value(utf8Length, '\0');
+		WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, &utf8Value[0], utf8Length, NULL, NULL);
+		utf8Value.resize(utf8Length - 1);
+		return utf8Value;
+	}
+
+	bool IsSafeWindows64DirectSaveId(const char *saveId)
+	{
+		if(saveId == NULL || saveId[0] == 0)
+		{
+			return false;
+		}
+
+		for(const char *ptr = saveId; *ptr != 0; ++ptr)
+		{
+			const char ch = *ptr;
+			const bool isLetter = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+			const bool isDigit = (ch >= '0' && ch <= '9');
+			const bool isAllowedPunctuation = (ch == '-');
+			if(!isLetter && !isDigit && !isAllowedPunctuation)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	bool TryDeleteWindows64DirectSave(const char *saveId)
+	{
+		if(!IsSafeWindows64DirectSaveId(saveId))
+		{
+			return false;
+		}
+
+		File storageRoot(L"Windows64\\GameHDD");
+		File storageDir(storageRoot, filenametowstring(saveId));
+		if(!storageDir.exists() || !storageDir.isDirectory())
+		{
+			return false;
+		}
+
+		DirectoryLevelStorageSource storageSource(storageRoot);
+		storageSource.deleteLevel(filenametowstring(saveId));
+		return !storageDir.exists();
+	}
+
+	bool TryResolveWindows64DirectSaveTitleFromBytesUnsafe(const std::wstring &saveName, void *saveData, DWORD fileSize, std::string &resolvedTitle)
+	{
+		resolvedTitle.clear();
+		if(saveData == NULL || fileSize == 0)
+		{
+			return false;
+		}
+
+		DirectoryLevelStorageSource levelStorageSource(File(L"."));
+		LevelData *levelData = NULL;
+
+		{
+			ConsoleSaveFileOriginal saveFile(saveName, saveData, fileSize, false, SAVE_FILE_PLATFORM_LOCAL);
+			levelData = levelStorageSource.getDataTagFor(&saveFile, L"");
+
+#ifdef SPLIT_SAVES
+			if(levelData == NULL)
+			{
+				ConsoleSaveFileSplit splitSaveFile(&saveFile);
+				levelData = levelStorageSource.getDataTagFor(&splitSaveFile, L"");
+			}
+#endif
+		}
+
+		if(levelData != NULL)
+		{
+			const std::wstring levelName = trimString(levelData->getLevelName());
+			delete levelData;
+
+			if(!levelName.empty())
+			{
+				resolvedTitle = WideStringToUtf8(levelName);
+				return !resolvedTitle.empty();
+			}
+		}
+
+		return false;
+	}
+
+	bool TryResolveWindows64DirectSaveTitleFromBytes(const std::wstring &saveName, void *saveData, DWORD fileSize, std::string &resolvedTitle)
+	{
+		bool success = false;
+		__try
+		{
+			success = TryResolveWindows64DirectSaveTitleFromBytesUnsafe(saveName, saveData, fileSize, resolvedTitle);
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			success = false;
+		}
+
+		return success;
 	}
 }
 #endif
@@ -121,6 +239,7 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 	m_iTexturePacksNotInstalled=0;
 	m_bRebuildTouchBoxes = false;
 	m_bThumbnailGetFailed = false;
+	m_bIsCorrupt = false;
 	m_seed = 0;
 #ifdef _WINDOWS64
 	m_bWindows64DirectDiskSave = false;
@@ -1196,8 +1315,21 @@ int UIScene_LoadMenu::DeleteSaveDialogReturned(void *pParam,int iPad,C4JStorage:
 	// results switched for this dialog
 	if(result==C4JStorage::EMessage_ResultDecline) 
 	{
+#ifdef _WINDOWS64
+		if(pClass->m_bWindows64DirectDiskSave)
+		{
+			return DeleteSaveDataReturned(pClass, TryDeleteWindows64DirectSave(pClass->m_windows64DirectSaveId));
+		}
+#endif
 		PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
-		StorageManager.DeleteSaveData(&pSaveDetails->SaveInfoA[(int)pClass->m_iSaveGameInfoIndex],UIScene_LoadMenu::DeleteSaveDataReturned,pClass);
+		if(pSaveDetails != NULL && pClass->m_iSaveGameInfoIndex >= 0 && pClass->m_iSaveGameInfoIndex < pSaveDetails->iSaveC)
+		{
+			StorageManager.DeleteSaveData(&pSaveDetails->SaveInfoA[(int)pClass->m_iSaveGameInfoIndex],UIScene_LoadMenu::DeleteSaveDataReturned,pClass);
+		}
+		else
+		{
+			pClass->m_bIgnoreInput=false;
+		}
 	}
 	else
 	{
@@ -1210,8 +1342,15 @@ int UIScene_LoadMenu::DeleteSaveDataReturned(void *pParam,bool bSuccess)
 {
 	UIScene_LoadMenu* pClass = (UIScene_LoadMenu*)pParam;
 
-	app.SetCorruptSaveDeleted(true);
-	pClass->navigateBack();
+	if(bSuccess)
+	{
+		app.SetCorruptSaveDeleted(true);
+		pClass->navigateBack();
+	}
+	else
+	{
+		pClass->m_bIgnoreInput = false;
+	}
 
 	return 0;
 }
@@ -1222,6 +1361,7 @@ void UIScene_LoadMenu::StartGameFromWindows64DirectDiskSave(DWORD dwLocalUsersMa
 	File storageRoot(L"Windows64\\GameHDD");
 	File storageDir(storageRoot, filenametowstring(m_windows64DirectSaveId));
 	File saveDataFile(storageDir, L"saveData.ms");
+	const std::wstring saveDisplayName = Utf8ToWideString(m_windows64DirectSaveName);
 
 	if(!saveDataFile.exists() || !saveDataFile.isFile())
 	{
@@ -1231,17 +1371,14 @@ void UIScene_LoadMenu::StartGameFromWindows64DirectDiskSave(DWORD dwLocalUsersMa
 		ui.RequestMessageBox(IDS_STORAGEDEVICEPROBLEM_TITLE, IDS_FAILED_TO_LOADSAVE_TEXT, uiIDA, 1, m_iPad, NULL, NULL, app.GetStringTable(), NULL, 0, false);
 		return;
 	}
-
-	StorageManager.ResetSaveData();
-	app.SetPreparedSaveIdentity(Utf8ToWideString(m_windows64DirectSaveName).c_str(), m_windows64DirectSaveId);
-
 	__int64 fileSize = saveDataFile.length();
-	if(fileSize <= 0)
+	if(fileSize <= 0 || fileSize > 0x7fffffff)
 	{
 		m_bIgnoreInput = false;
-		UINT uiIDA[1];
-		uiIDA[0]=IDS_CONFIRM_OK;
-		ui.RequestMessageBox(IDS_STORAGEDEVICEPROBLEM_TITLE, IDS_FAILED_TO_LOADSAVE_TEXT, uiIDA, 1, m_iPad, NULL, NULL, app.GetStringTable(), NULL, 0, false);
+		UINT uiIDA[2];
+		uiIDA[0]=IDS_CONFIRM_CANCEL;
+		uiIDA[1]=IDS_CONFIRM_OK;
+		ui.RequestMessageBox(IDS_CORRUPT_OR_DAMAGED_SAVE_TITLE, IDS_CORRUPT_OR_DAMAGED_SAVE_TEXT, uiIDA, 2, m_iPad,&UIScene_LoadMenu::DeleteSaveDialogReturned,this, app.GetStringTable(),NULL,0,false);
 		return;
 	}
 
@@ -1250,12 +1387,28 @@ void UIScene_LoadMenu::StartGameFromWindows64DirectDiskSave(DWORD dwLocalUsersMa
 	fis.read(ba);
 	fis.close();
 
+	std::string resolvedTitleUtf8;
+	if(!TryResolveWindows64DirectSaveTitleFromBytes(saveDisplayName, ba.data, (DWORD)ba.length, resolvedTitleUtf8))
+	{
+		m_bIsCorrupt = true;
+		m_bIgnoreInput = false;
+		UINT uiIDA[2];
+		uiIDA[0]=IDS_CONFIRM_CANCEL;
+		uiIDA[1]=IDS_CONFIRM_OK;
+		ui.RequestMessageBox(IDS_CORRUPT_OR_DAMAGED_SAVE_TITLE, IDS_CORRUPT_OR_DAMAGED_SAVE_TEXT, uiIDA, 2, m_iPad,&UIScene_LoadMenu::DeleteSaveDialogReturned,this, app.GetStringTable(),NULL,0,false);
+		return;
+	}
+
+	const std::wstring preparedSaveTitle = resolvedTitleUtf8.empty() ? saveDisplayName : Utf8ToWideString(resolvedTitleUtf8.c_str());
+	StorageManager.ResetSaveData();
+	app.SetPreparedSaveIdentity(preparedSaveTitle.c_str(), m_windows64DirectSaveId);
+
 	bool isClientSide = ProfileManager.IsSignedInLive(ProfileManager.GetPrimaryPad()) && m_MoreOptionsParams.bOnlineGame;
 	bool isPrivate = (app.GetGameSettings(m_iPad,eGameSetting_InviteOnly)>0)?true:false;
 
 	NetworkGameInitData *param = new NetworkGameInitData();
 	param->seed = m_seed;
-	param->saveData = new LoadSaveDataThreadParam(ba.data, ba.length, Utf8ToWideString(m_windows64DirectSaveName));
+	param->saveData = new LoadSaveDataThreadParam(ba.data, ba.length, preparedSaveTitle);
 	param->texturePackId = m_MoreOptionsParams.dwTexturePack;
 
 	Minecraft *pMinecraft = Minecraft::GetInstance();

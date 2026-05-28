@@ -201,12 +201,43 @@ contenido principal:
 - aplica cambios en vivo a:
   - `FOV` (`30` a `120`), persistido en `UserData_Info` y aplicado a `GameRenderer`
   - `Brightness / Brillo` (`0` a `100`) usando `eGameSetting_Gamma`
-  - `Render Distance / Distancia de renderizado` como placeholder visual por ahora
+  - `Render Distance / Distancia de renderizado` (`4` a `32`), persistido en `UserData_Info`
   - `Animated Character`
   - `UI Size`
   - `UI Size Splitscreen`
 
+`Render Distance` ya no es solo visual:
+
+- el slider guarda el valor en `UserData_Info::renderDistance`
+- `Windows64_Minecraft` lo vuelve a leer al arrancar y lo aplica a `Options::viewDistance`
+- el servidor local sincroniza ese valor en caliente via `PlayerList::setViewDistance(...)`
+- `PlayerChunkMap` expande y reduce el radio activo al vuelo, asi que la generacion / seguimiento
+  de chunks al moverte depende del `render distance`
+- en `_LARGE_WORLDS`, el radio maximo del servidor local subio a `32` para igualar el slider
+
+`UserData_Info.userdat` ahora usa version `4`, manteniendo compatibilidad de lectura con las
+versiones anteriores del archivo.
+
+En `Windows64`, tambien se subio el techo de command buffers del renderer:
+
+- `LevelRenderer::MAX_COMMANDBUFFER_ALLOCATIONS` paso de `512 MB` a `1 GB`
+- esto da mas margen cuando se usan distancias de render altas y reduce los bloqueos por limite
+  de memoria del renderer
+
 La ruta original de Iggy sigue intacta para las otras plataformas.
+
+---
+
+### `Respawn` - fix de crash en Windows64
+
+El crash al pulsar `Respawn / Regenerarse` en Windows64 quedo corregido en la ruta de UI/render:
+
+- se evito apilar `UIScene_ConnectingProgress` encima de `UIScene_DeathMenu` solo para el respawn en `Windows64`
+- el flujo ahora deja la pantalla de muerte bloqueada mientras llega el respawn real y la cierra al completar `eAppAction_WaitForRespawnComplete`
+- esto evita destruir / recrear peliculas Iggy en el mismo cambio de estado donde se estaba reconstruyendo el jugador local
+- el pool de `GDraw` para `vertexbuffer` tambien subio de `16 MB` a `64 MB` en `Windows64_UIController`
+
+Con eso se reduce la presion sobre la ruta `Iggy/GDraw` que estaba reciclando recursos justo al pasar de `DeathMenu` al respawn, que era donde se estaba reproduciendo el cierre de la aplicacion.
 
 ---
 

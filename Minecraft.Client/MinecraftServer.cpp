@@ -191,6 +191,11 @@ bool MinecraftServer::initServer(__int64 seed, NetworkGameInitData *initData, DW
         }
 #endif
         setPlayers(new PlayerList(this));
+		Minecraft *minecraft = Minecraft::GetInstance();
+		if(players != NULL && minecraft != NULL && minecraft->options != NULL)
+		{
+			players->setViewDistance(minecraft->options->viewDistance);
+		}
 
 		// 4J-JEV: Need to wait for levelGenerationOptions to load.
 		while ( app.getLevelGenerationOptions() != NULL && !app.getLevelGenerationOptions()->hasLoadedData() )

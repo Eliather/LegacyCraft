@@ -2443,8 +2443,9 @@ void ClientConnection::handleRespawn(shared_ptr<RespawnPacket> packet)
 			dimensionLevel->addClientConnection(this);
 		}
 
-		// Remove the player entity from the current level
-		level->removeEntity( shared_ptr<Entity>(minecraft->localplayers[m_userIndex]) );
+		// Remove the player entity from the current level before it is recreated in the
+		// target dimension, otherwise the stale local player can survive one more client tick.
+		level->removeEntityImmediately(shared_ptr<Entity>(minecraft->localplayers[m_userIndex]));
 
 		level = dimensionLevel;
 		

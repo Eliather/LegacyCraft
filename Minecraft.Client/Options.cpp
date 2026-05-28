@@ -14,6 +14,27 @@
 #include "..\Minecraft.World\DataOutputStream.h"
 #include "..\Minecraft.World\StringHelpers.h"
 
+namespace
+{
+	int ClampRenderDistanceOption(int viewDistance)
+	{
+		if(viewDistance >= 0 && viewDistance <= 3)
+		{
+			static const int kLegacyRenderDistances[4] = { 18, 12, 8, 4 };
+			return kLegacyRenderDistances[viewDistance];
+		}
+		if(viewDistance < 4)
+		{
+			return 4;
+		}
+		if(viewDistance > 32)
+		{
+			return 32;
+		}
+		return viewDistance;
+	}
+}
+
 // 4J - the Option sub-class used to be an java enumerated type, trying to emulate that functionality here
 const Options::Option Options::Option::options[17] =
 {
@@ -112,7 +133,7 @@ void Options::init()
     sound = 1;
     sensitivity = 0.5f;
     invertYMouse = false;
-    viewDistance = 0;
+    viewDistance = 18;
     bobView = true;
     anaglyph3d = false;
     advancedOpengl = false;
@@ -243,7 +264,13 @@ void Options::set(const Options::Option *item, float fVal)
 void Options::toggle(const Options::Option *option, int dir)
 {
     if (option == Option::INVERT_MOUSE) invertYMouse = !invertYMouse;
-    if (option == Option::RENDER_DISTANCE) viewDistance = (viewDistance + dir) & 3;
+    if (option == Option::RENDER_DISTANCE)
+	{
+		viewDistance = ClampRenderDistanceOption(viewDistance);
+		viewDistance += dir;
+		if(viewDistance < 4) viewDistance = 32;
+		if(viewDistance > 32) viewDistance = 4;
+	}
     if (option == Option::GUI_SCALE) guiScale = (guiScale + dir) & 3;
 	if (option == Option::PARTICLES) particles = (particles + dir) % 3;
 
@@ -372,7 +399,7 @@ wstring Options::getMessage(const Options::Option *item)
     }
 	else if (item == Option::RENDER_DISTANCE)
 	{
-        return caption + language->getElement(RENDER_DISTANCE_NAMES[viewDistance]);
+        return caption + _toString<int>(ClampRenderDistanceOption(viewDistance));
     }
 	else if (item == Option::DIFFICULTY)
 	{
@@ -435,7 +462,7 @@ void Options::load()
 				if (cmds[0] == L"fov") fov = readFloat(cmds[1]);
 				if (cmds[0] == L"gamma") gamma = readFloat(cmds[1]);
                 if (cmds[0] == L"invertYMouse") invertYMouse = cmds[1]==L"true";
-                if (cmds[0] == L"viewDistance") viewDistance = _fromString<int>(cmds[1]);
+                if (cmds[0] == L"viewDistance") viewDistance = ClampRenderDistanceOption(_fromString<int>(cmds[1]));
                 if (cmds[0] == L"guiScale") guiScale =_fromString<int>(cmds[1]);
 				if (cmds[0] == L"particles") particles = _fromString<int>(cmds[1]);
                 if (cmds[0] == L"bobView") bobView = cmds[1]==L"true";
@@ -492,7 +519,7 @@ void Options::save()
         dos.writeChars(L"mouseSensitivity:" + _toString<float>(sensitivity));
 		dos.writeChars(L"fov:" + _toString<float>(fov));
 		dos.writeChars(L"gamma:" + _toString<float>(gamma));
-        dos.writeChars(L"viewDistance:" + _toString<int>(viewDistance));
+        dos.writeChars(L"viewDistance:" + _toString<int>(ClampRenderDistanceOption(viewDistance)));
         dos.writeChars(L"guiScale:" + _toString<int>(guiScale));
 		dos.writeChars(L"particles:" + _toString<int>(particles));
         dos.writeChars(L"bobView:" + wstring(bobView ? L"true" : L"false"));
@@ -521,5 +548,5 @@ void Options::save()
 
 bool Options::isCloudsOn()
 {
-	return viewDistance < 2 && renderClouds;
+	return ClampRenderDistanceOption(viewDistance) >= 10 && renderClouds;
 }

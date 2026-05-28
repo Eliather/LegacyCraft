@@ -28,11 +28,23 @@ public:
 	{
         type = dis->readByte();
         int size = dis->readInt();
+		if(size < 0)
+		{
+			list.clear();
+			type = Tag::TAG_End;
+			return;
+		}
 
         list.clear();
         for (int i = 0; i < size; i++)
 		{
             Tag *tag = Tag::newTag(type, L"");
+			if(tag == NULL)
+			{
+				list.clear();
+				type = Tag::TAG_End;
+				return;
+			}
             tag->load(dis);
             list.push_back(tag);
         }

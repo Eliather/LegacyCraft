@@ -822,6 +822,29 @@ void Textures::releaseTexture(int id)
 {
     loadedImages.erase(id);
     glDeleteTextures(id);
+
+	// Mem/http textures can outlive the underlying GPU resource during reloads or
+	// cache churn. Make sure they recreate the texture instead of rebinding a stale handle.
+	for(AUTO_VAR(it, memTextures.begin()); it != memTextures.end(); ++it)
+	{
+		MemTexture *texture = it->second;
+		if(texture != NULL && texture->id == id)
+		{
+			texture->id = -1;
+			texture->isLoaded = false;
+			texture->ticksSinceLastUse = 0;
+		}
+	}
+
+	for(AUTO_VAR(it, httpTextures.begin()); it != httpTextures.end(); ++it)
+	{
+		HttpTexture *texture = it->second;
+		if(texture != NULL && texture->id == id)
+		{
+			texture->id = -1;
+			texture->isLoaded = false;
+		}
+	}
 }
 
 int Textures::loadHttpTexture(const wstring& url, const wstring& backup)
@@ -924,6 +947,7 @@ int Textures::loadMemTexture(const wstring& url, const wstring& backup)
 	}
 	if(texture != NULL)
 	{
+		texture->ticksSinceLastUse = 0;
 		if (texture->loadedImage != NULL && !texture->isLoaded)
 		{
 			// 4J - Disable mipmapping in general for skins & capes. Have seen problems with edge-on polys for some eg mumbo jumbo
@@ -1055,12 +1079,18 @@ void Textures::removeMemTexture(const wstring& url)
 	}
 	if(texture != NULL)
 	{
-		texture->count--;
-		if (texture->count == 0)
+		if(texture->count > 0)
 		{
-			if (texture->id >= 0) releaseTexture(texture->id);
-			memTextures.erase(url);
-			delete texture;
+			texture->count--;
+		}
+
+		if(texture->count <= 0)
+		{
+			// Entity add/remove notifications can happen off the render thread during
+			// respawn. Keep the mem texture alive here and let Textures::tick()
+			// release the GPU resource later on the normal texture path.
+			texture->count = 0;
+			texture->ticksSinceLastUse = 0;
 		}
 	}
 }
@@ -1091,7 +1121,7 @@ void Textures::tick(bool updateTextures, bool tickDynamics)	// 4J added updateTe
 	{
 		MemTexture *tex = it->second;
 
-		if( tex  && ( ++tex->ticksSinceLastUse > MemTexture::UNUSED_TICKS_TO_FREE ) )
+		if( tex && tex->count <= 0 && ( ++tex->ticksSinceLastUse > MemTexture::UNUSED_TICKS_TO_FREE ) )
 		{
 			if (tex->id >= 0) releaseTexture(tex->id);
 			delete tex;
@@ -1117,6 +1147,27 @@ void Textures::reloadAll()
 
 	idMap.clear();
 	loadedImages.clear();
+
+	for(AUTO_VAR(it, httpTextures.begin()); it != httpTextures.end(); ++it)
+	{
+		HttpTexture *texture = it->second;
+		if(texture != NULL)
+		{
+			texture->id = -1;
+			texture->isLoaded = false;
+		}
+	}
+
+	for(AUTO_VAR(it, memTextures.begin()); it != memTextures.end(); ++it)
+	{
+		MemTexture *texture = it->second;
+		if(texture != NULL)
+		{
+			texture->id = -1;
+			texture->isLoaded = false;
+			texture->ticksSinceLastUse = 0;
+		}
+	}
 
 	loadIndexedTextures();
 
@@ -1401,4 +1452,3 @@ bool Textures::IsOriginalImage(TEXTURE_NAME texId, const wstring& name)
 	}
 	return false;
 }
-

@@ -4212,16 +4212,23 @@ wstring Minecraft::gatherStats4()
 void Minecraft::respawnPlayer(int iPad, int dimension, int newEntityId)
 {
 	gameRenderer->DisableUpdateThread(); // 4J - don't do updating whilst we are adjusting the player & localplayer array
+	if(iPad < 0 || iPad >= XUSER_MAX_COUNT)
+	{
+		gameRenderer->EnableUpdateThread();
+		return;
+	}
+
 	shared_ptr<MultiplayerLocalPlayer> localPlayer = localplayers[iPad];
+	if(localPlayer == NULL || localgameModes[iPad] == NULL)
+	{
+		gameRenderer->EnableUpdateThread();
+		return;
+	}
 
 	level->validateSpawn();
 	level->removeAllPendingEntityRemovals();
 
-	if (localPlayer != NULL)
-	{
-
-		level->removeEntity(localPlayer);
-	}
+	level->removeEntityImmediately(localPlayer);
 
 	shared_ptr<Player> oldPlayer = localPlayer;
 	cameraTargetPlayer = nullptr;
@@ -4288,12 +4295,12 @@ void Minecraft::respawnPlayer(int iPad, int dimension, int newEntityId)
 	player->setShowOnMaps(app.GetGameHostOption(eGameHostOption_Gamertags)!=0?true:false);
 
 	player->resetPos();
+	player->entityId = newEntityId;
 	level->addEntity(player);
 	gameMode->initPlayer(player);
 
 	if(player->input != NULL) delete player->input;
 	player->input = new Input();
-	player->entityId = newEntityId;
 	player->animateRespawn();
 	gameMode->adjustPlayer(player);
 

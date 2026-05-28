@@ -3236,12 +3236,18 @@ void CMinecraftApp::HandleXuiActions(void)
 
 			case eAppAction_Respawn:
 				{
+					// On Windows64 the extra Iggy progress scene created here can thrash
+					// GDraw's transient vertex buffers right as the death menu is being
+					// torn down. Keep the existing death UI visible and ignore input until
+					// the respawn completes instead of stacking another movie on top.
+#ifndef _WINDOWS64
 					ConnectionProgressParams *param = new ConnectionProgressParams();
 					param->iPad = i;
 					param->stringId = IDS_PROGRESS_RESPAWNING;
 					param->showTooltips = false;
 					param->setFailTimer = false;
 					ui.NavigateToScene(i,eUIScene_ConnectingProgress, param);
+#endif
 					
 					// Need to reset this incase the player has already died and respawned
 					pMinecraft->localplayers[i]->SetPlayerRespawned(false);

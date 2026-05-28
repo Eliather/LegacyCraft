@@ -53,7 +53,16 @@ LevelData *DirectoryLevelStorageSource::getDataTagFor(ConsoleSaveFile *saveFile,
 	{
 		ConsoleSaveFileInputStream fis = ConsoleSaveFileInputStream(saveFile, dataFile);
 		CompoundTag *root = NbtIo::readCompressed(&fis);
+		if(root == NULL)
+		{
+			return NULL;
+		}
 		CompoundTag *tag = root->getCompound(L"Data");
+		if(tag == NULL)
+		{
+			delete root;
+			return NULL;
+		}
 		LevelData *ret = new LevelData(tag);
 		delete root;
 		return ret;
@@ -72,7 +81,16 @@ void DirectoryLevelStorageSource::renameLevel(const wstring& levelId, const wstr
 	{
 		ConsoleSaveFileInputStream fis = ConsoleSaveFileInputStream(&tempSave, dataFile);
 		CompoundTag *root = NbtIo::readCompressed(&fis);
+		if(root == NULL)
+		{
+			return;
+		}
 		CompoundTag *tag = root->getCompound(L"Data");
+		if(tag == NULL)
+		{
+			delete root;
+			return;
+		}
 		tag->putString(L"LevelName", newLevelName);
 
 		ConsoleSaveFileOutputStream fos = ConsoleSaveFileOutputStream(&tempSave, dataFile);
