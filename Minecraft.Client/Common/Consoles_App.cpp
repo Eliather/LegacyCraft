@@ -2720,6 +2720,10 @@ void CMinecraftApp::HandleXuiActions(void)
 				break;
 
 			case eAppAction_SaveGameCapturedThumbnail:
+				if(!IsSaveThumbnailCaptureComplete())
+				{
+					break;
+				}
 				// reset the autosave timer
 				app.SetAutosaveTimerTime();
 				SetAction(i,eAppAction_Idle);
@@ -2777,6 +2781,10 @@ void CMinecraftApp::HandleXuiActions(void)
 			case eAppAction_AutosaveSaveGameCapturedThumbnail:
 
 				{				
+					if(!IsSaveThumbnailCaptureComplete())
+					{
+						break;
+					}
 					app.SetAutosaveTimerTime();
 					SetAction(i,eAppAction_Idle);
 
@@ -3148,6 +3156,10 @@ void CMinecraftApp::HandleXuiActions(void)
 				break;
 			case eAppAction_ExitWorldCapturedThumbnail:
 				{
+					if(!IsSaveThumbnailCaptureComplete())
+					{
+						break;
+					}
 					SetAction(i,eAppAction_Idle);
 					// Stop app running
 					SetGameStarted(false);

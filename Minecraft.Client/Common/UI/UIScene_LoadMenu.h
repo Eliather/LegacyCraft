@@ -68,6 +68,7 @@ private:
 	PBYTE m_pbThumbnailData;
 	unsigned int m_uiThumbnailSize;
 	wstring m_thumbnailName;
+	bool m_bOwnsThumbnailData;
 
 	bool m_bRebuildTouchBoxes;
 #ifdef _WINDOWS64
@@ -77,6 +78,7 @@ private:
 #endif
 public:
 	UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLayer);
+	virtual ~UIScene_LoadMenu();
 	
 	virtual void updateTooltips();
 	virtual void updateComponents();

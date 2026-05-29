@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 class CConsoleMinecraftApp : public CMinecraftApp
 {
 public:
@@ -14,6 +16,9 @@ public:
 	virtual void CaptureSaveThumbnail();
 	virtual void GetSaveThumbnail(PBYTE*,DWORD*);
 	virtual void ReleaseSaveThumbnail();
+	virtual bool IsSaveThumbnailCaptureComplete();
+	virtual bool ShouldCaptureSaveThumbnailFromWorldFrame(int iPad);
+	virtual void CaptureSaveThumbnailFromWorldFrame(int iPad);
 	virtual void GetScreenshot(int iPad,PBYTE *pbData,DWORD *pdwSize);
 
 	virtual int LoadLocalTMSFile(WCHAR *wchTMSFile);
@@ -29,6 +34,11 @@ public:
 
 	// original code
 	virtual void TemporaryCreateGameStart();
+
+private:
+	std::vector<BYTE> m_saveThumbnailData;
+	bool m_saveThumbnailCapturePending;
+	int m_saveThumbnailCaptureRetryCount;
 };
 
 extern CConsoleMinecraftApp app;

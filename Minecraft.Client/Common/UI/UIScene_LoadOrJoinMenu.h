@@ -138,6 +138,7 @@ private:
 	void GetSaveInfo();
 	void UpdateGamesList();
 	void AddDefaultButtons();
+	void SetSaveListItemTexture(int itemIndex, const wchar_t *baseTextureName, PBYTE pbData, DWORD dwLength, bool aggressiveCrop = false);
 #ifdef _WINDOWS64
 	bool PopulateWindows64DirectDiskSaves();
 	void RefreshWindows64DirectDiskSaves(int preferredSelection);

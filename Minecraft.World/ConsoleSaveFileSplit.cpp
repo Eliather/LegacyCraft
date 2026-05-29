@@ -22,6 +22,32 @@ void *ConsoleSaveFileSplit::pvHeap = NULL;
 #ifdef _WINDOWS64
 namespace
 {
+#pragma pack(push, 1)
+	struct Windows64FallbackBmpFileHeader
+	{
+		WORD bfType;
+		DWORD bfSize;
+		WORD bfReserved1;
+		WORD bfReserved2;
+		DWORD bfOffBits;
+	};
+
+	struct Windows64FallbackBmpInfoHeader
+	{
+		DWORD biSize;
+		LONG biWidth;
+		LONG biHeight;
+		WORD biPlanes;
+		WORD biBitCount;
+		DWORD biCompression;
+		DWORD biSizeImage;
+		LONG biXPelsPerMeter;
+		LONG biYPelsPerMeter;
+		DWORD biClrUsed;
+		DWORD biClrImportant;
+	};
+#pragma pack(pop)
+
 	void RefreshStorageSaveTitleFromActiveLevel()
 	{
 		MinecraftServer *server = MinecraftServer::getInstance();
@@ -91,6 +117,201 @@ namespace
 		}
 
 		return std::string();
+	}
+
+	std::wstring CombineWindows64Path(const std::wstring &parentPath, const std::wstring &childPath)
+	{
+		if(parentPath.empty())
+		{
+			return childPath;
+		}
+
+		if(childPath.empty())
+		{
+			return parentPath;
+		}
+
+		return parentPath + L"\\" + childPath;
+	}
+
+	bool TryGetWindows64ExecutableDirectory(std::wstring &directoryPath)
+	{
+		wchar_t modulePath[MAX_PATH];
+		const DWORD length = GetModuleFileNameW(NULL, modulePath, MAX_PATH);
+		if(length == 0 || length >= MAX_PATH)
+		{
+			return false;
+		}
+
+		std::wstring fullPath(modulePath, length);
+		const size_t slash = fullPath.find_last_of(L"\\/");
+		if(slash == std::wstring::npos)
+		{
+			return false;
+		}
+
+		directoryPath = fullPath.substr(0, slash);
+		return !directoryPath.empty();
+	}
+
+	bool Windows64PathIsDirectory(const std::wstring &path)
+	{
+		const DWORD attributes = GetFileAttributesW(path.c_str());
+		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY;
+	}
+
+	bool Windows64PathIsFile(const std::wstring &path)
+	{
+		const DWORD attributes = GetFileAttributesW(path.c_str());
+		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+	}
+
+	bool TryGetWindows64StorageRootPath(std::wstring &storageRootPath)
+	{
+		std::wstring executableDirectory;
+		if(!TryGetWindows64ExecutableDirectory(executableDirectory))
+		{
+			return false;
+		}
+
+		storageRootPath = CombineWindows64Path(CombineWindows64Path(executableDirectory, L"Windows64"), L"GameHDD");
+		return Windows64PathIsDirectory(storageRootPath);
+	}
+
+	bool TryGetWindows64StorageRoot(File &storageRoot)
+	{
+		std::wstring executableDirectory;
+		if(!TryGetWindows64ExecutableDirectory(executableDirectory))
+		{
+			return false;
+		}
+
+		const std::wstring storageRootPath = CombineWindows64Path(CombineWindows64Path(executableDirectory, L"Windows64"), L"GameHDD");
+		storageRoot = File(storageRootPath);
+		return storageRoot.exists() && storageRoot.isDirectory();
+	}
+
+	bool TryResolveWindows64TargetSaveDirectoryPath(const std::string &preparedSaveId, std::wstring &storageRootPath, std::wstring &targetDirPath)
+	{
+		if(!TryGetWindows64StorageRootPath(storageRootPath))
+		{
+			return false;
+		}
+
+		if(!preparedSaveId.empty() && !IsTimestampLikeSaveId(preparedSaveId))
+		{
+			const std::wstring preferredDirPath = CombineWindows64Path(storageRootPath, filenametowstring(preparedSaveId.c_str()));
+			if(Windows64PathIsDirectory(preferredDirPath))
+			{
+				targetDirPath = preferredDirPath;
+				return true;
+			}
+		}
+
+		const std::wstring searchPattern = CombineWindows64Path(storageRootPath, L"*");
+		WIN32_FIND_DATAW findData;
+		HANDLE findHandle = FindFirstFileW(searchPattern.c_str(), &findData);
+		if(findHandle == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		std::wstring newestDirPath;
+		ULONGLONG newestModifiedTime = 0;
+		do
+		{
+			if((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+			{
+				continue;
+			}
+
+			if(wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0)
+			{
+				continue;
+			}
+
+			const std::wstring candidateDirPath = CombineWindows64Path(storageRootPath, findData.cFileName);
+			const std::wstring saveDataPath = CombineWindows64Path(candidateDirPath, L"saveData.ms");
+			if(!Windows64PathIsFile(saveDataPath))
+			{
+				continue;
+			}
+
+			WIN32_FILE_ATTRIBUTE_DATA saveDataAttributes;
+			if(!GetFileAttributesExW(saveDataPath.c_str(), GetFileExInfoStandard, &saveDataAttributes))
+			{
+				continue;
+			}
+
+			ULARGE_INTEGER modifiedTime;
+			modifiedTime.LowPart = saveDataAttributes.ftLastWriteTime.dwLowDateTime;
+			modifiedTime.HighPart = saveDataAttributes.ftLastWriteTime.dwHighDateTime;
+			if(newestDirPath.empty() || modifiedTime.QuadPart > newestModifiedTime)
+			{
+				newestModifiedTime = modifiedTime.QuadPart;
+				newestDirPath = candidateDirPath;
+			}
+		}
+		while(FindNextFileW(findHandle, &findData));
+
+		FindClose(findHandle);
+		if(newestDirPath.empty())
+		{
+			return false;
+		}
+
+		targetDirPath = newestDirPath;
+		return true;
+	}
+
+	bool BuildFallbackWindows64Thumbnail(std::vector<BYTE> &thumbnailData)
+	{
+		const DWORD width = 64;
+		const DWORD height = 64;
+		const DWORD rowBytes = width * 4;
+		const DWORD pixelBytes = rowBytes * height;
+		const DWORD headerBytes = sizeof(Windows64FallbackBmpFileHeader) + sizeof(Windows64FallbackBmpInfoHeader);
+
+		Windows64FallbackBmpFileHeader fileHeader;
+		ZeroMemory(&fileHeader, sizeof(fileHeader));
+		fileHeader.bfType = 0x4D42;
+		fileHeader.bfSize = headerBytes + pixelBytes;
+		fileHeader.bfOffBits = headerBytes;
+
+		Windows64FallbackBmpInfoHeader infoHeader;
+		ZeroMemory(&infoHeader, sizeof(infoHeader));
+		infoHeader.biSize = sizeof(infoHeader);
+		infoHeader.biWidth = (LONG)width;
+		infoHeader.biHeight = -(LONG)height;
+		infoHeader.biPlanes = 1;
+		infoHeader.biBitCount = 32;
+		infoHeader.biCompression = 0;
+		infoHeader.biSizeImage = pixelBytes;
+		infoHeader.biXPelsPerMeter = 2835;
+		infoHeader.biYPelsPerMeter = 2835;
+
+		thumbnailData.resize(headerBytes + pixelBytes);
+		memcpy(&thumbnailData[0], &fileHeader, sizeof(fileHeader));
+		memcpy(&thumbnailData[sizeof(fileHeader)], &infoHeader, sizeof(infoHeader));
+
+		BYTE *pixels = &thumbnailData[headerBytes];
+		for(DWORD y = 0; y < height; ++y)
+		{
+			for(DWORD x = 0; x < width; ++x)
+			{
+				const bool checker = (((x >> 4) + (y >> 4)) & 1) != 0;
+				const BYTE blue = checker ? 0x7A : 0x52;
+				const BYTE green = checker ? 0x95 : 0x6F;
+				const BYTE red = checker ? 0x58 : 0x3A;
+				const size_t pixelIndex = (y * rowBytes) + (x * 4);
+				pixels[pixelIndex + 0] = blue;
+				pixels[pixelIndex + 1] = green;
+				pixels[pixelIndex + 2] = red;
+				pixels[pixelIndex + 3] = 0xFF;
+			}
+		}
+
+		return true;
 	}
 
 	bool MoveWindows64StorageFileReplacing(const File &sourceFile, const File &targetFile)
@@ -268,39 +489,80 @@ namespace
 
 	void RemoveWindows64SaveDisplayNameSidecar()
 	{
-		File storageRoot(L"Windows64\\GameHDD");
-		if(!storageRoot.exists() || !storageRoot.isDirectory())
+		const std::string preparedSaveId = GetPreparedWindows64SaveId();
+		std::wstring storageRootPath;
+		std::wstring targetDirPath;
+		if(!TryResolveWindows64TargetSaveDirectoryPath(preparedSaveId, storageRootPath, targetDirPath))
 		{
 			return;
 		}
+
+		const std::wstring displayNamePath = CombineWindows64Path(targetDirPath, L"display_name.txt");
+		if(Windows64PathIsFile(displayNamePath))
+		{
+			DeleteFileW(displayNamePath.c_str());
+		}
+	}
+
+	void WriteWindows64SaveThumbnailSidecar()
+	{
+		static const BYTE kPngSignature[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
 
 		const std::string preparedSaveId = GetPreparedWindows64SaveId();
-		std::wstring activeDirName;
-		if(!preparedSaveId.empty() && !IsTimestampLikeSaveId(preparedSaveId))
-		{
-			ResolveActiveWindows64SaveDirectory(storageRoot, filenametowstring(preparedSaveId.c_str()), activeDirName);
-		}
-		else
-		{
-			ResolveActiveWindows64SaveDirectory(storageRoot, std::wstring(), activeDirName);
-		}
-
-		if(activeDirName.empty())
+		std::wstring storageRootPath;
+		std::wstring targetDirPath;
+		if(!TryResolveWindows64TargetSaveDirectoryPath(preparedSaveId, storageRootPath, targetDirPath))
 		{
 			return;
 		}
 
-		File targetDir(storageRoot, activeDirName);
-		if(!targetDir.exists() || !targetDir.isDirectory())
+		const wchar_t *thumbnailFilename = L"thumbnail.png";
+		const wchar_t *allThumbnailFilenames[3] =
+		{
+			L"thumbnail.bmp",
+			L"thumbnail.jpg",
+			L"thumbnail.png"
+		};
+
+		for(int staleIndex = 0; staleIndex < 3; ++staleIndex)
+		{
+			if(wcscmp(allThumbnailFilenames[staleIndex], thumbnailFilename) == 0)
+			{
+				continue;
+			}
+
+			const std::wstring staleThumbnailPath = CombineWindows64Path(targetDirPath, allThumbnailFilenames[staleIndex]);
+			if(Windows64PathIsFile(staleThumbnailPath))
+			{
+				DeleteFileW(staleThumbnailPath.c_str());
+			}
+		}
+
+		PBYTE pbThumbnailData = NULL;
+		DWORD dwThumbnailDataSize = 0;
+		app.GetSaveThumbnail(&pbThumbnailData, &dwThumbnailDataSize);
+		if(pbThumbnailData == NULL || dwThumbnailDataSize < 8 || memcmp(pbThumbnailData, kPngSignature, 8) != 0)
 		{
 			return;
 		}
 
-		File displayNameFile(targetDir, L"display_name.txt");
-		if(displayNameFile.exists() && displayNameFile.isFile())
+		const std::wstring thumbnailPath = CombineWindows64Path(targetDirPath, thumbnailFilename);
+		HANDLE fileHandle = CreateFileW(
+			thumbnailPath.c_str(),
+			GENERIC_WRITE,
+			0,
+			NULL,
+			CREATE_ALWAYS,
+			FILE_ATTRIBUTE_NORMAL,
+			NULL);
+		if(fileHandle == INVALID_HANDLE_VALUE)
 		{
-			displayNameFile._delete();
+			return;
 		}
+
+		DWORD bytesWritten = 0;
+		WriteFile(fileHandle, pbThumbnailData, dwThumbnailDataSize, &bytesWritten, NULL);
+		CloseHandle(fileHandle);
 	}
 
 	std::string SanitizeLifecycleLogValue(const std::string &value)
@@ -941,7 +1203,7 @@ ConsoleSaveFileSplit::~ConsoleSaveFileSplit()
 	VirtualFree( pvHeap, MAX_PAGE_COUNT * CSF_PAGE_SIZE, MEM_DECOMMIT );
 	pagesCommitted = 0;
 	// Make sure we don't have any thumbnail data still waiting round - we can't need it now we've destroyed the save file anyway
-#if defined _XBOX 
+#if defined _XBOX || defined _WINDOWS64
 	app.GetSaveThumbnail(NULL,NULL);
 #elif defined __PS3__
 	app.GetSaveThumbnail(NULL,NULL, NULL,NULL);
@@ -1767,7 +2029,7 @@ void ConsoleSaveFileSplit::Flush(bool autosave, bool updateThumbnail)
 			PBYTE pbDataSaveImage=NULL;
 			DWORD dwDataSizeSaveImage=0;
 
-#if ( defined _XBOX || defined _DURANGO )
+#if ( defined _XBOX || defined _DURANGO || defined _WINDOWS64 )
 			app.GetSaveThumbnail(&pbThumbnailData,&dwThumbnailDataSize);
 #elif ( defined __PS3__ || defined __ORBIS__ )
 			app.GetSaveThumbnail(&pbThumbnailData,&dwThumbnailDataSize,&pbDataSaveImage,&dwDataSizeSaveImage);
@@ -1820,6 +2082,7 @@ int ConsoleSaveFileSplit::SaveSaveDataCallback(LPVOID lpParam,bool bRes)
 #ifdef _WINDOWS64
 	if(bRes)
 	{
+		WriteWindows64SaveThumbnailSidecar();
 		RemoveWindows64SaveDisplayNameSidecar();
 	}
 	AppendStorageSaveLifecycleLog("split", pClass, bRes);

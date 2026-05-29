@@ -1107,8 +1107,11 @@ void GameRenderer::render(float a, bool bFirst)
 
 	int maxFps = getFpsCap(mc->options->framerateLimit);
 
+	bool captureWorldOnlyThisFrame = false;
 	if (mc->level != NULL)
 	{
+		captureWorldOnlyThisFrame = mc->player != NULL && app.ShouldCaptureSaveThumbnailFromWorldFrame(mc->player->GetXboxPad());
+
 		if (mc->options->framerateLimit == 0)
 		{
 			renderLevel(a, 0);
@@ -1120,8 +1123,13 @@ void GameRenderer::render(float a, bool bFirst)
 
 		lastNsTime = System::nanoTime();
 
+		if(captureWorldOnlyThisFrame)
+		{
+			glFlush();
+			app.CaptureSaveThumbnailFromWorldFrame(mc->player->GetXboxPad());
+		}
 
-		if (!mc->options->hideGui || mc->screen != NULL)
+		if (!captureWorldOnlyThisFrame && (!mc->options->hideGui || mc->screen != NULL))
 		{
 			mc->gui->render(a, mc->screen != NULL, xMouse, yMouse);
 		}
@@ -1139,7 +1147,7 @@ void GameRenderer::render(float a, bool bFirst)
 	}
 
 
-	if (mc->screen != NULL)
+	if (!captureWorldOnlyThisFrame && mc->screen != NULL)
 	{
 		glClear(GL_DEPTH_BUFFER_BIT);
 		mc->screen->render(xMouse, yMouse, a);
@@ -1327,6 +1335,8 @@ void GameRenderer::renderLevel(float a, __int64 until)
 
 	for (int i = 0; i < 2; i++)
 	{
+		const bool captureWorldOnlyThisFrame = app.ShouldCaptureSaveThumbnailFromWorldFrame(mc->player->GetXboxPad());
+
 		if (mc->options->anaglyph3d)
 		{
 			GameRenderer::anaglyphPass = i;
@@ -1433,7 +1443,7 @@ void GameRenderer::renderLevel(float a, __int64 until)
 			turnOffLightLayer(a);		// 4J - brought forward from 1.8.2
 
 			shared_ptr<Player> player = dynamic_pointer_cast<Player>(cameraEntity);
-			if (mc->hitResult != NULL && cameraEntity->isUnderLiquid(Material::water) && player!=NULL) //&& !mc->options.hideGui)
+			if (!captureWorldOnlyThisFrame && mc->hitResult != NULL && cameraEntity->isUnderLiquid(Material::water) && player!=NULL) //&& !mc->options.hideGui)
 			{
 				//shared_ptr<Player> player = dynamic_pointer_cast<Player>(cameraEntity);
 				glDisable(GL_ALPHA_TEST);
@@ -1490,7 +1500,7 @@ void GameRenderer::renderLevel(float a, __int64 until)
 		glEnable(GL_CULL_FACE);
 		glDisable(GL_BLEND);
 
-		if (zoom == 1 && (dynamic_pointer_cast<Player>(cameraEntity)!=NULL)) //&& !mc->options.hideGui)
+		if (!captureWorldOnlyThisFrame && zoom == 1 && (dynamic_pointer_cast<Player>(cameraEntity)!=NULL)) //&& !mc->options.hideGui)
 		{
 			if (mc->hitResult != NULL && !cameraEntity->isUnderLiquid(Material::water))
 			{
@@ -1511,7 +1521,10 @@ void GameRenderer::renderLevel(float a, __int64 until)
 
 		glEnable(GL_BLEND);
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-		levelRenderer->renderDestroyAnimation(Tesselator::getInstance(), dynamic_pointer_cast<Player>(cameraEntity), a);
+		if(!captureWorldOnlyThisFrame)
+		{
+			levelRenderer->renderDestroyAnimation(Tesselator::getInstance(), dynamic_pointer_cast<Player>(cameraEntity), a);
+		}
 		glDisable(GL_BLEND);
 
         if (mc->options->isCloudsOn())
@@ -1535,8 +1548,7 @@ void GameRenderer::renderLevel(float a, __int64 until)
 		PIXEndNamedEvent();
 		glDisable(GL_FOG);
 
-
-		if (zoom == 1)
+		if (!captureWorldOnlyThisFrame && zoom == 1)
 		{
 			glClear(GL_DEPTH_BUFFER_BIT);
 			renderItemInHand(a, i);

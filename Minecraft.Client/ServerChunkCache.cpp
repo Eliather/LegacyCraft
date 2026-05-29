@@ -839,7 +839,7 @@ bool ServerChunkCache::save(bool force, ProgressListener *progressListener)
 #endif
 	}
 
-    if (force)
+	if (force)
 	{
         if (storage == NULL)
 		{
@@ -848,6 +848,11 @@ bool ServerChunkCache::save(bool force, ProgressListener *progressListener)
 		}
         storage->flush();
     }
+
+	if (progressListener != NULL)
+	{
+		progressListener->progressStagePercentage(100);
+	}
 
 	LeaveCriticalSection(&m_csLoadCreate);
     return !maxSavesReached;

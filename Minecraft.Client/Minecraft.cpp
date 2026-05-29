@@ -1845,6 +1845,18 @@ void Minecraft::run_middle()
 				{
 					if( setLocalPlayerIdx(i) )
 					{
+						if(i==iPrimaryPad)
+						{
+							switch(app.GetXuiAction(i))
+							{
+							case eAppAction_ExitWorldCapturedThumbnail:
+							case eAppAction_SaveGameCapturedThumbnail:
+							case eAppAction_AutosaveSaveGameCapturedThumbnail:
+								app.CaptureSaveThumbnail();
+								break;
+							}
+						}
+
 						PIXBeginNamedEvent(0,"Game render player idx %d",i);
 						RenderManager.StateSetViewport((C4JRender::eViewportType)player->m_iScreenSection);
 						gameRenderer->render(timer->a, bFirst);
@@ -1857,16 +1869,6 @@ void Minecraft::run_middle()
 							// PS4 does much of the screen-capturing for every frame, to simplify the synchronisation when we actually want a capture. This call tells it the point in the frame to do it.
 							RenderManager.InternalScreenCapture();
 #endif
-							// check to see if we need to capture a screenshot for the save game thumbnail
-							switch(app.GetXuiAction(i))
-							{
-							case eAppAction_ExitWorldCapturedThumbnail:
-							case eAppAction_SaveGameCapturedThumbnail:
-							case eAppAction_AutosaveSaveGameCapturedThumbnail:
-								// capture the save thumbnail
-								app.CaptureSaveThumbnail();
-								break;
-							}
 						}
 					}
 				}

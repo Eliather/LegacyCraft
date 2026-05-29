@@ -31,6 +31,9 @@
 #ifdef __PSVITA__
 #include "message_dialog.h"
 #endif
+#ifdef _WINDOWS64
+#include "..\zlib\zlib.h"
+#endif
 
 
 #ifdef SONY_REMOTE_STORAGE_DOWNLOAD
@@ -66,7 +69,509 @@ namespace
 		std::string saveId;
 		std::string displayTitle;
 		__int64 modifiedTime;
+		std::vector<unsigned char> thumbnailData;
 	};
+
+	std::wstring Utf8ToWideString(const char *value)
+	{
+		if(value == NULL || value[0] == 0)
+		{
+			return std::wstring();
+		}
+
+		const int wideLength = MultiByteToWideChar(CP_UTF8, 0, value, -1, NULL, 0);
+		if(wideLength <= 1)
+		{
+			return convStringToWstring(value);
+		}
+
+		std::wstring wideValue(wideLength, L'\0');
+		MultiByteToWideChar(CP_UTF8, 0, value, -1, &wideValue[0], wideLength);
+		wideValue.resize(wideLength - 1);
+		return wideValue;
+	}
+
+	const DWORD WINDOWS64_SAVE_LIST_ICON_SIZE = 128;
+	static const BYTE WINDOWS64_PNG_SIGNATURE[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
+
+	void AppendBigEndianUInt32(std::vector<unsigned char> &buffer, DWORD value)
+	{
+		buffer.push_back((BYTE)((value >> 24) & 0xFF));
+		buffer.push_back((BYTE)((value >> 16) & 0xFF));
+		buffer.push_back((BYTE)((value >> 8) & 0xFF));
+		buffer.push_back((BYTE)(value & 0xFF));
+	}
+
+	void AppendPngChunk(std::vector<unsigned char> &pngData, const char chunkType[4], const BYTE *chunkData, DWORD chunkSize)
+	{
+		AppendBigEndianUInt32(pngData, chunkSize);
+		pngData.insert(pngData.end(), chunkType, chunkType + 4);
+		if(chunkData != NULL && chunkSize > 0)
+		{
+			pngData.insert(pngData.end(), chunkData, chunkData + chunkSize);
+		}
+
+		uLong crcValue = crc32(0L, Z_NULL, 0);
+		crcValue = crc32(crcValue, (const Bytef *)chunkType, 4);
+		if(chunkData != NULL && chunkSize > 0)
+		{
+			crcValue = crc32(crcValue, (const Bytef *)chunkData, chunkSize);
+		}
+		AppendBigEndianUInt32(pngData, (DWORD)crcValue);
+	}
+
+	bool EncodeArgbPixelsAsPng(const int *argbPixels, DWORD width, DWORD height, std::vector<unsigned char> &pngData)
+	{
+		pngData.clear();
+		if(argbPixels == NULL || width == 0 || height == 0)
+		{
+			return false;
+		}
+
+		const DWORD rowBytes = width * 4;
+		const size_t filteredRowBytes = (size_t)rowBytes + 1;
+		std::vector<unsigned char> filteredPixels(filteredRowBytes * height);
+
+		for(DWORD y = 0; y < height; ++y)
+		{
+			unsigned char *destRow = &filteredPixels[filteredRowBytes * y];
+			destRow[0] = 0;
+			for(DWORD x = 0; x < width; ++x)
+			{
+				const unsigned int argb = (unsigned int)argbPixels[(y * width) + x];
+				unsigned char *destPixel = destRow + 1 + (x * 4);
+				destPixel[0] = (BYTE)((argb >> 16) & 0xFF);
+				destPixel[1] = (BYTE)((argb >> 8) & 0xFF);
+				destPixel[2] = (BYTE)(argb & 0xFF);
+				destPixel[3] = (BYTE)((argb >> 24) & 0xFF);
+			}
+		}
+
+		uLongf compressedSize = compressBound((uLong)filteredPixels.size());
+		std::vector<unsigned char> compressedPixels((size_t)compressedSize);
+		if(compress2((Bytef *)&compressedPixels[0], &compressedSize, (const Bytef *)&filteredPixels[0], (uLong)filteredPixels.size(), Z_BEST_SPEED) != Z_OK)
+		{
+			return false;
+		}
+		compressedPixels.resize((size_t)compressedSize);
+
+		pngData.insert(pngData.end(), WINDOWS64_PNG_SIGNATURE, WINDOWS64_PNG_SIGNATURE + 8);
+
+		BYTE ihdr[13];
+		ihdr[0] = (BYTE)((width >> 24) & 0xFF);
+		ihdr[1] = (BYTE)((width >> 16) & 0xFF);
+		ihdr[2] = (BYTE)((width >> 8) & 0xFF);
+		ihdr[3] = (BYTE)(width & 0xFF);
+		ihdr[4] = (BYTE)((height >> 24) & 0xFF);
+		ihdr[5] = (BYTE)((height >> 16) & 0xFF);
+		ihdr[6] = (BYTE)((height >> 8) & 0xFF);
+		ihdr[7] = (BYTE)(height & 0xFF);
+		ihdr[8] = 8;
+		ihdr[9] = 6;
+		ihdr[10] = 0;
+		ihdr[11] = 0;
+		ihdr[12] = 0;
+
+		AppendPngChunk(pngData, "IHDR", ihdr, sizeof(ihdr));
+		AppendPngChunk(pngData, "IDAT", compressedPixels.empty() ? NULL : &compressedPixels[0], (DWORD)compressedPixels.size());
+		AppendPngChunk(pngData, "IEND", NULL, 0);
+		return true;
+	}
+
+	int SampleArgbBilinear(const int *argbPixels, DWORD width, DWORD height, float sampleX, float sampleY)
+	{
+		if(width == 0 || height == 0)
+		{
+			return 0;
+		}
+
+		if(sampleX < 0.0f) sampleX = 0.0f;
+		if(sampleY < 0.0f) sampleY = 0.0f;
+		const float maxX = (float)(width - 1);
+		const float maxY = (float)(height - 1);
+		if(sampleX > maxX) sampleX = maxX;
+		if(sampleY > maxY) sampleY = maxY;
+
+		const int x0 = (int)sampleX;
+		const int y0 = (int)sampleY;
+		const int x1 = (x0 + 1 < (int)width) ? (x0 + 1) : x0;
+		const int y1 = (y0 + 1 < (int)height) ? (y0 + 1) : y0;
+		const float fx = sampleX - (float)x0;
+		const float fy = sampleY - (float)y0;
+
+		const unsigned int c00 = (unsigned int)argbPixels[(y0 * width) + x0];
+		const unsigned int c10 = (unsigned int)argbPixels[(y0 * width) + x1];
+		const unsigned int c01 = (unsigned int)argbPixels[(y1 * width) + x0];
+		const unsigned int c11 = (unsigned int)argbPixels[(y1 * width) + x1];
+
+		const float w00 = (1.0f - fx) * (1.0f - fy);
+		const float w10 = fx * (1.0f - fy);
+		const float w01 = (1.0f - fx) * fy;
+		const float w11 = fx * fy;
+
+		int outA = (int)((((c00 >> 24) & 0xFF) * w00) + (((c10 >> 24) & 0xFF) * w10) + (((c01 >> 24) & 0xFF) * w01) + (((c11 >> 24) & 0xFF) * w11) + 0.5f);
+		int outR = (int)((((c00 >> 16) & 0xFF) * w00) + (((c10 >> 16) & 0xFF) * w10) + (((c01 >> 16) & 0xFF) * w01) + (((c11 >> 16) & 0xFF) * w11) + 0.5f);
+		int outG = (int)((((c00 >> 8) & 0xFF) * w00) + (((c10 >> 8) & 0xFF) * w10) + (((c01 >> 8) & 0xFF) * w01) + (((c11 >> 8) & 0xFF) * w11) + 0.5f);
+		int outB = (int)(((c00 & 0xFF) * w00) + ((c10 & 0xFF) * w10) + ((c01 & 0xFF) * w01) + ((c11 & 0xFF) * w11) + 0.5f);
+
+		return ((outA & 0xFF) << 24) | ((outR & 0xFF) << 16) | ((outG & 0xFF) << 8) | (outB & 0xFF);
+	}
+
+	int GetMaxChannelDifference(unsigned int left, unsigned int right)
+	{
+		const int alphaDiff = abs((int)((left >> 24) & 0xFF) - (int)((right >> 24) & 0xFF));
+		const int redDiff = abs((int)((left >> 16) & 0xFF) - (int)((right >> 16) & 0xFF));
+		const int greenDiff = abs((int)((left >> 8) & 0xFF) - (int)((right >> 8) & 0xFF));
+		const int blueDiff = abs((int)(left & 0xFF) - (int)(right & 0xFF));
+
+		int maxDiff = alphaDiff;
+		if(redDiff > maxDiff) maxDiff = redDiff;
+		if(greenDiff > maxDiff) maxDiff = greenDiff;
+		if(blueDiff > maxDiff) maxDiff = blueDiff;
+		return maxDiff;
+	}
+
+	unsigned int AverageCornerColor(const int *argbPixels, DWORD width, DWORD height)
+	{
+		const unsigned int topLeft = (unsigned int)argbPixels[0];
+		const unsigned int topRight = (unsigned int)argbPixels[width - 1];
+		const unsigned int bottomLeft = (unsigned int)argbPixels[(height - 1) * width];
+		const unsigned int bottomRight = (unsigned int)argbPixels[(height * width) - 1];
+
+		const unsigned int alpha = ((((topLeft >> 24) & 0xFF) + ((topRight >> 24) & 0xFF) + ((bottomLeft >> 24) & 0xFF) + ((bottomRight >> 24) & 0xFF)) / 4) & 0xFF;
+		const unsigned int red = ((((topLeft >> 16) & 0xFF) + ((topRight >> 16) & 0xFF) + ((bottomLeft >> 16) & 0xFF) + ((bottomRight >> 16) & 0xFF)) / 4) & 0xFF;
+		const unsigned int green = ((((topLeft >> 8) & 0xFF) + ((topRight >> 8) & 0xFF) + ((bottomLeft >> 8) & 0xFF) + ((bottomRight >> 8) & 0xFF)) / 4) & 0xFF;
+		const unsigned int blue = (((topLeft & 0xFF) + (topRight & 0xFF) + (bottomLeft & 0xFF) + (bottomRight & 0xFF)) / 4) & 0xFF;
+
+		return (alpha << 24) | (red << 16) | (green << 8) | blue;
+	}
+
+	bool AreCornersUniform(const int *argbPixels, DWORD width, DWORD height, int tolerance)
+	{
+		const unsigned int topLeft = (unsigned int)argbPixels[0];
+		const unsigned int topRight = (unsigned int)argbPixels[width - 1];
+		const unsigned int bottomLeft = (unsigned int)argbPixels[(height - 1) * width];
+		const unsigned int bottomRight = (unsigned int)argbPixels[(height * width) - 1];
+
+		return
+			GetMaxChannelDifference(topLeft, topRight) <= tolerance &&
+			GetMaxChannelDifference(topLeft, bottomLeft) <= tolerance &&
+			GetMaxChannelDifference(topLeft, bottomRight) <= tolerance;
+	}
+
+	bool ColumnMostlyMatchesColor(const int *argbPixels, DWORD width, DWORD height, DWORD x, unsigned int color, int tolerance, float requiredCoverage)
+	{
+		if(x >= width || height == 0)
+		{
+			return false;
+		}
+
+		DWORD matchingPixels = 0;
+		for(DWORD y = 0; y < height; ++y)
+		{
+			const unsigned int pixel = (unsigned int)argbPixels[(y * width) + x];
+			if(GetMaxChannelDifference(pixel, color) <= tolerance)
+			{
+				++matchingPixels;
+			}
+		}
+
+		return ((float)matchingPixels / (float)height) >= requiredCoverage;
+	}
+
+	bool RowMostlyMatchesColor(const int *argbPixels, DWORD width, DWORD height, DWORD y, unsigned int color, int tolerance, float requiredCoverage)
+	{
+		if(y >= height || width == 0)
+		{
+			return false;
+		}
+
+		DWORD matchingPixels = 0;
+		for(DWORD x = 0; x < width; ++x)
+		{
+			const unsigned int pixel = (unsigned int)argbPixels[(y * width) + x];
+			if(GetMaxChannelDifference(pixel, color) <= tolerance)
+			{
+				++matchingPixels;
+			}
+		}
+
+		return ((float)matchingPixels / (float)width) >= requiredCoverage;
+	}
+
+	unsigned int AverageColumnColor(const int *argbPixels, DWORD width, DWORD minY, DWORD maxY, DWORD x)
+	{
+		unsigned int alpha = 0;
+		unsigned int red = 0;
+		unsigned int green = 0;
+		unsigned int blue = 0;
+		const DWORD count = maxY - minY + 1;
+		for(DWORD y = minY; y <= maxY; ++y)
+		{
+			const unsigned int pixel = (unsigned int)argbPixels[(y * width) + x];
+			alpha += (pixel >> 24) & 0xFF;
+			red += (pixel >> 16) & 0xFF;
+			green += (pixel >> 8) & 0xFF;
+			blue += pixel & 0xFF;
+		}
+
+		return ((alpha / count) << 24) | ((red / count) << 16) | ((green / count) << 8) | (blue / count);
+	}
+
+	unsigned int AverageRowColor(const int *argbPixels, DWORD width, DWORD minX, DWORD maxX, DWORD y)
+	{
+		unsigned int alpha = 0;
+		unsigned int red = 0;
+		unsigned int green = 0;
+		unsigned int blue = 0;
+		const DWORD count = maxX - minX + 1;
+		for(DWORD x = minX; x <= maxX; ++x)
+		{
+			const unsigned int pixel = (unsigned int)argbPixels[(y * width) + x];
+			alpha += (pixel >> 24) & 0xFF;
+			red += (pixel >> 16) & 0xFF;
+			green += (pixel >> 8) & 0xFF;
+			blue += pixel & 0xFF;
+		}
+
+		return ((alpha / count) << 24) | ((red / count) << 16) | ((green / count) << 8) | (blue / count);
+	}
+
+	bool ColumnRangeMostlyMatchesColor(const int *argbPixels, DWORD width, DWORD minY, DWORD maxY, DWORD x, unsigned int color, int tolerance, float requiredCoverage)
+	{
+		DWORD matchingPixels = 0;
+		const DWORD count = maxY - minY + 1;
+		for(DWORD y = minY; y <= maxY; ++y)
+		{
+			const unsigned int pixel = (unsigned int)argbPixels[(y * width) + x];
+			if(GetMaxChannelDifference(pixel, color) <= tolerance)
+			{
+				++matchingPixels;
+			}
+		}
+
+		return ((float)matchingPixels / (float)count) >= requiredCoverage;
+	}
+
+	bool RowRangeMostlyMatchesColor(const int *argbPixels, DWORD width, DWORD minX, DWORD maxX, DWORD y, unsigned int color, int tolerance, float requiredCoverage)
+	{
+		DWORD matchingPixels = 0;
+		const DWORD count = maxX - minX + 1;
+		for(DWORD x = minX; x <= maxX; ++x)
+		{
+			const unsigned int pixel = (unsigned int)argbPixels[(y * width) + x];
+			if(GetMaxChannelDifference(pixel, color) <= tolerance)
+			{
+				++matchingPixels;
+			}
+		}
+
+		return ((float)matchingPixels / (float)count) >= requiredCoverage;
+	}
+
+	void TrimMostlyUniformEdges(const int *argbPixels, DWORD width, DWORD height, DWORD &minX, DWORD &minY, DWORD &maxX, DWORD &maxY)
+	{
+		const int tolerance = 34;
+		const float coverage = 0.92f;
+		DWORD minimumCropSize = (width < height ? width : height) / 2;
+		if(minimumCropSize < 16)
+		{
+			minimumCropSize = 16;
+		}
+
+		for(int pass = 0; pass < 32; ++pass)
+		{
+			bool trimmed = false;
+
+			if(minX < maxX && (maxX - minX + 1) > minimumCropSize)
+			{
+				const unsigned int edgeColor = AverageColumnColor(argbPixels, width, minY, maxY, minX);
+				if(ColumnRangeMostlyMatchesColor(argbPixels, width, minY, maxY, minX, edgeColor, tolerance, coverage))
+				{
+					++minX;
+					trimmed = true;
+				}
+			}
+
+			if(maxX > minX && (maxX - minX + 1) > minimumCropSize)
+			{
+				const unsigned int edgeColor = AverageColumnColor(argbPixels, width, minY, maxY, maxX);
+				if(ColumnRangeMostlyMatchesColor(argbPixels, width, minY, maxY, maxX, edgeColor, tolerance, coverage))
+				{
+					--maxX;
+					trimmed = true;
+				}
+			}
+
+			if(minY < maxY && (maxY - minY + 1) > minimumCropSize)
+			{
+				const unsigned int edgeColor = AverageRowColor(argbPixels, width, minX, maxX, minY);
+				if(RowRangeMostlyMatchesColor(argbPixels, width, minX, maxX, minY, edgeColor, tolerance, coverage))
+				{
+					++minY;
+					trimmed = true;
+				}
+			}
+
+			if(maxY > minY && (maxY - minY + 1) > minimumCropSize)
+			{
+				const unsigned int edgeColor = AverageRowColor(argbPixels, width, minX, maxX, maxY);
+				if(RowRangeMostlyMatchesColor(argbPixels, width, minX, maxX, maxY, edgeColor, tolerance, coverage))
+				{
+					--maxY;
+					trimmed = true;
+				}
+			}
+
+			if(!trimmed)
+			{
+				break;
+			}
+		}
+	}
+
+	bool BuildSaveListThumbnailTexture(const unsigned char *rawData, DWORD rawDataSize, std::vector<unsigned char> &normalizedPngData, bool aggressiveCrop)
+	{
+		normalizedPngData.clear();
+		if(rawData == NULL || rawDataSize == 0)
+		{
+			return false;
+		}
+
+		D3DXIMAGE_INFO imageInfo;
+		ZeroMemory(&imageInfo, sizeof(imageInfo));
+		int *decodedPixels = NULL;
+		const HRESULT hr = RenderManager.LoadTextureData((BYTE *)rawData, rawDataSize, &imageInfo, &decodedPixels);
+		if(hr != ERROR_SUCCESS || decodedPixels == NULL || imageInfo.Width <= 0 || imageInfo.Height <= 0)
+		{
+			delete [] decodedPixels;
+			return false;
+		}
+
+		const DWORD sourceWidth = (DWORD)imageInfo.Width;
+		const DWORD sourceHeight = (DWORD)imageInfo.Height;
+
+		DWORD minX = sourceWidth;
+		DWORD minY = sourceHeight;
+		DWORD maxX = 0;
+		DWORD maxY = 0;
+		bool foundOpaquePixel = false;
+
+		for(DWORD y = 0; y < sourceHeight; ++y)
+		{
+			for(DWORD x = 0; x < sourceWidth; ++x)
+			{
+				const unsigned int argb = (unsigned int)decodedPixels[(y * sourceWidth) + x];
+				if(((argb >> 24) & 0xFF) > 8)
+				{
+					foundOpaquePixel = true;
+					if(x < minX) minX = x;
+					if(y < minY) minY = y;
+					if(x > maxX) maxX = x;
+					if(y > maxY) maxY = y;
+				}
+			}
+		}
+
+		if(!foundOpaquePixel)
+		{
+			minX = 0;
+			minY = 0;
+			maxX = sourceWidth - 1;
+			maxY = sourceHeight - 1;
+		}
+
+		if(aggressiveCrop && sourceWidth > 8 && sourceHeight > 8 && AreCornersUniform(decodedPixels, sourceWidth, sourceHeight, 24))
+		{
+			const unsigned int backgroundColor = AverageCornerColor(decodedPixels, sourceWidth, sourceHeight);
+			DWORD borderMinX = 0;
+			DWORD borderMinY = 0;
+			DWORD borderMaxX = sourceWidth - 1;
+			DWORD borderMaxY = sourceHeight - 1;
+
+			while(borderMinX < borderMaxX && ColumnMostlyMatchesColor(decodedPixels, sourceWidth, sourceHeight, borderMinX, backgroundColor, 28, 0.96f))
+			{
+				++borderMinX;
+			}
+
+			while(borderMaxX > borderMinX && ColumnMostlyMatchesColor(decodedPixels, sourceWidth, sourceHeight, borderMaxX, backgroundColor, 28, 0.96f))
+			{
+				--borderMaxX;
+			}
+
+			while(borderMinY < borderMaxY && RowMostlyMatchesColor(decodedPixels, sourceWidth, sourceHeight, borderMinY, backgroundColor, 28, 0.96f))
+			{
+				++borderMinY;
+			}
+
+			while(borderMaxY > borderMinY && RowMostlyMatchesColor(decodedPixels, sourceWidth, sourceHeight, borderMaxY, backgroundColor, 28, 0.96f))
+			{
+				--borderMaxY;
+			}
+
+			if(borderMinX < borderMaxX && borderMinY < borderMaxY)
+			{
+				if(borderMinX > minX) minX = borderMinX;
+				if(borderMinY > minY) minY = borderMinY;
+				if(borderMaxX < maxX) maxX = borderMaxX;
+				if(borderMaxY < maxY) maxY = borderMaxY;
+			}
+		}
+
+		if(aggressiveCrop && minX < maxX && minY < maxY)
+		{
+			TrimMostlyUniformEdges(decodedPixels, sourceWidth, sourceHeight, minX, minY, maxX, maxY);
+		}
+
+		DWORD cropWidth = (maxX >= minX) ? (maxX - minX + 1) : sourceWidth;
+		DWORD cropHeight = (maxY >= minY) ? (maxY - minY + 1) : sourceHeight;
+		DWORD squareSize = cropWidth > cropHeight ? cropWidth : cropHeight;
+		const DWORD maxSquareSize = sourceWidth < sourceHeight ? sourceWidth : sourceHeight;
+		if(squareSize > maxSquareSize)
+		{
+			squareSize = maxSquareSize;
+		}
+		if(squareSize == 0)
+		{
+			squareSize = maxSquareSize;
+		}
+		if(squareSize == 0)
+		{
+			delete [] decodedPixels;
+			return false;
+		}
+
+		int cropLeft = (int)minX + (((int)cropWidth - (int)squareSize) / 2);
+		int cropTop = (int)minY + (((int)cropHeight - (int)squareSize) / 2);
+		if(cropLeft < 0) cropLeft = 0;
+		if(cropTop < 0) cropTop = 0;
+		if((DWORD)cropLeft + squareSize > sourceWidth) cropLeft = (int)(sourceWidth - squareSize);
+		if((DWORD)cropTop + squareSize > sourceHeight) cropTop = (int)(sourceHeight - squareSize);
+
+		std::vector<int> resizedArgb(WINDOWS64_SAVE_LIST_ICON_SIZE * WINDOWS64_SAVE_LIST_ICON_SIZE);
+		for(DWORD y = 0; y < WINDOWS64_SAVE_LIST_ICON_SIZE; ++y)
+		{
+			for(DWORD x = 0; x < WINDOWS64_SAVE_LIST_ICON_SIZE; ++x)
+			{
+				const float sampleX = cropLeft + (((float)x + 0.5f) * ((float)squareSize / (float)WINDOWS64_SAVE_LIST_ICON_SIZE)) - 0.5f;
+				const float sampleY = cropTop + (((float)y + 0.5f) * ((float)squareSize / (float)WINDOWS64_SAVE_LIST_ICON_SIZE)) - 0.5f;
+				resizedArgb[(y * WINDOWS64_SAVE_LIST_ICON_SIZE) + x] = SampleArgbBilinear(decodedPixels, sourceWidth, sourceHeight, sampleX, sampleY);
+			}
+		}
+
+		delete [] decodedPixels;
+		return EncodeArgbPixelsAsPng(&resizedArgb[0], WINDOWS64_SAVE_LIST_ICON_SIZE, WINDOWS64_SAVE_LIST_ICON_SIZE, normalizedPngData);
+	}
+
+	std::wstring BuildWindows64SaveListTextureName(const wchar_t *baseTextureName)
+	{
+		if(baseTextureName == NULL || baseTextureName[0] == 0)
+		{
+			return std::wstring();
+		}
+
+		return std::wstring(baseTextureName) + L"_SaveListThumb";
+	}
 
 	std::string BuildSaveListItemLabel(const std::string &title, const std::string &timestampText)
 	{
@@ -562,6 +1067,31 @@ namespace
 		return WriteWholeStorageSaveFile(file.getPath(), data, dataSize);
 	}
 
+	bool TryLoadWindows64SaveThumbnailSidecar(const std::wstring &storageDirPath, std::vector<unsigned char> &thumbnailData)
+	{
+		thumbnailData.clear();
+
+		const std::wstring thumbnailPngPath = CombineWindows64Path(storageDirPath, L"thumbnail.png");
+		if(Windows64PathIsFile(thumbnailPngPath) && ReadWholeStorageSaveFile(thumbnailPngPath, thumbnailData) && !thumbnailData.empty())
+		{
+			return true;
+		}
+
+		const std::wstring thumbnailJpgPath = CombineWindows64Path(storageDirPath, L"thumbnail.jpg");
+		if(Windows64PathIsFile(thumbnailJpgPath) && ReadWholeStorageSaveFile(thumbnailJpgPath, thumbnailData) && !thumbnailData.empty())
+		{
+			return true;
+		}
+
+		const std::wstring thumbnailBmpPath = CombineWindows64Path(storageDirPath, L"thumbnail.bmp");
+		if(Windows64PathIsFile(thumbnailBmpPath) && ReadWholeStorageSaveFile(thumbnailBmpPath, thumbnailData) && !thumbnailData.empty())
+		{
+			return true;
+		}
+
+		return false;
+	}
+
 	class Windows64EditableSaveFileOriginal : public ConsoleSaveFileOriginal
 	{
 	public:
@@ -850,6 +1380,8 @@ namespace
 							entry.displayTitle = "Damaged Save";
 						}
 					}
+
+					TryLoadWindows64SaveThumbnailSidecar(storageDirPath, entry.thumbnailData);
 
 					entries.push_back(entry);
 				}
@@ -1235,7 +1767,7 @@ UIScene_LoadOrJoinMenu::~UIScene_LoadOrJoinMenu()
     {
         for(int i = 0; i < m_iSaveDetailsCount; ++i)
         {
-            delete m_saveDetails[i].pbThumbnailData;
+            delete [] m_saveDetails[i].pbThumbnailData;
         }
         delete [] m_saveDetails;
     }
@@ -1549,10 +2081,10 @@ void UIScene_LoadOrJoinMenu::tick()
                     {
                         if(m_saveDetails[i].pbThumbnailData!=NULL)
                         {
-                            delete m_saveDetails[i].pbThumbnailData;
+                            delete [] m_saveDetails[i].pbThumbnailData;
                         }
                     }
-                    delete m_saveDetails;
+                    delete [] m_saveDetails;
                 }
                 m_saveDetails = new SaveListDetails[m_pSaveDetails->iSaveC];
 
@@ -1664,9 +2196,16 @@ void UIScene_LoadOrJoinMenu::tick()
 #endif
                 if( m_saveDetails[m_iRequestingThumbnailId].pbThumbnailData )
                 {
-                    registerSubstitutionTexture((wchar_t *)u16Message,m_saveDetails[m_iRequestingThumbnailId].pbThumbnailData,m_saveDetails[m_iRequestingThumbnailId].dwThumbnailSize);
+					SetSaveListItemTexture(
+						m_iRequestingThumbnailId + m_iDefaultButtonsC,
+						(wchar_t *)u16Message,
+						m_saveDetails[m_iRequestingThumbnailId].pbThumbnailData,
+						m_saveDetails[m_iRequestingThumbnailId].dwThumbnailSize);
                 }
-                m_buttonListSaves.setTextureName(m_iRequestingThumbnailId + m_iDefaultButtonsC, (wchar_t *)u16Message);
+                else
+				{
+                    m_buttonListSaves.setTextureName(m_iRequestingThumbnailId + m_iDefaultButtonsC, (wchar_t *)u16Message);
+				}
 
                 ++m_iRequestingThumbnailId;
                 if( m_iRequestingThumbnailId < (m_buttonListSaves.getItemCount() - m_iDefaultButtonsC ))
@@ -1785,6 +2324,38 @@ void UIScene_LoadOrJoinMenu::tick()
 
 }
 
+void UIScene_LoadOrJoinMenu::SetSaveListItemTexture(int itemIndex, const wchar_t *baseTextureName, PBYTE pbData, DWORD dwLength, bool aggressiveCrop)
+{
+	if(itemIndex < 0 || baseTextureName == NULL || baseTextureName[0] == 0 || pbData == NULL || dwLength == 0)
+	{
+		return;
+	}
+
+#ifdef _WINDOWS64
+	const std::wstring listTextureName = BuildWindows64SaveListTextureName(baseTextureName);
+	const wchar_t *finalTextureName = listTextureName.empty() ? baseTextureName : listTextureName.c_str();
+
+	std::vector<unsigned char> normalizedThumbnailData;
+	if(BuildSaveListThumbnailTexture(pbData, dwLength, normalizedThumbnailData, aggressiveCrop) && !normalizedThumbnailData.empty())
+	{
+		BYTE *persistentTextureData = new BYTE[normalizedThumbnailData.size()];
+		memcpy(persistentTextureData, &normalizedThumbnailData[0], normalizedThumbnailData.size());
+		registerSubstitutionTexture(finalTextureName, persistentTextureData, (DWORD)normalizedThumbnailData.size(), true);
+	}
+	else
+	{
+		BYTE *persistentTextureData = new BYTE[dwLength];
+		memcpy(persistentTextureData, pbData, dwLength);
+		registerSubstitutionTexture(finalTextureName, persistentTextureData, dwLength, true);
+	}
+
+	m_buttonListSaves.setTextureName(itemIndex, finalTextureName);
+#else
+	registerSubstitutionTexture(baseTextureName, pbData, dwLength);
+	m_buttonListSaves.setTextureName(itemIndex, baseTextureName);
+#endif
+}
+
 void UIScene_LoadOrJoinMenu::GetSaveInfo()
 {
     unsigned int uiSaveC=0;
@@ -1897,7 +2468,7 @@ bool UIScene_LoadOrJoinMenu::PopulateWindows64DirectDiskSaves()
 		{
 			if(m_saveDetails[i].pbThumbnailData!=NULL)
 			{
-				delete m_saveDetails[i].pbThumbnailData;
+				delete [] m_saveDetails[i].pbThumbnailData;
 			}
 		}
 		delete [] m_saveDetails;
@@ -1916,6 +2487,23 @@ bool UIScene_LoadOrJoinMenu::PopulateWindows64DirectDiskSaves()
 		m_saveDetails[i].saveId = -1;
 		strncpy(m_saveDetails[i].UTF8SaveName, entries[i].displayTitle.c_str(), 127);
 		strncpy(m_saveDetails[i].UTF8SaveFilename, entries[i].saveId.c_str(), MAX_SAVEFILENAME_LENGTH - 1);
+
+		if(!entries[i].thumbnailData.empty())
+		{
+			m_saveDetails[i].dwThumbnailSize = (DWORD)entries[i].thumbnailData.size();
+			m_saveDetails[i].pbThumbnailData = new BYTE[m_saveDetails[i].dwThumbnailSize];
+			memcpy(m_saveDetails[i].pbThumbnailData, &entries[i].thumbnailData[0], m_saveDetails[i].dwThumbnailSize);
+
+			const std::wstring textureName = Utf8ToWideString(m_saveDetails[i].UTF8SaveFilename);
+			if(!textureName.empty())
+			{
+				SetSaveListItemTexture(
+					m_iDefaultButtonsC + i,
+					textureName.c_str(),
+					m_saveDetails[i].pbThumbnailData,
+					m_saveDetails[i].dwThumbnailSize);
+			}
+		}
 	}
 
 	m_controlSavesTimer.setVisible(false);
@@ -1943,7 +2531,7 @@ void UIScene_LoadOrJoinMenu::RefreshWindows64DirectDiskSaves(int preferredSelect
 		{
 			if(m_saveDetails[i].pbThumbnailData != NULL)
 			{
-				delete m_saveDetails[i].pbThumbnailData;
+				delete [] m_saveDetails[i].pbThumbnailData;
 			}
 		}
 
@@ -2026,8 +2614,7 @@ void UIScene_LoadOrJoinMenu::AddDefaultButtons()
             {
                 wchar_t imageName[64];
                 swprintf(imageName,64,L"tpack%08x",tp->getId());
-                registerSubstitutionTexture(imageName, pbImageData, dwImageBytes);
-                m_buttonListSaves.setTextureName( m_buttonListSaves.getItemCount() - 1, imageName );
+				SetSaveListItemTexture(m_buttonListSaves.getItemCount() - 1, imageName, pbImageData, dwImageBytes, true);
             }
         }
 

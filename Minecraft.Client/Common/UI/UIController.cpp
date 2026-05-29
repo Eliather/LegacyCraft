@@ -175,6 +175,44 @@ namespace
 			return NULL;
 		}
 	}
+
+#ifdef _WINDOWS64
+	bool WideStringEndsWith(const wchar_t *value, const wchar_t *suffix)
+	{
+		if(value == NULL || suffix == NULL)
+		{
+			return false;
+		}
+
+		size_t valueLength = 0;
+		while(value[valueLength] != 0)
+		{
+			++valueLength;
+		}
+
+		size_t suffixLength = 0;
+		while(suffix[suffixLength] != 0)
+		{
+			++suffixLength;
+		}
+
+		if(suffixLength > valueLength)
+		{
+			return false;
+		}
+
+		const wchar_t *valueSuffix = value + valueLength - suffixLength;
+		for(size_t i = 0; i < suffixLength; ++i)
+		{
+			if(valueSuffix[i] != suffix[i])
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+#endif
 }
 
 #ifdef ENABLE_IGGY_PERFMON
@@ -1665,13 +1703,24 @@ GDrawTexture * RADLINK UIController::TextureSubstitutionCreateCallback ( void * 
 			Textures *t = Minecraft::GetInstance()->textures;
 			int id = t->getTexture(&image,C4JRender::TEXTURE_FORMAT_RxGyBzAw,false);
 
-	#if (defined __ORBIS__ || defined _DURANGO )
+#if (defined __ORBIS__ || defined _DURANGO )
 			*width = 96;
 			*height = 96;
-	#else
+#elif defined _WINDOWS64
+			if(WideStringEndsWith((wchar_t *)texture_name, L"_SaveListThumb") || WideStringEndsWith((wchar_t *)texture_name, L"_LoadMenuIcon"))
+			{
+				*width = 96;
+				*height = 96;
+			}
+			else
+			{
+				*width = 64;
+				*height = 64;
+			}
+#else
 			*width = 64;
 			*height = 64;
-	#endif
+#endif
 			*destroy_callback_data = (void *)id;
 
 			app.DebugPrintf("Found substitution texture %ls (%d) - %dx%d\n", (wchar_t *)texture_name, id, image.getWidth(), image.getHeight());

@@ -13,6 +13,9 @@
 #include "..\..\..\Minecraft.World\StringHelpers.h"
 #include "..\..\..\Minecraft.World\DirectoryLevelStorageSource.h"
 #include "..\..\DLCTexturePack.h"
+#ifdef _WINDOWS64
+#include "..\zlib\zlib.h"
+#endif
 
 #define GAME_CREATE_ONLINE_TIMER_ID 0
 #define GAME_CREATE_ONLINE_TIMER_TIME 100
@@ -25,6 +28,145 @@
 #ifdef _WINDOWS64
 namespace
 {
+	const DWORD WINDOWS64_LOAD_MENU_ICON_SIZE = 96;
+	static const BYTE WINDOWS64_PNG_SIGNATURE[8] = { 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n' };
+
+	void AppendBigEndianUInt32(std::vector<unsigned char> &buffer, DWORD value)
+	{
+		buffer.push_back((BYTE)((value >> 24) & 0xFF));
+		buffer.push_back((BYTE)((value >> 16) & 0xFF));
+		buffer.push_back((BYTE)((value >> 8) & 0xFF));
+		buffer.push_back((BYTE)(value & 0xFF));
+	}
+
+	void AppendPngChunk(std::vector<unsigned char> &pngData, const char chunkType[4], const BYTE *chunkData, DWORD chunkSize)
+	{
+		AppendBigEndianUInt32(pngData, chunkSize);
+		pngData.insert(pngData.end(), chunkType, chunkType + 4);
+		if(chunkData != NULL && chunkSize > 0)
+		{
+			pngData.insert(pngData.end(), chunkData, chunkData + chunkSize);
+		}
+
+		uLong crcValue = crc32(0L, Z_NULL, 0);
+		crcValue = crc32(crcValue, (const Bytef *)chunkType, 4);
+		if(chunkData != NULL && chunkSize > 0)
+		{
+			crcValue = crc32(crcValue, (const Bytef *)chunkData, chunkSize);
+		}
+		AppendBigEndianUInt32(pngData, (DWORD)crcValue);
+	}
+
+	bool EncodeArgbPixelsAsPng(const int *argbPixels, DWORD width, DWORD height, std::vector<unsigned char> &pngData)
+	{
+		pngData.clear();
+		if(argbPixels == NULL || width == 0 || height == 0)
+		{
+			return false;
+		}
+
+		const DWORD rowBytes = width * 4;
+		const size_t filteredRowBytes = (size_t)rowBytes + 1;
+		std::vector<unsigned char> filteredPixels(filteredRowBytes * height);
+
+		for(DWORD y = 0; y < height; ++y)
+		{
+			unsigned char *destRow = &filteredPixels[filteredRowBytes * y];
+			destRow[0] = 0;
+			for(DWORD x = 0; x < width; ++x)
+			{
+				const unsigned int argb = (unsigned int)argbPixels[(y * width) + x];
+				unsigned char *destPixel = destRow + 1 + (x * 4);
+				destPixel[0] = (BYTE)((argb >> 16) & 0xFF);
+				destPixel[1] = (BYTE)((argb >> 8) & 0xFF);
+				destPixel[2] = (BYTE)(argb & 0xFF);
+				destPixel[3] = (BYTE)((argb >> 24) & 0xFF);
+			}
+		}
+
+		uLongf compressedSize = compressBound((uLong)filteredPixels.size());
+		std::vector<unsigned char> compressedPixels((size_t)compressedSize);
+		if(compress2((Bytef *)&compressedPixels[0], &compressedSize, (const Bytef *)&filteredPixels[0], (uLong)filteredPixels.size(), Z_BEST_SPEED) != Z_OK)
+		{
+			return false;
+		}
+		compressedPixels.resize((size_t)compressedSize);
+
+		pngData.insert(pngData.end(), WINDOWS64_PNG_SIGNATURE, WINDOWS64_PNG_SIGNATURE + 8);
+
+		BYTE ihdr[13];
+		ihdr[0] = (BYTE)((width >> 24) & 0xFF);
+		ihdr[1] = (BYTE)((width >> 16) & 0xFF);
+		ihdr[2] = (BYTE)((width >> 8) & 0xFF);
+		ihdr[3] = (BYTE)(width & 0xFF);
+		ihdr[4] = (BYTE)((height >> 24) & 0xFF);
+		ihdr[5] = (BYTE)((height >> 16) & 0xFF);
+		ihdr[6] = (BYTE)((height >> 8) & 0xFF);
+		ihdr[7] = (BYTE)(height & 0xFF);
+		ihdr[8] = 8;
+		ihdr[9] = 6;
+		ihdr[10] = 0;
+		ihdr[11] = 0;
+		ihdr[12] = 0;
+
+		AppendPngChunk(pngData, "IHDR", ihdr, sizeof(ihdr));
+		AppendPngChunk(pngData, "IDAT", compressedPixels.empty() ? NULL : &compressedPixels[0], (DWORD)compressedPixels.size());
+		AppendPngChunk(pngData, "IEND", NULL, 0);
+		return true;
+	}
+
+	int SampleArgbNearest(const int *argbPixels, DWORD width, DWORD height, DWORD cropLeft, DWORD cropTop, DWORD cropSize, DWORD x, DWORD y)
+	{
+		DWORD sourceX = cropLeft + ((x * cropSize) / WINDOWS64_LOAD_MENU_ICON_SIZE);
+		DWORD sourceY = cropTop + ((y * cropSize) / WINDOWS64_LOAD_MENU_ICON_SIZE);
+		if(sourceX >= width) sourceX = width - 1;
+		if(sourceY >= height) sourceY = height - 1;
+
+		unsigned int argb = (unsigned int)argbPixels[(sourceY * width) + sourceX];
+		if(((argb >> 24) & 0xFF) <= 8 && (argb & 0x00FFFFFF) != 0)
+		{
+			argb |= 0xFF000000;
+		}
+		return (int)argb;
+	}
+
+	bool BuildLoadMenuIconTexture(const unsigned char *rawData, DWORD rawDataSize, std::vector<unsigned char> &normalizedPngData)
+	{
+		normalizedPngData.clear();
+		if(rawData == NULL || rawDataSize == 0)
+		{
+			return false;
+		}
+
+		D3DXIMAGE_INFO imageInfo;
+		ZeroMemory(&imageInfo, sizeof(imageInfo));
+		int *decodedPixels = NULL;
+		const HRESULT hr = RenderManager.LoadTextureData((BYTE *)rawData, rawDataSize, &imageInfo, &decodedPixels);
+		if(hr != ERROR_SUCCESS || decodedPixels == NULL || imageInfo.Width <= 0 || imageInfo.Height <= 0)
+		{
+			delete [] decodedPixels;
+			return false;
+		}
+
+		const DWORD sourceWidth = (DWORD)imageInfo.Width;
+		const DWORD sourceHeight = (DWORD)imageInfo.Height;
+		const DWORD cropSize = sourceWidth < sourceHeight ? sourceWidth : sourceHeight;
+		const DWORD cropLeft = (sourceWidth - cropSize) / 2;
+		const DWORD cropTop = (sourceHeight - cropSize) / 2;
+
+		std::vector<int> resizedArgb(WINDOWS64_LOAD_MENU_ICON_SIZE * WINDOWS64_LOAD_MENU_ICON_SIZE);
+		for(DWORD y = 0; y < WINDOWS64_LOAD_MENU_ICON_SIZE; ++y)
+		{
+			for(DWORD x = 0; x < WINDOWS64_LOAD_MENU_ICON_SIZE; ++x)
+			{
+				resizedArgb[(y * WINDOWS64_LOAD_MENU_ICON_SIZE) + x] = SampleArgbNearest(decodedPixels, sourceWidth, sourceHeight, cropLeft, cropTop, cropSize, x, y);
+			}
+		}
+
+		delete [] decodedPixels;
+		return EncodeArgbPixelsAsPng(&resizedArgb[0], WINDOWS64_LOAD_MENU_ICON_SIZE, WINDOWS64_LOAD_MENU_ICON_SIZE, normalizedPngData);
+	}
+
 	std::wstring Utf8ToWideString(const char *value)
 	{
 		if(value == NULL || value[0] == 0)
@@ -176,10 +318,22 @@ int UIScene_LoadMenu::LoadSaveDataThumbnailReturned(LPVOID lpParam,PBYTE pbThumb
 
 	if(pbThumbnail && dwThumbnailBytes)
 	{
+#ifndef _WINDOWS64
 		pClass->registerSubstitutionTexture(pClass->m_thumbnailName,pbThumbnail,dwThumbnailBytes);
 
 		pClass->m_pbThumbnailData = pbThumbnail;
 		pClass->m_uiThumbnailSize = dwThumbnailBytes;
+#else
+		if(pClass->m_bOwnsThumbnailData && pClass->m_pbThumbnailData != NULL)
+		{
+			delete [] pClass->m_pbThumbnailData;
+		}
+
+		pClass->m_uiThumbnailSize = dwThumbnailBytes;
+		pClass->m_pbThumbnailData = new BYTE[pClass->m_uiThumbnailSize];
+		memcpy(pClass->m_pbThumbnailData, pbThumbnail, pClass->m_uiThumbnailSize);
+		pClass->m_bOwnsThumbnailData = true;
+#endif
 		pClass->m_bSaveThumbnailReady = true;
 	}
 	else
@@ -241,6 +395,9 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 	m_bThumbnailGetFailed = false;
 	m_bIsCorrupt = false;
 	m_seed = 0;
+	m_pbThumbnailData = NULL;
+	m_uiThumbnailSize = 0;
+	m_bOwnsThumbnailData = false;
 #ifdef _WINDOWS64
 	m_bWindows64DirectDiskSave = false;
 	ZeroMemory(m_windows64DirectSaveId, sizeof(m_windows64DirectSaveId));
@@ -338,12 +495,22 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 		{
 			m_labelGameName.init(params->saveDetails->UTF8SaveName);
 			m_bRetrievingSaveThumbnail = false;
+			m_thumbnailName = Utf8ToWideString(params->saveDetails->UTF8SaveFilename);
 			app.SetPreparedSaveIdentity(Utf8ToWideString(params->saveDetails->UTF8SaveName).c_str(), params->saveDetails->UTF8SaveFilename);
 			if(m_iSaveGameInfoIndex < 0)
 			{
 				m_bWindows64DirectDiskSave = true;
 				strncpy(m_windows64DirectSaveId, params->saveDetails->UTF8SaveFilename, MAX_SAVEFILENAME_LENGTH - 1);
 				strncpy(m_windows64DirectSaveName, params->saveDetails->UTF8SaveName, 127);
+			}
+
+			if(params->saveDetails->pbThumbnailData != NULL && params->saveDetails->dwThumbnailSize > 0)
+			{
+				m_uiThumbnailSize = params->saveDetails->dwThumbnailSize;
+				m_pbThumbnailData = new BYTE[m_uiThumbnailSize];
+				memcpy(m_pbThumbnailData, params->saveDetails->pbThumbnailData, m_uiThumbnailSize);
+				m_bOwnsThumbnailData = true;
+				m_bSaveThumbnailReady = true;
 			}
 		}
 #else
@@ -499,6 +666,15 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 	addTimer(GAME_CREATE_ONLINE_TIMER_ID,GAME_CREATE_ONLINE_TIMER_TIME);
 }
 
+UIScene_LoadMenu::~UIScene_LoadMenu()
+{
+	if(m_bOwnsThumbnailData && m_pbThumbnailData != NULL)
+	{
+		delete [] m_pbThumbnailData;
+		m_pbThumbnailData = NULL;
+	}
+}
+
 void UIScene_LoadMenu::updateTooltips()
 {
 	ui.SetTooltips( DEFAULT_XUI_MENU_USER, IDS_TOOLTIPS_SELECT,IDS_TOOLTIPS_BACK, -1, -1);
@@ -547,7 +723,33 @@ void UIScene_LoadMenu::tick()
 	{
 		m_bSaveThumbnailReady = false;
 
-		m_bitmapIcon.setTextureName( m_thumbnailName.c_str() );
+#ifdef _WINDOWS64
+		const std::wstring displayThumbnailName = m_thumbnailName.empty() ? std::wstring() : (m_thumbnailName + L"_LoadMenuIcon");
+#else
+		const std::wstring displayThumbnailName = m_thumbnailName;
+#endif
+
+		if(m_pbThumbnailData != NULL && m_uiThumbnailSize > 0 && !displayThumbnailName.empty() && !hasRegisteredSubstitutionTexture(displayThumbnailName))
+		{
+#ifdef _WINDOWS64
+			std::vector<unsigned char> normalizedIconData;
+			if(BuildLoadMenuIconTexture(m_pbThumbnailData, m_uiThumbnailSize, normalizedIconData) && !normalizedIconData.empty())
+			{
+				BYTE *persistentTextureData = new BYTE[normalizedIconData.size()];
+				memcpy(persistentTextureData, &normalizedIconData[0], normalizedIconData.size());
+				registerSubstitutionTexture(displayThumbnailName, persistentTextureData, (DWORD)normalizedIconData.size(), true);
+			}
+			else
+			{
+				BYTE *persistentTextureData = new BYTE[m_uiThumbnailSize];
+				memcpy(persistentTextureData, m_pbThumbnailData, m_uiThumbnailSize);
+				registerSubstitutionTexture(displayThumbnailName, persistentTextureData, m_uiThumbnailSize, true);
+			}
+#else
+			registerSubstitutionTexture(displayThumbnailName, m_pbThumbnailData, m_uiThumbnailSize);
+#endif
+		}
+		m_bitmapIcon.setTextureName( displayThumbnailName.c_str() );
 
 		// retrieve the seed value from the image metadata
 		bool bHostOptionsRead = false;

@@ -877,7 +877,11 @@ void ServerLevel::save(bool force, ProgressListener *progressListener, bool bAut
 	saveLevelData();
 	PIXEndNamedEvent();
 
-	if (progressListener != NULL) progressListener->progressStage(IDS_PROGRESS_SAVING_CHUNKS);
+	if (progressListener != NULL)
+	{
+		progressListener->progressStage(IDS_PROGRESS_SAVING_CHUNKS);
+		progressListener->progressStagePercentage(1);
+	}
 
 #if defined(_XBOX_ONE) || defined(__ORBIS__)
 	// Our autosave is a minimal save. All the chunks are saves by the constant save process
@@ -936,8 +940,13 @@ void ServerLevel::saveToDisc(ProgressListener *progressListener, bool autosave)
 		}
 	}
 
-	if (progressListener != NULL) progressListener->progressStage(IDS_PROGRESS_SAVING_TO_DISC);
+	if (progressListener != NULL)
+	{
+		progressListener->progressStage(IDS_PROGRESS_SAVING_TO_DISC);
+		progressListener->progressStagePercentage(1);
+	}
 	levelStorage->flushSaveFile(autosave);
+	if (progressListener != NULL) progressListener->progressStagePercentage(100);
 }
 
 void ServerLevel::saveLevelData()
