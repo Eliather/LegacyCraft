@@ -3643,6 +3643,9 @@
     <ClInclude Include="Common\UI\UIScene_Keyboard.h">
       <Filter>Common\Source Files\UI\Scenes</Filter>
     </ClInclude>
+    <ClInclude Include="Common\UI\UIScene_NameInput.h">
+      <Filter>Common\Source Files\UI\Scenes</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -5645,6 +5648,9 @@
       <Filter>Orbis\Network</Filter>
     </ClCompile>
     <ClCompile Include="Common\UI\UIScene_Keyboard.cpp">
+      <Filter>Common\Source Files\UI\Scenes</Filter>
+    </ClCompile>
+    <ClCompile Include="Common\UI\UIScene_NameInput.cpp">
       <Filter>Common\Source Files\UI\Scenes</Filter>
     </ClCompile>
   </ItemGroup>

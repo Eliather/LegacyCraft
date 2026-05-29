@@ -173,6 +173,28 @@ typedef struct _UIFullscreenProgressCompletionData
 	}
 } UIFullscreenProgressCompletionData;
 
+typedef int (*NameInputCompleteFunc)(LPVOID lpParam, bool bAccepted, const wchar_t *pwchText);
+
+typedef struct _NameInputParams
+{
+	int iPad;
+	wstring title;
+	wstring initialText;
+	int charLimit;
+	NameInputCompleteFunc completeFunc;
+	LPVOID completeFuncParam;
+
+	_NameInputParams()
+	{
+		iPad = 0;
+		title = L"";
+		initialText = L"";
+		charLimit = 15;
+		completeFunc = NULL;
+		completeFuncParam = NULL;
+	}
+} NameInputParams;
+
 // Create world
 typedef struct _CreateWorldMenuInitData
 {

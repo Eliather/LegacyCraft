@@ -10,7 +10,6 @@
 #include "..\..\MinecraftServer.h"
 #include "..\..\stubs.h"
 #include "UIControl_PlayerSkinPreview.h"
-#include "..\..\RenamePlayerScreen.h"
 #if defined(_WINDOWS64)
 #include "..\..\BufferedImage.h"
 #include "..\..\Tesselator.h"
@@ -156,6 +155,77 @@ namespace
 			return buttonLabel;
 		}
 		return GetLocalizedChangeNameFallback();
+	}
+
+	bool IsAcceptedNicknameCharacter(wchar_t ch)
+	{
+		return ((ch >= L'0' && ch <= L'9') ||
+				(ch >= L'A' && ch <= L'Z') ||
+				(ch >= L'a' && ch <= L'z') ||
+				ch == L'_');
+	}
+
+	wstring SanitiseNicknameInput(const wchar_t *pwchText)
+	{
+		wstring sanitised;
+		if(pwchText == NULL)
+		{
+			return sanitised;
+		}
+
+		while(*pwchText != 0 && sanitised.length() < 16)
+		{
+			if(IsAcceptedNicknameCharacter(*pwchText))
+			{
+				sanitised += *pwchText;
+			}
+			++pwchText;
+		}
+
+		return sanitised;
+	}
+
+	int MainMenuNameInputComplete(LPVOID lpParam, bool bAccepted, const wchar_t *pwchText)
+	{
+		UNREFERENCED_PARAMETER(lpParam);
+
+		if(!bAccepted)
+		{
+			return 0;
+		}
+
+		const wstring sanitisedName = SanitiseNicknameInput(pwchText);
+		if(sanitisedName.empty())
+		{
+			return 0;
+		}
+
+		UserData_Info::SetPlayerName(sanitisedName);
+		UserData_Info::Save();
+
+		Minecraft *minecraft = Minecraft::GetInstance();
+		if(minecraft != NULL && minecraft->user != NULL)
+		{
+			minecraft->user->name = UserData_Info::GetPlayerName();
+		}
+
+		return 0;
+	}
+
+	void OpenMainMenuNameInput(int iPad)
+	{
+		NameInputParams *params = new NameInputParams();
+		params->iPad = iPad;
+		params->title = GetMainMenuChangeNameButtonLabel();
+		params->initialText = UserData_Info::GetPlayerName();
+		params->charLimit = 16;
+		params->completeFunc = &MainMenuNameInputComplete;
+		params->completeFuncParam = NULL;
+
+		if(!ui.NavigateToScene(iPad, eUIScene_NameInput, params, eUILayer_Alert, eUIGroup_Fullscreen))
+		{
+			delete params;
+		}
 	}
 
 	void EnsureMainMenuLogoTexture(Minecraft *minecraft)
@@ -1587,11 +1657,12 @@ void UIScene_MainMenu::tick()
 	// The custom buttons should only be interactive if this specific scene has focus.
 	// This prevents clicks from "passing through" from submenus (like Play Game or MessageBox).
 	Minecraft *minecraft = Minecraft::GetInstance();
-	if(minecraft != NULL && hasFocus(ProfileManager.GetPrimaryPad()))
+	const bool nameInputOpen = (ui.FindScene(eUIScene_NameInput) != NULL);
+	if(minecraft != NULL && hasFocus(ProfileManager.GetPrimaryPad()) && !nameInputOpen)
 	{
 		if(g_mainMenuChangeNameButton.Update(minecraft))
 		{
-			minecraft->setScreen(new RenamePlayerScreen(minecraft->screen));
+			OpenMainMenuNameInput(ProfileManager.GetPrimaryPad());
 		}
 
 		// ── 6 Custom Menu Buttons ──

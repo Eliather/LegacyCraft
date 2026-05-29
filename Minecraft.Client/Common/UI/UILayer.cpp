@@ -387,6 +387,9 @@ bool UILayer::NavigateToScene(int iPad, EUIScene scene, void *initData)
 	case eUIScene_Keyboard:
 		newScene = new UIScene_Keyboard(iPad, initData, this);
 		break;
+	case eUIScene_NameInput:
+		newScene = new UIScene_NameInput(iPad, initData, this);
+		break;
 	case eUIScene_QuadrantSignin:
 		newScene = new UIScene_QuadrantSignin(iPad, initData, this);
 		break;

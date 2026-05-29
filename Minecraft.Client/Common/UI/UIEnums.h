@@ -112,6 +112,7 @@ enum EUIScene
 	eUIComponent_PressStartToPlay,
 	eUIComponent_MenuBackground,
 	eUIScene_Keyboard,
+	eUIScene_NameInput,
 	eUIScene_QuadrantSignin,
 	eUIScene_MessageBox,
 	eUIScene_Timer,

@@ -53,6 +53,7 @@
 #include "UIScene_MessageBox.h"
 #include "UIScene_Timer.h"
 #include "UIScene_Keyboard.h"
+#include "UIScene_NameInput.h"
 
 #include "UIScene_DebugOverlay.h"
 #include "UIScene_DebugOptions.h"

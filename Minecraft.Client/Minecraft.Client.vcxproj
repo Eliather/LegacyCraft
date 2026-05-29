@@ -728,6 +728,7 @@
     <ClInclude Include="Common\UI\IUIScene_TradingMenu.h" />
     <ClInclude Include="Common\UI\UIComponent_DebugUIMarketingGuide.h"></ClInclude>
     <ClInclude Include="Common\UI\UIScene_Keyboard.h"></ClInclude>
+    <ClInclude Include="Common\UI\UIScene_NameInput.h"></ClInclude>
     <ClInclude Include="Common\UI\UIComponent_MenuBackground.h"></ClInclude>
     <ClInclude Include="Common\UI\UIComponent_PressStartToPlay.h"></ClInclude>
     <ClInclude Include="Common\UI\UIControl_Base.h"></ClInclude>
@@ -3072,6 +3073,7 @@
     <ClCompile Include="Common\UI\IUIScene_TradingMenu.cpp" />
     <ClCompile Include="Common\UI\UIComponent_DebugUIMarketingGuide.cpp"></ClCompile>
     <ClCompile Include="Common\UI\UIScene_Keyboard.cpp"></ClCompile>
+    <ClCompile Include="Common\UI\UIScene_NameInput.cpp"></ClCompile>
     <ClCompile Include="Common\UI\UIComponent_MenuBackground.cpp"></ClCompile>
     <ClCompile Include="Common\UI\UIComponent_PressStartToPlay.cpp"></ClCompile>
     <ClCompile Include="Common\UI\UIControl_Base.cpp"></ClCompile>
