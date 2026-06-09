@@ -9,11 +9,28 @@ BufferedImage *MobSkinMemTextureProcessor::process(BufferedImage *in)
     height = 32;
 
     BufferedImage *out = new BufferedImage(width, height, BufferedImage::TYPE_INT_ARGB);
-    Graphics *g = out->getGraphics();
-    g->drawImage(in, 0, 0, NULL);
-    g->dispose();
-
     pixels = out->getData();
+
+    for(int i = 0; i < width * height; i++)
+    {
+        pixels[i] = 0;
+    }
+
+    int sourceWidth = in->getWidth();
+    int sourceHeight = in->getHeight();
+    int *sourcePixels = in->getData();
+    if(sourcePixels != NULL && sourceWidth > 0 && sourceHeight > 0)
+    {
+        int copyWidth = sourceWidth < width ? sourceWidth : width;
+        int copyHeight = sourceHeight < height ? sourceHeight : height;
+        for(int y = 0; y < copyHeight; y++)
+        {
+            for(int x = 0; x < copyWidth; x++)
+            {
+                pixels[x + y * width] = sourcePixels[x + y * sourceWidth];
+            }
+        }
+    }
 
     setNoAlpha(0, 0, 32, 16);
     setForceAlpha(32, 0, 64, 32);

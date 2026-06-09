@@ -1,6 +1,9 @@
 
 #include "stdafx.h"
 
+#include <algorithm>
+#include <cwctype>
+
 #include "..\..\Minecraft.World\Recipy.h"
 #include "..\..\Minecraft.Client\Options.h"
 #include "..\..\Minecraft.World\AABB.h"
@@ -80,6 +83,109 @@ const float CMinecraftApp::fSafeZoneY = 36.0f; // 5% of 720
 
 namespace
 {
+#ifdef _WINDOWS64
+	const DWORD kCustomSkinBaseId = 0x01000000;
+	const DWORD kCustomSkinHashMask = 0x003FFFFF;
+
+	std::wstring GetExecutableDirectoryPath()
+	{
+		wchar_t modulePath[MAX_PATH] = {0};
+		if(GetModuleFileNameW(NULL, modulePath, MAX_PATH) == 0)
+		{
+			return L"";
+		}
+
+		wchar_t *lastSlash = wcsrchr(modulePath, L'\\');
+		if(lastSlash == NULL)
+		{
+			lastSlash = wcsrchr(modulePath, L'/');
+		}
+
+		if(lastSlash != NULL)
+		{
+			*(lastSlash + 1) = L'\0';
+		}
+		else
+		{
+			modulePath[0] = L'\0';
+		}
+
+		return modulePath;
+	}
+
+	std::wstring GetCustomSkinsDirectoryPath()
+	{
+		return GetExecutableDirectoryPath() + L"Skins\\";
+	}
+
+	bool HasPngHeader(PBYTE pbData, DWORD dwBytes)
+	{
+		static const BYTE pngHeader[8] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+		return (pbData != NULL && dwBytes >= sizeof(pngHeader) && memcmp(pbData, pngHeader, sizeof(pngHeader)) == 0);
+	}
+
+	bool ReadWholeFile(const std::wstring &path, PBYTE *ppbData, DWORD *pdwBytes)
+	{
+		*ppbData = NULL;
+		*pdwBytes = 0;
+
+		HANDLE hFile = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		if(hFile == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		LARGE_INTEGER fileSize;
+		fileSize.QuadPart = 0;
+		if(!GetFileSizeEx(hFile, &fileSize) || fileSize.QuadPart <= 0 || fileSize.QuadPart > 32 * 1024 * 1024)
+		{
+			CloseHandle(hFile);
+			return false;
+		}
+
+		PBYTE pbData = new BYTE[(DWORD)fileSize.QuadPart];
+		DWORD dwRead = 0;
+		const bool bRead = (ReadFile(hFile, pbData, (DWORD)fileSize.QuadPart, &dwRead, NULL) != FALSE);
+		CloseHandle(hFile);
+
+		if(!bRead || dwRead != (DWORD)fileSize.QuadPart)
+		{
+			delete [] pbData;
+			return false;
+		}
+
+		*ppbData = pbData;
+		*pdwBytes = dwRead;
+		return true;
+	}
+
+	DWORD BuildCustomSkinIdFromFileName(const std::wstring &fileName)
+	{
+		DWORD hash = 2166136261u;
+		for(size_t i = 0; i < fileName.length(); ++i)
+		{
+			const DWORD ch = (DWORD)towlower(fileName[i]);
+			hash ^= (ch & 0xFF);
+			hash *= 16777619u;
+			hash ^= ((ch >> 8) & 0xFF);
+			hash *= 16777619u;
+		}
+
+		DWORD skinId = kCustomSkinBaseId | ((hash & kCustomSkinHashMask) << 5);
+		skinId &= 0x7FFFFFE0;
+		if(skinId == 0)
+		{
+			skinId = kCustomSkinBaseId;
+		}
+		return skinId;
+	}
+
+	bool CustomSkinInfoSort(const CMinecraftApp::CustomSkinInfo &a, const CMinecraftApp::CustomSkinInfo &b)
+	{
+		return a.displayName < b.displayName;
+	}
+#endif
+
 	const wchar_t *GetCustomStringFallback(int iID)
 	{
 		unsigned char languageId = UserData_Info::GetLanguageId();
@@ -265,6 +371,7 @@ CMinecraftApp::CMinecraftApp()
 	InitializeCriticalSection(&csDLCDownloadQueue);
 	m_bAllTMSContentRetrieved=true;
 	m_bTickTMSDLCFiles=true;
+	m_bCustomSkinsLoaded=false;
 	InitializeCriticalSection(&csTMSPPDownloadQueue);
 	InitializeCriticalSection(&csAdditionalModelParts);
 	InitializeCriticalSection(&csAdditionalSkinBoxes);
@@ -1552,7 +1659,14 @@ wstring CMinecraftApp::GetPlayerSkinName(int iPad)
 #ifdef _WINDOWS64
 	if(iPad == ProfileManager.GetPrimaryPad())
 	{
-		return app.getSkinPathFromId((DWORD)UserData_Info::GetSkinId());
+		EnsureCustomSkinsLoaded();
+		DWORD skinId = (DWORD)UserData_Info::GetSkinId();
+		if(GET_UGC_SKIN_ID_FROM_BITMASK(skinId) != 0 && !IsCustomSkinId(skinId))
+		{
+			skinId = 0;
+			UserData_Info::SetSkinId((unsigned int)skinId);
+		}
+		return app.getSkinPathFromId(skinId);
 	}
 #endif
 	return app.getSkinPathFromId(GameSettingsA[iPad]->dwSelectedSkin);
@@ -1567,7 +1681,13 @@ DWORD CMinecraftApp::GetPlayerSkinId(int iPad)
 #ifdef _WINDOWS64
 	if(iPad == ProfileManager.GetPrimaryPad())
 	{
+		EnsureCustomSkinsLoaded();
 		dwSkin = (DWORD)UserData_Info::GetSkinId();
+		if(GET_UGC_SKIN_ID_FROM_BITMASK(dwSkin) != 0 && !IsCustomSkinId(dwSkin))
+		{
+			dwSkin = 0;
+			UserData_Info::SetSkinId((unsigned int)dwSkin);
+		}
 	}
 	else
 #endif
@@ -1650,21 +1770,28 @@ void CMinecraftApp::SetPlayerFavoriteSkin(int iPad, int iIndex,unsigned int uiSk
 
 unsigned int CMinecraftApp::GetPlayerFavoriteSkin(int iPad,int iIndex)
 {
-	return GameSettingsA[iPad]->uiFavoriteSkinA[iIndex];
+	unsigned int uiStoredCount = GetStoredPlayerFavoriteSkinsCount(iPad);
+	if(iIndex >= 0 && (unsigned int)iIndex < uiStoredCount)
+	{
+		return GameSettingsA[iPad]->uiFavoriteSkinA[iIndex];
+	}
+
+#ifdef _WINDOWS64
+	EnsureCustomSkinsLoaded();
+	if(iIndex >= 0)
+	{
+		unsigned int uiCustomIndex = (unsigned int)iIndex - uiStoredCount;
+		if(uiCustomIndex < m_customSkins.size())
+		{
+			return m_customSkins[uiCustomIndex].skinId;
+		}
+	}
+#endif
+
+	return 0xFFFFFFFF;
 }
 
-unsigned char CMinecraftApp::GetPlayerFavoriteSkinsPos(int iPad)
-{
-	return GameSettingsA[iPad]->ucCurrentFavoriteSkinPos;
-}
-
-void CMinecraftApp::SetPlayerFavoriteSkinsPos(int iPad, int iPos)
-{
-	GameSettingsA[iPad]->ucCurrentFavoriteSkinPos=(unsigned char)iPos;
-	GameSettingsA[iPad]->bSettingsChanged = true;
-}
-
-unsigned int CMinecraftApp::GetPlayerFavoriteSkinsCount(int iPad)
+unsigned int CMinecraftApp::GetStoredPlayerFavoriteSkinsCount(int iPad)
 {
 	unsigned int uiCount=0;
 	for(int i=0;i<MAX_FAVORITE_SKINS;i++)
@@ -1681,9 +1808,30 @@ unsigned int CMinecraftApp::GetPlayerFavoriteSkinsCount(int iPad)
 	return uiCount;
 }
 
+unsigned char CMinecraftApp::GetPlayerFavoriteSkinsPos(int iPad)
+{
+	return GameSettingsA[iPad]->ucCurrentFavoriteSkinPos;
+}
+
+void CMinecraftApp::SetPlayerFavoriteSkinsPos(int iPad, int iPos)
+{
+	GameSettingsA[iPad]->ucCurrentFavoriteSkinPos=(unsigned char)iPos;
+	GameSettingsA[iPad]->bSettingsChanged = true;
+}
+
+unsigned int CMinecraftApp::GetPlayerFavoriteSkinsCount(int iPad)
+{
+	unsigned int uiCount=GetStoredPlayerFavoriteSkinsCount(iPad);
+#ifdef _WINDOWS64
+	EnsureCustomSkinsLoaded();
+	uiCount += (unsigned int)m_customSkins.size();
+#endif
+	return uiCount;
+}
+
 void CMinecraftApp::ValidateFavoriteSkins(int iPad)
 {
-	unsigned int uiCount=GetPlayerFavoriteSkinsCount(iPad);
+	unsigned int uiCount=GetStoredPlayerFavoriteSkinsCount(iPad);
 	
 	// remove invalid skins
 	unsigned int uiValidSkin=0;
@@ -1714,6 +1862,163 @@ void CMinecraftApp::ValidateFavoriteSkins(int iPad)
 	{
 		GameSettingsA[iPad]->uiFavoriteSkinA[i]=0xFFFFFFFF;
 	}
+}
+
+void CMinecraftApp::EnsureCustomSkinsLoaded()
+{
+#ifdef _WINDOWS64
+	if(m_bCustomSkinsLoaded)
+	{
+		return;
+	}
+
+	RefreshCustomSkins();
+#endif
+}
+
+void CMinecraftApp::RefreshCustomSkins()
+{
+#ifdef _WINDOWS64
+	m_bCustomSkinsLoaded = true;
+	m_customSkins.clear();
+
+	const std::wstring skinsDirectory = GetCustomSkinsDirectoryPath();
+	CreateDirectoryW(skinsDirectory.c_str(), NULL);
+
+	WIN32_FIND_DATAW findData;
+	memset(&findData, 0, sizeof(findData));
+	const std::wstring searchPath = skinsDirectory + L"*.png";
+	HANDLE hFind = FindFirstFileW(searchPath.c_str(), &findData);
+	if(hFind == INVALID_HANDLE_VALUE)
+	{
+		return;
+	}
+
+	do
+	{
+		if((findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+		{
+			continue;
+		}
+
+		const std::wstring fileName = findData.cFileName;
+		const std::wstring sourcePath = skinsDirectory + fileName;
+		PBYTE pbData = NULL;
+		DWORD dwBytes = 0;
+		if(!ReadWholeFile(sourcePath, &pbData, &dwBytes))
+		{
+			continue;
+		}
+
+		if(!HasPngHeader(pbData, dwBytes))
+		{
+			delete [] pbData;
+			continue;
+		}
+
+		DWORD skinId = BuildCustomSkinIdFromFileName(fileName);
+		bool bCollision = true;
+		while(bCollision)
+		{
+			bCollision = false;
+			for(unsigned int i = 0; i < m_customSkins.size(); ++i)
+			{
+				if(m_customSkins[i].skinId == skinId)
+				{
+					bCollision = true;
+					skinId = (skinId + 0x20) & 0x7FFFFFE0;
+					if(skinId < kCustomSkinBaseId)
+					{
+						skinId = kCustomSkinBaseId;
+					}
+					break;
+				}
+			}
+		}
+
+		wchar_t textureName[64];
+		swprintf(textureName, 64, L"ugcskin%08X.png", skinId);
+
+		if(IsFileInMemoryTextures(textureName))
+		{
+			delete [] pbData;
+		}
+		else
+		{
+			AddMemoryTextureFile(textureName, pbData, dwBytes);
+		}
+
+		CustomSkinInfo info;
+		info.skinId = skinId;
+		info.textureName = textureName;
+		info.sourcePath = sourcePath;
+		info.displayName = fileName.substr(0, fileName.find_last_of(L'.'));
+		if(info.displayName.empty())
+		{
+			info.displayName = textureName;
+		}
+		m_customSkins.push_back(info);
+	}
+	while(FindNextFileW(hFind, &findData));
+
+	FindClose(hFind);
+	std::sort(m_customSkins.begin(), m_customSkins.end(), CustomSkinInfoSort);
+#endif
+}
+
+unsigned int CMinecraftApp::GetCustomSkinCount()
+{
+#ifdef _WINDOWS64
+	EnsureCustomSkinsLoaded();
+	return (unsigned int)m_customSkins.size();
+#else
+	return 0;
+#endif
+}
+
+bool CMinecraftApp::IsCustomSkinId(DWORD dwSkinId)
+{
+#ifdef _WINDOWS64
+	EnsureCustomSkinsLoaded();
+	for(unsigned int i = 0; i < m_customSkins.size(); ++i)
+	{
+		if(m_customSkins[i].skinId == dwSkinId)
+		{
+			return true;
+		}
+	}
+#endif
+	return false;
+}
+
+bool CMinecraftApp::IsCustomSkinPath(const wstring &skinPath)
+{
+#ifdef _WINDOWS64
+	EnsureCustomSkinsLoaded();
+	for(unsigned int i = 0; i < m_customSkins.size(); ++i)
+	{
+		if(m_customSkins[i].textureName == skinPath)
+		{
+			return true;
+		}
+	}
+#endif
+	return false;
+}
+
+wstring CMinecraftApp::GetCustomSkinDisplayName(DWORD dwSkinId)
+{
+#ifdef _WINDOWS64
+	EnsureCustomSkinsLoaded();
+	for(unsigned int i = 0; i < m_customSkins.size(); ++i)
+	{
+		if(m_customSkins[i].skinId == dwSkinId)
+		{
+			return m_customSkins[i].displayName;
+		}
+	}
+#endif
+	return L"";
 }
 
 // Mash-up pack worlds

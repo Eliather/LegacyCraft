@@ -73,6 +73,14 @@ public:
 	std::vector <wstring > vSkinNames;
 	DLCManager m_dlcManager;
 
+	struct CustomSkinInfo
+	{
+		DWORD skinId;
+		wstring textureName;
+		wstring displayName;
+		wstring sourcePath;
+	};
+
 	// storing credits text from the DLC
 	std::vector <wstring > m_vCreditText; // hold the credit text lines so we can avoid duplicating them
 
@@ -237,7 +245,14 @@ public:
 	unsigned char	GetPlayerFavoriteSkinsPos(int iPad);
 	void			SetPlayerFavoriteSkinsPos(int iPad,int iPos);
 	unsigned int	GetPlayerFavoriteSkinsCount(int iPad);
+	unsigned int	GetStoredPlayerFavoriteSkinsCount(int iPad);
 	void			ValidateFavoriteSkins(int iPad); // check the DLC is available for the skins
+	void			EnsureCustomSkinsLoaded();
+	void			RefreshCustomSkins();
+	unsigned int	GetCustomSkinCount();
+	bool			IsCustomSkinId(DWORD dwSkinId);
+	bool			IsCustomSkinPath(const wstring &skinPath);
+	wstring			GetCustomSkinDisplayName(DWORD dwSkinId);
 
 	// Mash-up pack worlds hide/display
 	void			HideMashupPackWorld(int iPad, unsigned int iMashupPackID);
@@ -373,6 +388,8 @@ private:
 	unordered_map<wstring, PMEMDATA> m_MEM_Files;
 	// for storing texture pack data files
 	unordered_map<int, PMEMDATA> m_MEM_TPD;
+	bool m_bCustomSkinsLoaded;
+	std::vector<CustomSkinInfo> m_customSkins;
 	CRITICAL_SECTION csMemFilesLock; // For locking access to the above map
 	CRITICAL_SECTION csMemTPDLock; // For locking access to the above map
 

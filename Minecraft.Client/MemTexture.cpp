@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "MemTexture.h"
+#include "MemTextureProcessor.h"
 
 MemTexture::MemTexture(const wstring& _url, PBYTE pbData,DWORD dwBytes, MemTextureProcessor *processor)
 {
@@ -14,14 +15,23 @@ MemTexture::MemTexture(const wstring& _url, PBYTE pbData,DWORD dwBytes, MemTextu
 	// load the texture, and process it
 	//loadedImage=Textures::getTexture()
 	// 4J - remember to add deletes in here for any created BufferedImages when implemented
-	loadedImage = new BufferedImage(pbData,dwBytes);
+	BufferedImage *sourceImage = new BufferedImage(pbData,dwBytes);
 	if(processor==NULL)
 	{
-
+		loadedImage = sourceImage;
 	}
 	else
 	{
-		//loadedImage=processor.process(ImageIO.read(huc.getInputStream()));
+		BufferedImage *processedImage = processor->process(sourceImage);
+		if(processedImage != NULL)
+		{
+			loadedImage = processedImage;
+			delete sourceImage;
+		}
+		else
+		{
+			loadedImage = sourceImage;
+		}
 	}
 	
 
