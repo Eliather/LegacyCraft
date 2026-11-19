@@ -227,6 +227,23 @@ namespace
 		return true;
 	}
 
+	std::wstring GetWindows64GameHddRootPath()
+	{
+		wchar_t modulePath[MAX_PATH];
+		const DWORD length = GetModuleFileNameW(NULL, modulePath, MAX_PATH);
+		if(length > 0 && length < MAX_PATH)
+		{
+			std::wstring fullPath(modulePath, length);
+			const size_t slash = fullPath.find_last_of(L"\\/");
+			if(slash != std::wstring::npos)
+			{
+				return fullPath.substr(0, slash) + L"\\Windows64\\GameHDD";
+			}
+		}
+
+		return L"Windows64\\GameHDD";
+	}
+
 	bool TryDeleteWindows64DirectSave(const char *saveId)
 	{
 		if(!IsSafeWindows64DirectSaveId(saveId))
@@ -234,7 +251,7 @@ namespace
 			return false;
 		}
 
-		File storageRoot(L"Windows64\\GameHDD");
+		File storageRoot(GetWindows64GameHddRootPath());
 		File storageDir(storageRoot, filenametowstring(saveId));
 		if(!storageDir.exists() || !storageDir.isDirectory())
 		{
@@ -288,6 +305,7 @@ namespace
 	bool TryResolveWindows64DirectSaveTitleFromBytes(const std::wstring &saveName, void *saveData, DWORD fileSize, std::string &resolvedTitle)
 	{
 		bool success = false;
+#ifdef _MSC_VER
 		__try
 		{
 			success = TryResolveWindows64DirectSaveTitleFromBytesUnsafe(saveName, saveData, fileSize, resolvedTitle);
@@ -296,8 +314,100 @@ namespace
 		{
 			success = false;
 		}
+#else
+		try
+		{
+			success = TryResolveWindows64DirectSaveTitleFromBytesUnsafe(saveName, saveData, fileSize, resolvedTitle);
+		}
+		catch (...)
+		{
+			success = false;
+		}
+#endif
 
 		return success;
+	}
+
+	bool ExtractWindows64DirectSaveMetadata(const char *saveId, const std::wstring &saveDisplayName, __int64 &outSeed, bool &outIsSurvival, bool &outHasBeenInCreative, std::string &outResolvedTitle)
+	{
+		outSeed = 0;
+		outIsSurvival = true;
+		outHasBeenInCreative = false;
+		outResolvedTitle.clear();
+
+		if(!IsSafeWindows64DirectSaveId(saveId))
+		{
+			return false;
+		}
+
+		File storageRoot(GetWindows64GameHddRootPath());
+		File storageDir(storageRoot, filenametowstring(saveId));
+		File saveDataFile(storageDir, L"saveData.ms");
+		if(!saveDataFile.exists() || !saveDataFile.isFile())
+		{
+			return false;
+		}
+
+		__int64 fileSize = saveDataFile.length();
+		if(fileSize <= 0 || fileSize > 0x7fffffff)
+		{
+			return false;
+		}
+
+		FileInputStream fis(saveDataFile);
+		byteArray ba((unsigned int)fileSize);
+		fis.read(ba);
+		fis.close();
+
+		DirectoryLevelStorageSource levelStorageSource(File(L"."));
+		LevelData *levelData = NULL;
+
+#ifdef _MSC_VER
+		__try
+#else
+		try
+#endif
+		{
+			ConsoleSaveFileOriginal saveFile(saveDisplayName.empty() ? L"saveData" : saveDisplayName, ba.data, (DWORD)ba.length, false, SAVE_FILE_PLATFORM_LOCAL);
+			levelData = levelStorageSource.getDataTagFor(&saveFile, L"");
+
+#ifdef SPLIT_SAVES
+		if(levelData == NULL)
+		{
+			ConsoleSaveFileSplit splitSaveFile(&saveFile);
+			levelData = levelStorageSource.getDataTagFor(&splitSaveFile, L"");
+		}
+#endif
+		}
+#ifdef _MSC_VER
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+			if(levelData != NULL) delete levelData;
+			return false;
+		}
+#else
+		catch(...)
+		{
+			if(levelData != NULL) delete levelData;
+			return false;
+		}
+#endif
+
+		if(levelData != NULL)
+		{
+			outSeed = levelData->getSeed();
+			outIsSurvival = (levelData->getGameType() == GameType::SURVIVAL);
+			outHasBeenInCreative = levelData->getHasBeenInCreative();
+			const std::wstring lvlName = trimString(levelData->getLevelName());
+			if(!lvlName.empty())
+			{
+				outResolvedTitle = WideStringToUtf8(lvlName);
+			}
+			delete levelData;
+			return true;
+		}
+
+		return false;
 	}
 }
 #endif
@@ -437,7 +547,14 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 	}
 
 	
-#if defined _XBOX_ONE || defined _WINDOWS64
+#if defined _WINDOWS64
+	{
+		// Set up online game checkbox
+		bool bOnlineGame = m_MoreOptionsParams.bOnlineGame;
+		m_checkboxOnline.SetEnable(true);
+		m_checkboxOnline.init(app.GetString(IDS_ONLINE_GAME), eControl_OnlineGame, bOnlineGame);
+	}
+#elif defined _XBOX_ONE
 	if(getSceneResolution() == eSceneResolution_1080)
 	{
 		// Set up online game checkbox
@@ -473,8 +590,8 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 
 			// retrieve the save icon from the texture pack, if there is one
 			TexturePack *tp = Minecraft::GetInstance()->skins->getTexturePackById(m_MoreOptionsParams.dwTexturePack);
-			DWORD dwImageBytes;
-			PBYTE pbImageData = tp->getPackIcon(dwImageBytes);
+			DWORD dwImageBytes = 0;
+			PBYTE pbImageData = tp ? tp->getPackIcon(dwImageBytes) : NULL;
 
 			if(dwImageBytes > 0 && pbImageData)
 			{
@@ -510,6 +627,33 @@ UIScene_LoadMenu::UIScene_LoadMenu(int iPad, void *initData, UILayer *parentLaye
 				m_pbThumbnailData = new BYTE[m_uiThumbnailSize];
 				memcpy(m_pbThumbnailData, params->saveDetails->pbThumbnailData, m_uiThumbnailSize);
 				m_bOwnsThumbnailData = true;
+				m_bSaveThumbnailReady = true;
+			}
+			else if(m_windows64DirectSaveId[0] != 0)
+			{
+				File storageRoot(GetWindows64GameHddRootPath());
+				File storageDir(storageRoot, filenametowstring(m_windows64DirectSaveId));
+				const std::wstring sidecars[] = { L"thumbnail.png", L"thumbnail.jpg", L"thumbnail.bmp" };
+				for(int sc = 0; sc < 3; ++sc)
+				{
+					File thumbFile(storageDir, sidecars[sc]);
+					if(thumbFile.exists() && thumbFile.isFile() && thumbFile.length() > 0 && thumbFile.length() < 10*1024*1024)
+					{
+						m_uiThumbnailSize = (unsigned int)thumbFile.length();
+						FileInputStream fis(thumbFile);
+						byteArray ba(m_uiThumbnailSize);
+						fis.read(ba);
+						fis.close();
+						m_pbThumbnailData = new BYTE[m_uiThumbnailSize];
+						memcpy(m_pbThumbnailData, ba.data, m_uiThumbnailSize);
+						m_bOwnsThumbnailData = true;
+						break;
+					}
+				}
+				m_bSaveThumbnailReady = true;
+			}
+			else
+			{
 				m_bSaveThumbnailReady = true;
 			}
 		}
@@ -749,7 +893,10 @@ void UIScene_LoadMenu::tick()
 			registerSubstitutionTexture(displayThumbnailName, m_pbThumbnailData, m_uiThumbnailSize);
 #endif
 		}
-		m_bitmapIcon.setTextureName( displayThumbnailName.c_str() );
+		if(!displayThumbnailName.empty() && m_pbThumbnailData != NULL)
+		{
+			m_bitmapIcon.setTextureName( displayThumbnailName.c_str() );
+		}
 
 		// retrieve the seed value from the image metadata
 		bool bHostOptionsRead = false;
@@ -757,24 +904,57 @@ void UIScene_LoadMenu::tick()
 
 		char szSeed[50];
 		ZeroMemory(szSeed,50);
-		app.GetImageTextData(m_pbThumbnailData,m_uiThumbnailSize,(unsigned char *)&szSeed,uiHostOptions,bHostOptionsRead,m_MoreOptionsParams.dwTexturePack);
+		if(m_pbThumbnailData != NULL && m_uiThumbnailSize > 0)
+		{
+			app.GetImageTextData(m_pbThumbnailData,m_uiThumbnailSize,(unsigned char *)&szSeed,uiHostOptions,bHostOptionsRead,m_MoreOptionsParams.dwTexturePack);
+		}
 
-#if defined(_XBOX_ONE)
-		sscanf_s(szSeed, "%I64d", &m_seed);
+#if defined(_XBOX_ONE) || defined(_WINDOWS64)
+		if(szSeed[0] != 0)
+		{
+			sscanf_s(szSeed, "%I64d", &m_seed);
+		}
 #endif
 
-		// #ifdef _DEBUG
-		// 			// dump out the thumbnail
-		// 			HANDLE hThumbnail = CreateFile("GAME:\\thumbnail.png", GENERIC_WRITE, 0, NULL, OPEN_ALWAYS, FILE_FLAG_RANDOM_ACCESS, NULL);
-		// 			DWORD dwBytes;
-		// 			WriteFile(hThumbnail,pbImageData,dwImageBytes,&dwBytes,NULL);
-		// 			XCloseHandle(hThumbnail);
-		// #endif
+#ifdef _WINDOWS64
+		if((szSeed[0] == 0 || !bHostOptionsRead) && m_windows64DirectSaveId[0] != 0)
+		{
+			__int64 fallbackSeed = 0;
+			bool fallbackIsSurvival = true;
+			bool fallbackHasBeenInCreative = false;
+			std::string fallbackTitle;
+			if(ExtractWindows64DirectSaveMetadata(m_windows64DirectSaveId, Utf8ToWideString(m_windows64DirectSaveName), fallbackSeed, fallbackIsSurvival, fallbackHasBeenInCreative, fallbackTitle))
+			{
+				if(szSeed[0] == 0)
+				{
+					m_seed = fallbackSeed;
+					_snprintf(szSeed, sizeof(szSeed) - 1, "%I64d", m_seed);
+				}
+				if(!bHostOptionsRead)
+				{
+					m_bHasBeenInCreative = fallbackHasBeenInCreative;
+					m_labelCreatedMode.setLabel( app.GetString(m_bHasBeenInCreative ? IDS_CREATED_IN_CREATIVE : IDS_CREATED_IN_SURVIVAL) );
+					m_bGameModeSurvival = fallbackIsSurvival;
+					m_buttonGamemode.setLabel(app.GetString(m_bGameModeSurvival ? IDS_GAMEMODE_SURVIVAL : IDS_GAMEMODE_CREATIVE));
+				}
+				if(!fallbackTitle.empty())
+				{
+					m_labelGameName.setLabel(Utf8ToWideString(fallbackTitle.c_str()));
+				}
+			}
+		}
+#endif
 
 		if(szSeed[0]!=0)
 		{
 			WCHAR TempString[256];
 			swprintf( (WCHAR *)TempString, 256, L"%ls: %hs", app.GetString( IDS_SEED ),szSeed);	
+			m_labelSeed.setLabel(TempString);
+		}
+		else if(m_seed != 0)
+		{
+			WCHAR TempString[256];
+			swprintf( (WCHAR *)TempString, 256, L"%ls: %I64d", app.GetString( IDS_SEED ), m_seed);
 			m_labelSeed.setLabel(TempString);
 		}
 		else
@@ -894,7 +1074,21 @@ void UIScene_LoadMenu::handleInput(int iPad, int key, bool repeat, bool pressed,
 	case ACTION_MENU_OTHER_STICK_DOWN:
 		sendInputToMovie(key, repeat, pressed, released);
 		
-#if defined _XBOX_ONE || defined _WINDOWS64
+#if defined _WINDOWS64
+		{
+			bool bOnlineGame = m_checkboxOnline.IsChecked();
+			if (m_MoreOptionsParams.bOnlineGame != bOnlineGame)
+			{
+				m_MoreOptionsParams.bOnlineGame = bOnlineGame;
+
+				if (!m_MoreOptionsParams.bOnlineGame)
+				{
+					m_MoreOptionsParams.bInviteOnly = false;
+					m_MoreOptionsParams.bAllowFriendsOfFriends = false;
+				}
+			}
+		}
+#elif defined _XBOX_ONE
 		if(getSceneResolution() == eSceneResolution_1080)
 		{
 			bool bOnlineGame = m_checkboxOnline.IsChecked();
@@ -1172,7 +1366,12 @@ void UIScene_LoadMenu::handleTimerComplete(int id)
 					m_MoreOptionsParams.bInviteOnly = FALSE;
 					m_MoreOptionsParams.bAllowFriendsOfFriends = FALSE;
 				}
-#if defined _XBOX_ONE || defined _WINDOWS64
+#if defined _WINDOWS64
+				{
+					m_checkboxOnline.SetEnable(bMultiplayerAllowed);
+					m_checkboxOnline.setChecked(m_MoreOptionsParams.bOnlineGame);
+				}
+#elif defined _XBOX_ONE
 				if(getSceneResolution() == eSceneResolution_1080)
 				{
 					m_checkboxOnline.SetEnable(bMultiplayerAllowed);
@@ -1560,7 +1759,7 @@ int UIScene_LoadMenu::DeleteSaveDataReturned(void *pParam,bool bSuccess)
 #ifdef _WINDOWS64
 void UIScene_LoadMenu::StartGameFromWindows64DirectDiskSave(DWORD dwLocalUsersMask)
 {
-	File storageRoot(L"Windows64\\GameHDD");
+	File storageRoot(GetWindows64GameHddRootPath());
 	File storageDir(storageRoot, filenametowstring(m_windows64DirectSaveId));
 	File saveDataFile(storageDir, L"saveData.ms");
 	const std::wstring saveDisplayName = Utf8ToWideString(m_windows64DirectSaveName);
@@ -1943,7 +2142,11 @@ void UIScene_LoadMenu::handleGainFocus(bool navBack)
 	if(navBack)
 	{
 		
-#if defined _XBOX_ONE || defined _WINDOWS64
+#if defined _WINDOWS64
+		{
+			m_checkboxOnline.setChecked(m_MoreOptionsParams.bOnlineGame == TRUE);
+		}
+#elif defined _XBOX_ONE
 		if(getSceneResolution() == eSceneResolution_1080)
 		{
 			m_checkboxOnline.setChecked(m_MoreOptionsParams.bOnlineGame == TRUE);

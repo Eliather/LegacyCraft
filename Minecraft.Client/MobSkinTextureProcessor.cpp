@@ -33,7 +33,7 @@ BufferedImage *MobSkinTextureProcessor::process(BufferedImage *in)
     }
 
     setNoAlpha(0, 0, 32, 16);
-    setForceAlpha(32, 0, 64, 32);
+    setForceAlpha(32, 0, 64, 16);
     setNoAlpha(0, 16, 64, 32);
     bool hasAlpha = false;
     for (int x = 32; x < 64; x++)

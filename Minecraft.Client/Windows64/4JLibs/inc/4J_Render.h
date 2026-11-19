@@ -55,17 +55,26 @@ public:
 	void Set_matrixDirty();
 
 	// Core
-	void Initialise(ID3D11Device *pDevice, IDXGISwapChain *pSwapChain);
+	bool InitialiseWindow(HWND hwnd, int width, int height, bool fullscreen, int preferredBackend, bool vsync);
+	bool ResizeWindow(int width, int height, bool fullscreen);
+	void Shutdown();
+	int  GetBackendType() const;
+	const char *GetBackendName() const;
+	const char *GetAdapterName() const;
+	void SetVsyncEnabled(bool enabled);
+	bool IsVsyncEnabled() const;
 	void InitialiseContext();
 	void StartFrame();
 	void DoScreenGrabOnNextPresent();
 	void Present();
-	void Clear(int flags, D3D11_RECT *pRect = NULL);
+	void Clear(int flags, const RECT *pRect = NULL);
 	void SetClearColour(const float colourRGBA[4]);
 	bool IsWidescreen();
 	bool IsHiDef();
 	void CaptureThumbnail(ImageFileBuffer *pngOut);
 	void CaptureScreen(ImageFileBuffer *jpgOut, XSOCIAL_PREVIEWIMAGE *previewOut);
+	bool CaptureBackBufferRGBA(BYTE **outRgbaPixels, int *outWidth, int *outHeight);
+	void ReleaseCapturedBackBuffer(BYTE *rgbaPixels);
 	void BeginConditionalSurvey(int identifier);
 	void EndConditionalSurvey();
 	void BeginConditionalRendering(int identifier);
@@ -115,7 +124,7 @@ public:
 	} ePrimitiveType;
 
 	void DrawVertices(ePrimitiveType PrimitiveType, int count, void *dataIn, eVertexType vType, C4JRender::ePixelShaderType psType);
-	void DrawVertexBuffer(ePrimitiveType PrimitiveType, int count, ID3D11Buffer *buffer, C4JRender::eVertexType vType, C4JRender::ePixelShaderType psType);
+	void DrawVertexBuffer(ePrimitiveType PrimitiveType, int count, void *buffer, C4JRender::eVertexType vType, C4JRender::ePixelShaderType psType);
 
 	// Command buffers
 	void CBuffLockStaticCreations();
@@ -158,7 +167,20 @@ public:
 	HRESULT SaveTextureData(const char *szFilename, D3DXIMAGE_INFO *pSrcInfo, int *ppDataOut);
 	HRESULT SaveTextureDataToMemory(void *pOutput, int outputCapacity, int *outputLength, int width, int height, int *ppDataIn);
 	void TextureGetStats();
-	ID3D11ShaderResourceView  *TextureGetTexture(int idx);
+	void *TextureGetTexture(int idx);
+
+	// Iggy / GDraw backend bridge
+	void *GDrawCreateContext(int w, int h);
+	void  GDrawDestroyContext();
+	void  GDrawSetRendertargetSize(int w, int h);
+	void  GDrawSetTileOrigin(int xPos, int yPos);
+	void  GDrawNoMoreGDrawThisFrame();
+	void  GDrawBeginCustomDraw4J(void *region, float *mat16);
+	void  GDrawCalculateCustomDraw4J(void *region, float *mat16);
+	void  GDrawEndCustomDraw(void *region);
+	void  GDrawSetViewport4J();
+	void *GDrawWrappedTextureCreate(int textureId);
+	void  GDrawWrappedTextureDestroy(void *handle);
 
 	// State control
 	void StateSetColour(float r, float g, float b, float a);
@@ -246,23 +268,23 @@ const int CLEAR_COLOUR_FLAG = 2;
 const int GL_DEPTH_BUFFER_BIT = CLEAR_DEPTH_FLAG;
 const int GL_COLOR_BUFFER_BIT = CLEAR_COLOUR_FLAG;
 
-const int GL_SRC_ALPHA = D3D11_BLEND_SRC_ALPHA;
-const int GL_ONE_MINUS_SRC_ALPHA = D3D11_BLEND_INV_SRC_ALPHA;
-const int GL_ONE = D3D11_BLEND_ONE;
-const int GL_ZERO = D3D11_BLEND_ZERO;
-const int GL_DST_ALPHA = D3D11_BLEND_DEST_ALPHA;
-const int GL_SRC_COLOR = D3D11_BLEND_SRC_COLOR;
-const int GL_DST_COLOR = D3D11_BLEND_DEST_COLOR;
-const int GL_ONE_MINUS_DST_COLOR = D3D11_BLEND_INV_DEST_COLOR;
-const int GL_ONE_MINUS_SRC_COLOR = D3D11_BLEND_INV_SRC_COLOR;
-const int GL_CONSTANT_ALPHA = D3D11_BLEND_BLEND_FACTOR;
-const int GL_ONE_MINUS_CONSTANT_ALPHA = D3D11_BLEND_INV_BLEND_FACTOR;
+const int GL_SRC_ALPHA = 5;
+const int GL_ONE_MINUS_SRC_ALPHA = 6;
+const int GL_ONE = 2;
+const int GL_ZERO = 1;
+const int GL_DST_ALPHA = 7;
+const int GL_SRC_COLOR = 3;
+const int GL_DST_COLOR = 9;
+const int GL_ONE_MINUS_DST_COLOR = 10;
+const int GL_ONE_MINUS_SRC_COLOR = 4;
+const int GL_CONSTANT_ALPHA = 14;
+const int GL_ONE_MINUS_CONSTANT_ALPHA = 15;
 
-const int GL_GREATER = D3D11_COMPARISON_GREATER;
-const int GL_EQUAL = D3D11_COMPARISON_EQUAL;
-const int GL_LEQUAL = D3D11_COMPARISON_LESS_EQUAL;
-const int GL_GEQUAL = D3D11_COMPARISON_GREATER_EQUAL;
-const int GL_ALWAYS = D3D11_COMPARISON_ALWAYS;
+const int GL_GREATER = 5;
+const int GL_EQUAL = 3;
+const int GL_LEQUAL = 4;
+const int GL_GEQUAL = 7;
+const int GL_ALWAYS = 8;
 
 const int GL_TEXTURE_MIN_FILTER = 1;
 const int GL_TEXTURE_MAG_FILTER = 2;

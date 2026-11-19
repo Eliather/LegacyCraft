@@ -32,6 +32,7 @@ class TileRenderer
 	Icon *fixedTexture;
 	bool xFlipTexture;
 	bool noCulling;
+	bool breakingOverlay;
 	public :
 	static bool fancy;
 	bool setColor;

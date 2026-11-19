@@ -34,6 +34,7 @@ CustomSlider::CustomSlider()
     , m_hovered(false)
     , m_wasHovered(false)
     , m_dragging(false)
+    , m_wasPressed(false)
 {
 }
 
@@ -59,6 +60,10 @@ void CustomSlider::Setup(float x, float y, float width, float height, int limitM
     m_trackTexId   = -1;
     m_handleTexId  = -1;
     m_hoverBgTexId = -1;
+    m_hovered      = false;
+    m_wasHovered   = false;
+    m_dragging     = false;
+    m_wasPressed   = Mouse::isButtonDown(0);
 }
 
 void CustomSlider::SetValue(int value)
@@ -115,10 +120,14 @@ bool CustomSlider::Update(Minecraft *minecraft)
 {
     if(minecraft == NULL) return false;
 
-    const float scaleX = (float)minecraft->width_phys  / 1920.0f;
-    const float scaleY = (float)minecraft->height_phys / 1080.0f;
-    const float mouseX = (float)Mouse::getX() * scaleX;
-    const float mouseY = (float)Mouse::getY() * scaleY;
+    const float screenW = ui.getScreenWidth();
+    const float screenH = ui.getScreenHeight();
+    const float mouseX = (screenW > 0.0f && minecraft->width_phys > 0)
+        ? (((float)Mouse::getX() * (float)minecraft->width_phys) / screenW)
+        : (float)Mouse::getX();
+    const float mouseY = (screenH > 0.0f && minecraft->height_phys > 0)
+        ? (((float)Mouse::getY() * (float)minecraft->height_phys) / screenH)
+        : (float)Mouse::getY();
 
     m_hovered = (mouseX >= m_x && mouseX <= m_x + m_width &&
                  mouseY >= m_y && mouseY <= m_y + m_height);
@@ -130,7 +139,8 @@ bool CustomSlider::Update(Minecraft *minecraft)
     m_wasHovered = m_hovered;
 
     const bool lmb = Mouse::isButtonDown(0);
-    if(lmb && m_hovered && !m_dragging)
+    const bool pressed = lmb && !m_wasPressed;
+    if(pressed && m_hovered && !m_dragging)
     {
         m_dragging = true;
         ui.PlayUISFX(eSFX_Press);
@@ -139,6 +149,7 @@ bool CustomSlider::Update(Minecraft *minecraft)
     {
         m_dragging = false;
     }
+    m_wasPressed = lmb;
 
     if(m_dragging)
     {

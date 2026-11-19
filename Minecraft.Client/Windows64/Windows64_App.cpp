@@ -11,9 +11,7 @@
 #include "..\..\Minecraft.World\LevelType.h"
 #include "..\Common\zlib\zlib.h"
 
-extern ID3D11Device*           g_pd3dDevice;
-extern ID3D11DeviceContext*    g_pImmediateContext;
-extern IDXGISwapChain*         g_pSwapChain;
+extern HWND g_hWnd;
 
 namespace
 {
@@ -403,151 +401,25 @@ namespace
 		return IsArgbImageVisuallyUseful(&argbPixels[0], previewImage.Width, previewImage.Height);
 	}
 
-	bool TryCaptureBackBufferAsPng(std::vector<BYTE> &pngData)
+#ifndef PW_CLIENTONLY
+#define PW_CLIENTONLY 0x00000001
+#endif
+#ifndef PW_RENDERFULLCONTENT
+#define PW_RENDERFULLCONTENT 0x00000002
+#endif
+
+	bool BuildThumbnailPngFromRgba(const BYTE *rgbaPixels, UINT width, UINT height, std::vector<BYTE> &pngData)
 	{
 		pngData.clear();
-
-		if(g_pSwapChain == NULL || g_pd3dDevice == NULL || g_pImmediateContext == NULL)
+		if(rgbaPixels == NULL || width == 0 || height == 0)
 		{
 			return false;
 		}
 
-		ID3D11Texture2D *backBuffer = NULL;
-		HRESULT hr = g_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void **)&backBuffer);
-		if(FAILED(hr) || backBuffer == NULL)
-		{
-			return false;
-		}
-
-		D3D11_TEXTURE2D_DESC desc;
-		backBuffer->GetDesc(&desc);
-		if(desc.Width == 0 || desc.Height == 0)
-		{
-			backBuffer->Release();
-			return false;
-		}
-
-		ID3D11Texture2D *copySource = backBuffer;
-		ID3D11Texture2D *resolvedTexture = NULL;
-		if(desc.SampleDesc.Count > 1)
-		{
-			D3D11_TEXTURE2D_DESC resolveDesc = desc;
-			resolveDesc.BindFlags = 0;
-			resolveDesc.CPUAccessFlags = 0;
-			resolveDesc.MiscFlags = 0;
-			resolveDesc.Usage = D3D11_USAGE_DEFAULT;
-			resolveDesc.SampleDesc.Count = 1;
-			resolveDesc.SampleDesc.Quality = 0;
-
-			hr = g_pd3dDevice->CreateTexture2D(&resolveDesc, NULL, &resolvedTexture);
-			if(FAILED(hr) || resolvedTexture == NULL)
-			{
-				backBuffer->Release();
-				return false;
-			}
-
-			g_pImmediateContext->ResolveSubresource(resolvedTexture, 0, backBuffer, 0, desc.Format);
-			copySource = resolvedTexture;
-		}
-
-		D3D11_TEXTURE2D_DESC stagingDesc = desc;
-		stagingDesc.BindFlags = 0;
-		stagingDesc.MiscFlags = 0;
-		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-		stagingDesc.Usage = D3D11_USAGE_STAGING;
-		stagingDesc.ArraySize = 1;
-		stagingDesc.MipLevels = 1;
-		stagingDesc.SampleDesc.Count = 1;
-		stagingDesc.SampleDesc.Quality = 0;
-
-		ID3D11Texture2D *stagingTexture = NULL;
-		hr = g_pd3dDevice->CreateTexture2D(&stagingDesc, NULL, &stagingTexture);
-		if(FAILED(hr) || stagingTexture == NULL)
-		{
-			if(resolvedTexture != NULL)
-			{
-				resolvedTexture->Release();
-			}
-			backBuffer->Release();
-			return false;
-		}
-
-		g_pImmediateContext->CopyResource(stagingTexture, copySource);
-		g_pImmediateContext->Flush();
-
-		D3D11_MAPPED_SUBRESOURCE mappedResource;
-		ZeroMemory(&mappedResource, sizeof(mappedResource));
-		hr = g_pImmediateContext->Map(stagingTexture, 0, D3D11_MAP_READ, 0, &mappedResource);
-		if(FAILED(hr) || mappedResource.pData == NULL)
-		{
-			stagingTexture->Release();
-			if(resolvedTexture != NULL)
-			{
-				resolvedTexture->Release();
-			}
-			backBuffer->Release();
-			return false;
-		}
-
-		const bool isBgra =
-			desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM ||
-			desc.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
-		const bool isRgba =
-			desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM ||
-			desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-
-		if(!isBgra && !isRgba)
-		{
-			g_pImmediateContext->Unmap(stagingTexture, 0);
-			stagingTexture->Release();
-			if(resolvedTexture != NULL)
-			{
-				resolvedTexture->Release();
-			}
-			backBuffer->Release();
-			return false;
-		}
-
-		const DWORD rowBytes = desc.Width * 4;
-		std::vector<BYTE> rgbaPixels((size_t)rowBytes * desc.Height);
-		for(UINT y = 0; y < desc.Height; ++y)
-		{
-			const BYTE *srcRow = (const BYTE *)mappedResource.pData + ((size_t)mappedResource.RowPitch * y);
-			BYTE *destRow = &rgbaPixels[(size_t)rowBytes * y];
-			for(UINT x = 0; x < desc.Width; ++x)
-			{
-				const BYTE c0 = srcRow[(x * 4) + 0];
-				const BYTE c1 = srcRow[(x * 4) + 1];
-				const BYTE c2 = srcRow[(x * 4) + 2];
-
-				if(isBgra)
-				{
-					destRow[(x * 4) + 0] = c2;
-					destRow[(x * 4) + 1] = c1;
-					destRow[(x * 4) + 2] = c0;
-					destRow[(x * 4) + 3] = 0xFF;
-				}
-				else
-				{
-					destRow[(x * 4) + 0] = c0;
-					destRow[(x * 4) + 1] = c1;
-					destRow[(x * 4) + 2] = c2;
-					destRow[(x * 4) + 3] = 0xFF;
-				}
-			}
-		}
-
-		g_pImmediateContext->Unmap(stagingTexture, 0);
-		stagingTexture->Release();
-		if(resolvedTexture != NULL)
-		{
-			resolvedTexture->Release();
-		}
-		backBuffer->Release();
-
+		const DWORD rowBytes = width * 4;
 		std::vector<BYTE> thumbnailPixels;
 		const DWORD thumbnailRowBytes = WINDOWS64_SAVE_THUMBNAIL_DIMENSION * 4;
-		if(!BuildSquareThumbnailFromRgba(&rgbaPixels[0], desc.Width, desc.Height, rowBytes, thumbnailPixels) ||
+		if(!BuildSquareThumbnailFromRgba(rgbaPixels, width, height, rowBytes, thumbnailPixels) ||
 			!IsRgbaImageVisuallyUseful(&thumbnailPixels[0], WINDOWS64_SAVE_THUMBNAIL_DIMENSION, WINDOWS64_SAVE_THUMBNAIL_DIMENSION, thumbnailRowBytes))
 		{
 			pngData.clear();
@@ -560,7 +432,125 @@ namespace
 			return false;
 		}
 
-		return IsEncodedPngVisuallyUseful(&pngData[0], (DWORD)pngData.size());
+		if(!IsEncodedPngVisuallyUseful(&pngData[0], (DWORD)pngData.size()))
+		{
+			pngData.clear();
+			return false;
+		}
+
+		return true;
+	}
+
+	bool TryCaptureBackBufferAsPng(std::vector<BYTE> &pngData)
+	{
+		pngData.clear();
+
+		/* Primary path: read directly from the active render backend backbuffer (DX11/GL/Vulkan/DX12) before Present() */
+		BYTE *backendRgba = NULL;
+		int backendWidth = 0;
+		int backendHeight = 0;
+		if(RenderManager.CaptureBackBufferRGBA(&backendRgba, &backendWidth, &backendHeight) && backendRgba != NULL && backendWidth > 0 && backendHeight > 0)
+		{
+			const bool built = BuildThumbnailPngFromRgba(backendRgba, (UINT)backendWidth, (UINT)backendHeight, pngData);
+			RenderManager.ReleaseCapturedBackBuffer(backendRgba);
+			if(built)
+			{
+				return true;
+			}
+		}
+		else if(backendRgba != NULL)
+		{
+			RenderManager.ReleaseCapturedBackBuffer(backendRgba);
+		}
+
+		if(g_hWnd == NULL || !IsWindow(g_hWnd) || IsIconic(g_hWnd))
+		{
+			return false;
+		}
+
+		RECT rcClient;
+		if(!GetClientRect(g_hWnd, &rcClient))
+		{
+			return false;
+		}
+		const UINT width = (UINT)(rcClient.right - rcClient.left);
+		const UINT height = (UINT)(rcClient.bottom - rcClient.top);
+		if(width == 0 || height == 0)
+		{
+			return false;
+		}
+
+		HDC hdcWin = GetDC(g_hWnd);
+		if(hdcWin == NULL)
+		{
+			return false;
+		}
+		HDC hdcMem = CreateCompatibleDC(hdcWin);
+		if(hdcMem == NULL)
+		{
+			ReleaseDC(g_hWnd, hdcWin);
+			return false;
+		}
+
+		BITMAPINFO bmi;
+		ZeroMemory(&bmi, sizeof(bmi));
+		bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+		bmi.bmiHeader.biWidth = (LONG)width;
+		bmi.bmiHeader.biHeight = -(LONG)height; /* top-down */
+		bmi.bmiHeader.biPlanes = 1;
+		bmi.bmiHeader.biBitCount = 32;
+		bmi.bmiHeader.biCompression = BI_RGB;
+
+		void *dibBits = NULL;
+		HBITMAP hBitmap = CreateDIBSection(hdcWin, &bmi, DIB_RGB_COLORS, &dibBits, NULL, 0);
+		if(hBitmap == NULL || dibBits == NULL)
+		{
+			if(hBitmap != NULL) DeleteObject(hBitmap);
+			DeleteDC(hdcMem);
+			ReleaseDC(g_hWnd, hdcWin);
+			return false;
+		}
+
+		HGDIOBJ oldObj = SelectObject(hdcMem, hBitmap);
+		BOOL captured = PrintWindow(g_hWnd, hdcMem, PW_CLIENTONLY | PW_RENDERFULLCONTENT);
+		if(!captured)
+		{
+			captured = BitBlt(hdcMem, 0, 0, (int)width, (int)height, hdcWin, 0, 0, SRCCOPY);
+		}
+		GdiFlush();
+
+		if(!captured)
+		{
+			SelectObject(hdcMem, oldObj);
+			DeleteObject(hBitmap);
+			DeleteDC(hdcMem);
+			ReleaseDC(g_hWnd, hdcWin);
+			return false;
+		}
+
+		const DWORD rowBytes = width * 4;
+		std::vector<BYTE> rgbaPixels((size_t)rowBytes * height);
+		const BYTE *srcBase = (const BYTE *)dibBits;
+		for(UINT y = 0; y < height; ++y)
+		{
+			const BYTE *srcRow = srcBase + ((size_t)rowBytes * y);
+			BYTE *destRow = &rgbaPixels[(size_t)rowBytes * y];
+			for(UINT x = 0; x < width; ++x)
+			{
+				/* DIB 32bpp BI_RGB is BGRA in memory */
+				destRow[(x * 4) + 0] = srcRow[(x * 4) + 2];
+				destRow[(x * 4) + 1] = srcRow[(x * 4) + 1];
+				destRow[(x * 4) + 2] = srcRow[(x * 4) + 0];
+				destRow[(x * 4) + 3] = 0xFF;
+			}
+		}
+
+		SelectObject(hdcMem, oldObj);
+		DeleteObject(hBitmap);
+		DeleteDC(hdcMem);
+		ReleaseDC(g_hWnd, hdcWin);
+
+		return BuildThumbnailPngFromRgba(&rgbaPixels[0], width, height, pngData);
 	}
 
 	bool TryCaptureCurrentFrameSaveThumbnailPng(std::vector<BYTE> &pngData)

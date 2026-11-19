@@ -114,88 +114,41 @@ void Input::tick(LocalPlayer *player)
 
 	float tx = 0.0f;
 	float ty = 0.0f;
-	float mouseTx = 0.0f;
-	float mouseTy = 0.0f;
 
-	// --- GAMEPAD LOOK (unchanged) ---
+	// --- GAMEPAD LOOK (mouse look is handled per-frame in GameRenderer::render) ---
 	if( pMinecraft->localgameModes[iPad]->isInputAllowed(MINECRAFT_ACTION_LOOK_LEFT) || pMinecraft->localgameModes[iPad]->isInputAllowed(MINECRAFT_ACTION_LOOK_RIGHT) )
 		tx = InputManager.GetJoypadStick_RX(iPad) * (((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InGame)) / 100.0f);
 
 	if( pMinecraft->localgameModes[iPad]->isInputAllowed(MINECRAFT_ACTION_LOOK_UP) || pMinecraft->localgameModes[iPad]->isInputAllowed(MINECRAFT_ACTION_LOOK_DOWN) )
 		ty = InputManager.GetJoypadStick_RY(iPad) * (((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InGame)) / 100.0f);
 
-	// --- MOUSE LOOK ---
-	if (keyboardGameplay)
-	{
-		float rawMouseDX = 0.0f;
-		float rawMouseDY = 0.0f;
-
-		if( pMinecraft->localgameModes[iPad]->isInputAllowed(MINECRAFT_ACTION_LOOK_LEFT) || pMinecraft->localgameModes[iPad]->isInputAllowed(MINECRAFT_ACTION_LOOK_RIGHT) )
-		{
-			rawMouseDX = (float)Mouse::getDX();
-		}
-
-		if( pMinecraft->localgameModes[iPad]->isInputAllowed(MINECRAFT_ACTION_LOOK_UP) || pMinecraft->localgameModes[iPad]->isInputAllowed(MINECRAFT_ACTION_LOOK_DOWN) )
-		{
-			rawMouseDY = (float)-Mouse::getDY();
-		}
-
-		// FIX 1: Raise the clamp ceiling so fast mouse movements aren't cut off.
-		const float maxDeltaPerTick = 1500.0f;
-		if(rawMouseDX >  maxDeltaPerTick) rawMouseDX =  maxDeltaPerTick;
-		if(rawMouseDX < -maxDeltaPerTick) rawMouseDX = -maxDeltaPerTick;
-		if(rawMouseDY >  maxDeltaPerTick) rawMouseDY =  maxDeltaPerTick;
-		if(rawMouseDY < -maxDeltaPerTick) rawMouseDY = -maxDeltaPerTick;
-
-		// FIX 2: Use the in-game sensitivity setting to match gamepad.
-		int mouseSensitivitySetting = app.GetGameSettings(iPad, eGameSetting_Sensitivity_InGame);
-		if(mouseSensitivitySetting > 120) mouseSensitivitySetting = 120;
-
-		// FIX 3: Linear scale — mouse deltas are pixels, not analog -1..1 values.
-		float mouseSensitivity    = (float)mouseSensitivitySetting / 100.0f;
-		const float mouseTurnScale = 0.025f;
-
-		mouseTx = rawMouseDX * mouseSensitivity * mouseTurnScale;
-		mouseTy = rawMouseDY * mouseSensitivity * mouseTurnScale;
-	}
-
 #ifndef _CONTENT_PACKAGE
-	if (app.GetFreezePlayers())	tx = ty = mouseTx = mouseTy = 0.0f;
+	if (app.GetFreezePlayers())	tx = ty = 0.0f;
 #endif
 
 	// 4J: WESTY : Invert look Y if required.
 	if ( app.GetGameSettings(iPad,eGameSetting_ControlInvertLook) )
 	{
-		ty    = -ty;
-		mouseTy = -mouseTy;
+		ty = -ty;
 	}
 
 	// Gamepad uses quadratic curve (tx*|tx|) for analog feel.
-	// Mouse path is already linear, added directly without extra curve.
-	float turnX = (tx * abs(tx)) + mouseTx;
-	float turnY = (ty * abs(ty)) + mouseTy;
+	float turnX = tx * abs(tx);
+	float turnY = ty * abs(ty);
 
-	// FIX 5: Mouse input already starts at 0 each tick so rReset is meaningless
-	// for it — skip the guard when using mouse to avoid freeze+jerk on click.
 	if (!rReset)
 	{
 		if (turnX*turnX+turnY*turnY==0.0f)
 		{
 			rReset = true;
 		}
-		// Only zero out turn if there is no mouse contribution.
-		// Gamepad path: mouseTx/mouseTy are both 0.0f here.
-		if (mouseTx == 0.0f && mouseTy == 0.0f)
-		{
-			turnX = turnY = 0.0f;
-		}
-		else
-		{
-			rReset = true;
-		}
+		turnX = turnY = 0.0f;
 	}
 
-	player->interpolateTurn(turnX * turnSpeed, turnY * turnSpeed);
+	if (turnX != 0.0f || turnY != 0.0f)
+	{
+		player->interpolateTurn(turnX * turnSpeed, turnY * turnSpeed);
+	}
 
 	unsigned int jump = InputManager.GetValue(iPad, MINECRAFT_ACTION_JUMP);
 	bool keyJump = keyboardGameplay && Keyboard::isKeyDown(pMinecraft->options->keyJump->key);

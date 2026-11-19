@@ -22,7 +22,7 @@ void Chunk::CreateNewThreadStorage()
 void Chunk::ReleaseThreadStorage()
 {
 	unsigned char *tileIds = (unsigned char *)TlsGetValue(tlsIdx);
-	delete tileIds;
+	delete [] tileIds;
 }
 
 unsigned char *Chunk::GetTileIdsStorage()
@@ -219,20 +219,20 @@ void Chunk::rebuild()
 	byteArray tileArray = byteArray(tileIds, 16 * 16 * Level::maxBuildHeight);
 	level->getChunkAt(x,z)->getBlockData(tileArray);		// 4J - TODO - now our data has been re-arranged, we could just extra the vertical slice of this chunk rather than the whole thing
 
-	LevelSource *region = new Region(level, x0 - r, y0 - r, z0 - r, x1 + r, y1 + r, z1 + r);
-	TileRenderer *tileRenderer = new TileRenderer(region, this->x, this->y, this->z, tileIds);
-
 	// We now go through the vertical section of this level chunk that we are interested in and try and establish
 	// (1) if it is completely empty
 	// (2) if any of the tiles can be quickly determined to not need rendering because they are in the middle of other tiles and
 	//     so can't be seen. A large amount (> 60% in tests) of tiles that call tesselateInWorld in the unoptimised version
 	//     of this function fall into this category. By far the largest category of these are tiles in solid regions of rock.
+	// Iterate xx -> zz -> yy so tileIds access is contiguous along Y.
 	bool empty = true;
-	for( int yy = y0; yy < y1; yy++ )
+	for( int xx = 0; xx < 16; xx++ )
 	{
 		for( int zz = 0; zz < 16; zz++ )
 		{
-			for( int xx = 0; xx < 16; xx++ )
+			const int colBase = (xx << 11) | (zz << 7);
+			const bool onEdgeXZ = (xx == 0) || (xx == 15) || (zz == 0) || (zz == 15);
+			for( int yy = y0; yy < y1; yy++ )
 			{
 				// 4J Stu - tile data is ordered in 128 blocks of full width, lower 128 then upper 128
 				int indexY = yy;
@@ -243,25 +243,23 @@ void Chunk::rebuild()
 					offset = Level::COMPRESSED_CHUNK_SECTION_TILES;
 				}
 
-				unsigned char tileId = tileIds[ offset + ( ( ( xx + 0 ) << 11 ) | ( ( zz + 0 ) << 7 ) | ( indexY + 0 ) ) ];
+				unsigned char tileId = tileIds[ offset + colBase + indexY ];
 				if( tileId > 0 ) empty = false;
 
 				// Don't bother trying to work out neighbours for this tile if we are at the edge of the chunk - apart from the very
 				// bottom of the world where we shouldn't ever be able to see
-				if( yy == (Level::maxBuildHeight - 1) ) continue;
-				if(( xx == 0 ) || ( xx == 15 )) continue;
-				if(( zz == 0 ) || ( zz == 15 )) continue;
+				if( yy == (Level::maxBuildHeight - 1) || onEdgeXZ ) continue;
 				
 				// Establish whether this tile and its neighbours are all made of rock, dirt, unbreakable tiles, or have already
 				// been determined to meet this criteria themselves and have a tile of 255 set.
 				if( !( ( tileId == Tile::rock_Id ) || ( tileId == Tile::dirt_Id ) || ( tileId == Tile::unbreakable_Id ) || ( tileId == 255) ) ) continue;
-				tileId = tileIds[ offset + ( ( ( xx - 1 ) << 11 ) | ( ( zz + 0 ) << 7 ) | ( indexY + 0 )) ];
+				tileId = tileIds[ offset + ( ( ( xx - 1 ) << 11 ) | ( zz << 7 ) | indexY ) ];
 				if( !( ( tileId == Tile::rock_Id ) || ( tileId == Tile::dirt_Id ) || ( tileId == Tile::unbreakable_Id ) || ( tileId == 255) ) ) continue;
-				tileId = tileIds[ offset + ( ( ( xx + 1 ) << 11 ) | ( ( zz + 0 ) << 7 ) | ( indexY + 0 )) ];
+				tileId = tileIds[ offset + ( ( ( xx + 1 ) << 11 ) | ( zz << 7 ) | indexY ) ];
 				if( !( ( tileId == Tile::rock_Id ) || ( tileId == Tile::dirt_Id ) || ( tileId == Tile::unbreakable_Id ) || ( tileId == 255) ) ) continue;
-				tileId = tileIds[ offset + ( ( ( xx + 0 ) << 11 ) | ( ( zz - 1 ) << 7 ) | ( indexY + 0 )) ];
+				tileId = tileIds[ offset + ( ( xx << 11 ) | ( ( zz - 1 ) << 7 ) | indexY ) ];
 				if( !( ( tileId == Tile::rock_Id ) || ( tileId == Tile::dirt_Id ) || ( tileId == Tile::unbreakable_Id ) || ( tileId == 255) ) ) continue;
-				tileId = tileIds[ offset + ( ( ( xx + 0 ) << 11 ) | ( ( zz + 1 ) << 7 ) | ( indexY + 0 )) ];
+				tileId = tileIds[ offset + ( ( xx << 11 ) | ( ( zz + 1 ) << 7 ) | indexY ) ];
 				if( !( ( tileId == Tile::rock_Id ) || ( tileId == Tile::dirt_Id ) || ( tileId == Tile::unbreakable_Id ) || ( tileId == 255) ) ) continue;
 				// Treat the bottom of the world differently - we shouldn't ever be able to look up at this, so consider tiles as invisible
 				// if they are surrounded on sides other than the bottom
@@ -274,7 +272,7 @@ void Chunk::rebuild()
 						indexYMinusOne -= Level::COMPRESSED_CHUNK_SECTION_HEIGHT;
 						yMinusOneOffset = Level::COMPRESSED_CHUNK_SECTION_TILES;
 					}
-					tileId = tileIds[ yMinusOneOffset + ( ( ( xx + 0 ) << 11 ) | ( ( zz + 0 ) << 7 ) | indexYMinusOne ) ];
+					tileId = tileIds[ yMinusOneOffset + colBase + indexYMinusOne ];
 					if( !( ( tileId == Tile::rock_Id ) || ( tileId == Tile::dirt_Id ) || ( tileId == Tile::unbreakable_Id ) || ( tileId == 255) ) ) continue;
 				}
 				int indexYPlusOne = yy + 1;
@@ -284,16 +282,16 @@ void Chunk::rebuild()
 					indexYPlusOne -= Level::COMPRESSED_CHUNK_SECTION_HEIGHT;
 					yPlusOneOffset = Level::COMPRESSED_CHUNK_SECTION_TILES;
 				}
-				tileId = tileIds[ yPlusOneOffset + ( ( ( xx + 0 ) << 11 ) | ( ( zz + 0 ) << 7 ) | indexYPlusOne ) ];
+				tileId = tileIds[ yPlusOneOffset + colBase + indexYPlusOne ];
 				if( !( ( tileId == Tile::rock_Id ) || ( tileId == Tile::dirt_Id ) || ( tileId == Tile::unbreakable_Id ) || ( tileId == 255) ) ) continue;
 
 				// This tile is surrounded. Flag it as not requiring to be rendered by setting its id to 255.
-				tileIds[ offset + ( ( ( xx + 0 ) << 11 ) | ( ( zz + 0 ) << 7 ) | ( indexY + 0 ) ) ] = 0xff;
+				tileIds[ offset + colBase + indexY ] = 0xff;
 			}
 		}
 	}
 	PIXEndNamedEvent();
-	// Nothing at all to do for this chunk?
+	// Nothing at all to do for this chunk? Avoid allocating Region or TileRenderer for empty subchunks.
 	if( empty )
 	{
 		// 4J - added - clear any renderer data associated with this
@@ -302,11 +300,11 @@ void Chunk::rebuild()
 			levelRenderer->setGlobalChunkFlag(this->x, this->y, this->z, level, LevelRenderer::CHUNK_FLAG_EMPTY0, currentLayer);
 			RenderManager.CBuffClear(lists + currentLayer);
 		}
-
-		delete region;
-		delete tileRenderer;
 		return;
 	}
+
+	Region region(level, x0 - r, y0 - r, z0 - r, x1 + r, y1 + r, z1 + r);
+	TileRenderer tileRenderer(&region, this->x, this->y, this->z, tileIds);
 	// 4J - optimisation ends
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -377,7 +375,7 @@ void Chunk::rebuild()
 						Tile *tile = Tile::tiles[tileId];
 						if (currentLayer == 0 && tile->isEntityTile())
 						{
-							shared_ptr<TileEntity> et = region->getTileEntity(x, y, z);
+							shared_ptr<TileEntity> et = region.getTileEntity(x, y, z);
 							if (TileEntityRenderDispatcher::instance->hasRenderer(et))
 							{
 								renderableTileEntities.push_back(et);
@@ -391,7 +389,7 @@ void Chunk::rebuild()
 						}
 						else if (renderLayer == currentLayer)
 						{
-							rendered |= tileRenderer->tesselateInWorld(tile, x, y, z);
+							rendered |= tileRenderer.tesselateInWorld(tile, x, y, z);
 						}
 					}
 				}
@@ -436,9 +434,6 @@ void Chunk::rebuild()
 		bb->set(bounds.boundingBox[0], bounds.boundingBox[1], bounds.boundingBox[2],
 			   bounds.boundingBox[3], bounds.boundingBox[4], bounds.boundingBox[5]);
 	}
-
-	delete tileRenderer;
-	delete region;
 
 	PIXEndNamedEvent();
 	PIXBeginNamedEvent(0,"Rebuild section D");

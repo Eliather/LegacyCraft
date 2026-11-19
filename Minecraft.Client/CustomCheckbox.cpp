@@ -107,8 +107,14 @@ bool CustomCheckbox::Update(Minecraft *minecraft)
 {
 	if(minecraft == NULL) return false;
 
-	const float mouseX = ((float)Mouse::getX() / 1920.0f) * (float)minecraft->width_phys;
-	const float mouseY = ((float)Mouse::getY() / 1080.0f) * (float)minecraft->height_phys;
+	const float screenW = ui.getScreenWidth();
+	const float screenH = ui.getScreenHeight();
+	const float mouseX = (screenW > 0.0f && minecraft->width_phys > 0)
+		? (((float)Mouse::getX() * (float)minecraft->width_phys) / screenW)
+		: (float)Mouse::getX();
+	const float mouseY = (screenH > 0.0f && minecraft->height_phys > 0)
+		? (((float)Mouse::getY() * (float)minecraft->height_phys) / screenH)
+		: (float)Mouse::getY();
 
 	m_hovered = HitTest(mouseX, mouseY);
 	if(m_hovered && !m_wasHovered)

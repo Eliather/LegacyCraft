@@ -14,7 +14,10 @@ namespace
 	const unsigned char kDefaultGamma = 0;
 	const unsigned char kDefaultFov = 70;
 	const unsigned char kDefaultRenderDistance = 18;
-	const unsigned int kUserDataInfoVersion = 4;
+	const unsigned char kDefaultResolutionMode = 3;
+	const unsigned char kDefaultRendererBackend = 0; // 0 = DX11, 1 = OpenGL, 2 = Vulkan, 3 = DX12
+	const unsigned char kDefaultVsyncEnabled = 0;
+	const unsigned int kUserDataInfoVersion = 8;
 
 #pragma pack(push, 1)
 	struct UserDataInfoFile
@@ -28,11 +31,14 @@ namespace
 		unsigned char fov;
 		unsigned int skinId;
 		unsigned char renderDistance;
+		unsigned char resolutionMode;
+		unsigned char rendererBackend;
+		unsigned char vsyncEnabled;
 	};
 #pragma pack(pop)
 
 	bool g_userDataLoaded = false;
-	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance };
+	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance, kDefaultResolutionMode, kDefaultRendererBackend, kDefaultVsyncEnabled };
 	char g_userDataPlayerNameAnsi[17] = "Steve";
 
 	unsigned char ClampFovValue(unsigned char fov)
@@ -50,14 +56,9 @@ namespace
 
 	unsigned char ClampRenderDistanceValue(unsigned char renderDistance)
 	{
-		if(renderDistance <= 3)
+		if(renderDistance < 2)
 		{
-			static const unsigned char kLegacyRenderDistances[4] = { 18, 12, 8, 4 };
-			return kLegacyRenderDistances[renderDistance];
-		}
-		if(renderDistance < 4)
-		{
-			return 4;
+			return 2;
 		}
 		if(renderDistance > 32)
 		{
@@ -66,11 +67,65 @@ namespace
 		return renderDistance;
 	}
 
+	unsigned char ClampResolutionModeValue(unsigned char resolutionMode)
+	{
+		if(resolutionMode < 1 || resolutionMode > 4)
+		{
+			return kDefaultResolutionMode;
+		}
+		return resolutionMode;
+	}
+
+	unsigned char ClampRendererBackendValue(unsigned char rendererBackend)
+	{
+		if(rendererBackend > 3)
+		{
+			return kDefaultRendererBackend;
+		}
+		return rendererBackend;
+	}
+
+	unsigned char ClampVsyncValue(unsigned char vsyncEnabled)
+	{
+		return (vsyncEnabled != 0) ? 1 : 0;
+	}
+
+	unsigned char MigrateVersion6ResolutionModeValue(unsigned char resolutionMode)
+	{
+		switch(resolutionMode)
+		{
+		case 1:
+			return 1;
+		case 2:
+			return 3;
+		case 3:
+			return 4;
+		default:
+			return kDefaultResolutionMode;
+		}
+	}
+
+	unsigned char MigrateLegacyResolutionModeValue(unsigned char resolutionMode)
+	{
+		switch(resolutionMode)
+		{
+		case 1:
+			return 1;
+		case 4:
+			return 3;
+		case 5:
+			return 4;
+		default:
+			return kDefaultResolutionMode;
+		}
+	}
+
 	bool IsAllowedPlayerNameChar(wchar_t ch)
 	{
 		return ((ch >= L'0' && ch <= L'9') ||
 				(ch >= L'A' && ch <= L'Z') ||
-				(ch >= L'a' && ch <= L'z'));
+				(ch >= L'a' && ch <= L'z') ||
+				ch == L'_');
 	}
 
 	std::wstring SanitisePlayerName(const std::wstring &playerName)
@@ -171,6 +226,27 @@ namespace
 			changed = true;
 		}
 
+		const unsigned char validatedResolutionMode = ClampResolutionModeValue(g_userData.resolutionMode);
+		if(validatedResolutionMode != g_userData.resolutionMode)
+		{
+			g_userData.resolutionMode = validatedResolutionMode;
+			changed = true;
+		}
+
+		const unsigned char validatedBackend = ClampRendererBackendValue(g_userData.rendererBackend);
+		if(validatedBackend != g_userData.rendererBackend)
+		{
+			g_userData.rendererBackend = validatedBackend;
+			changed = true;
+		}
+
+		const unsigned char validatedVsync = ClampVsyncValue(g_userData.vsyncEnabled);
+		if(validatedVsync != g_userData.vsyncEnabled)
+		{
+			g_userData.vsyncEnabled = validatedVsync;
+			changed = true;
+		}
+
 		SyncPlayerNameAnsi();
 		return changed;
 	}
@@ -207,10 +283,10 @@ namespace
 
 	void ParseBinaryFile(const UserDataInfoFile &fileData)
 	{
-		UserData_Info::Data parsed = { kDefaultPlayerName, false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance };
+		UserData_Info::Data parsed = { kDefaultPlayerName, false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance, kDefaultResolutionMode, kDefaultRendererBackend, kDefaultVsyncEnabled };
 
 		if(memcmp(fileData.magic, "UDAT", 4) != 0 ||
-			(fileData.version != 1 && fileData.version != 2 && fileData.version != 3 && fileData.version != kUserDataInfoVersion))
+			(fileData.version != 1 && fileData.version != 2 && fileData.version != 3 && fileData.version != 4 && fileData.version != 5 && fileData.version != 6 && fileData.version != 7 && fileData.version != kUserDataInfoVersion))
 		{
 			g_userData = parsed;
 			return;
@@ -252,7 +328,35 @@ namespace
 			parsed.renderDistance = kDefaultRenderDistance;
 		}
 
+		if(fileData.version >= 7)
+		{
+			parsed.resolutionMode = fileData.resolutionMode;
+		}
+		else if(fileData.version == 6)
+		{
+			parsed.resolutionMode = MigrateVersion6ResolutionModeValue(fileData.resolutionMode);
+		}
+		else if(fileData.version == 5)
+		{
+			parsed.resolutionMode = MigrateLegacyResolutionModeValue(fileData.resolutionMode);
+		}
+		else
+		{
+			parsed.resolutionMode = kDefaultResolutionMode;
+		}
+
 		parsed.skinId = fileData.skinId;
+
+		if(fileData.version >= 8)
+		{
+			parsed.rendererBackend = ClampRendererBackendValue(fileData.rendererBackend);
+			parsed.vsyncEnabled = ClampVsyncValue(fileData.vsyncEnabled);
+		}
+		else
+		{
+			parsed.rendererBackend = kDefaultRendererBackend;
+			parsed.vsyncEnabled = kDefaultVsyncEnabled;
+		}
 
 		g_userData = parsed;
 	}
@@ -268,7 +372,8 @@ void UserData_Info::EnsureLoaded()
 	g_userDataLoaded = true;
 
 	UserDataInfoFile fileData;
-	if(ReadBinaryFile(fileData))
+	bool fileLoaded = ReadBinaryFile(fileData);
+	if(fileLoaded)
 	{
 		ParseBinaryFile(fileData);
 	}
@@ -281,9 +386,12 @@ void UserData_Info::EnsureLoaded()
 		g_userData.gamma = kDefaultGamma;
 		g_userData.fov = kDefaultFov;
 		g_userData.renderDistance = kDefaultRenderDistance;
+		g_userData.resolutionMode = kDefaultResolutionMode;
+		g_userData.rendererBackend = kDefaultRendererBackend;
+		g_userData.vsyncEnabled = kDefaultVsyncEnabled;
 	}
 
-	if(ValidateData(false))
+	if(!fileLoaded || ValidateData(false))
 	{
 		Save();
 	}
@@ -304,7 +412,10 @@ void UserData_Info::Save()
 	fileData.gamma = g_userData.gamma;
 	fileData.fov = g_userData.fov;
 	fileData.renderDistance = g_userData.renderDistance;
+	fileData.resolutionMode = g_userData.resolutionMode;
 	fileData.skinId = g_userData.skinId;
+	fileData.rendererBackend = g_userData.rendererBackend;
+	fileData.vsyncEnabled = g_userData.vsyncEnabled;
 
 	const std::wstring path = GetUserDataInfoPath();
 
@@ -372,6 +483,24 @@ unsigned char UserData_Info::GetRenderDistance()
 	return g_userData.renderDistance;
 }
 
+unsigned char UserData_Info::GetResolutionMode()
+{
+	EnsureLoaded();
+	return g_userData.resolutionMode;
+}
+
+unsigned char UserData_Info::GetRendererBackend()
+{
+	EnsureLoaded();
+	return g_userData.rendererBackend;
+}
+
+bool UserData_Info::GetVsyncEnabled()
+{
+	EnsureLoaded();
+	return (g_userData.vsyncEnabled != 0);
+}
+
 unsigned int UserData_Info::GetSkinId()
 {
 	EnsureLoaded();
@@ -434,5 +563,26 @@ void UserData_Info::SetRenderDistance(unsigned char renderDistance)
 {
 	EnsureLoaded();
 	g_userData.renderDistance = ClampRenderDistanceValue(renderDistance);
+	Save();
+}
+
+void UserData_Info::SetResolutionMode(unsigned char resolutionMode)
+{
+	EnsureLoaded();
+	g_userData.resolutionMode = ClampResolutionModeValue(resolutionMode);
+	Save();
+}
+
+void UserData_Info::SetRendererBackend(unsigned char rendererBackend)
+{
+	EnsureLoaded();
+	g_userData.rendererBackend = ClampRendererBackendValue(rendererBackend);
+	Save();
+}
+
+void UserData_Info::SetVsyncEnabled(bool vsyncEnabled)
+{
+	EnsureLoaded();
+	g_userData.vsyncEnabled = ClampVsyncValue(vsyncEnabled ? 1 : 0);
 	Save();
 }

@@ -1293,6 +1293,9 @@ bool IUIScene_AbstractContainerMenu::handleKeyDown(int iPad, int iAction, bool b
 #endif
 #endif
 	case ACTION_MENU_A:
+#ifdef _WINDOWS64
+	case ACTION_MENU_OK:
+#endif
 #ifdef __ORBIS__
 	case ACTION_MENU_TOUCHPAD_PRESS:
 #endif
@@ -1303,6 +1306,13 @@ bool IUIScene_AbstractContainerMenu::handleKeyDown(int iPad, int iAction, bool b
 			// Standard left click
 			buttonNum = 0;
 			quickKeyHeld = FALSE;
+#ifdef _WINDOWS64
+			if(iAction == ACTION_MENU_OK &&
+			   (Keyboard::isKeyDown(VK_LSHIFT) || Keyboard::isKeyDown(VK_RSHIFT) || Keyboard::isKeyDown(VK_SHIFT)))
+			{
+				quickKeyHeld = TRUE;
+			}
+#endif
 			ui.PlayUISFX(eSFX_Press);
 		}
 		break;

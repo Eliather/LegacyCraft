@@ -19,6 +19,65 @@ typedef Item::Tier _Tier;
 
 wstring Item::ICON_DESCRIPTION_PREFIX = L"item.";
 
+const int Item::apple_Id;
+const int Item::arrow_Id;
+const int Item::beef_cooked_Id;
+const int Item::beef_raw_Id;
+const int Item::book_Id;
+const int Item::boots_chain_Id;
+const int Item::boots_cloth_Id;
+const int Item::boots_diamond_Id;
+const int Item::boots_iron_Id;
+const int Item::bread_Id;
+const int Item::chestplate_chain_Id;
+const int Item::chestplate_cloth_Id;
+const int Item::chestplate_diamond_Id;
+const int Item::chestplate_iron_Id;
+const int Item::chicken_cooked_Id;
+const int Item::chicken_raw_Id;
+const int Item::clock_Id;
+const int Item::coal_Id;
+const int Item::compass_Id;
+const int Item::cookie_Id;
+const int Item::diamond_Id;
+const int Item::enderPearl_Id;
+const int Item::expBottle_Id;
+const int Item::eyeOfEnder_Id;
+const int Item::fish_cooked_Id;
+const int Item::flintAndSteel_Id;
+const int Item::goldIngot_Id;
+const int Item::hatchet_diamond_Id;
+const int Item::hatchet_iron_Id;
+const int Item::helmet_chain_Id;
+const int Item::helmet_cloth_Id;
+const int Item::helmet_diamond_Id;
+const int Item::helmet_iron_Id;
+const int Item::hoe_diamond_Id;
+const int Item::hoe_iron_Id;
+const int Item::ironIngot_Id;
+const int Item::leggings_chain_Id;
+const int Item::leggings_cloth_Id;
+const int Item::leggings_diamond_Id;
+const int Item::leggings_iron_Id;
+const int Item::melon_Id;
+const int Item::paper_Id;
+const int Item::pickAxe_diamond_Id;
+const int Item::pickAxe_iron_Id;
+const int Item::porkChop_cooked_Id;
+const int Item::porkChop_raw_Id;
+const int Item::redStone_Id;
+const int Item::rotten_flesh_Id;
+const int Item::saddle_Id;
+const int Item::seeds_melon_Id;
+const int Item::seeds_pumpkin_Id;
+const int Item::seeds_wheat_Id;
+const int Item::shears_Id;
+const int Item::shovel_diamond_Id;
+const int Item::shovel_iron_Id;
+const int Item::sword_diamond_Id;
+const int Item::sword_iron_Id;
+const int Item::wheat_Id;
+
 const _Tier *_Tier::WOOD = new _Tier(0, 59, 2, 0, 15); //
 const _Tier *_Tier::STONE = new _Tier(1, 131, 4, 1, 5); //
 const _Tier *_Tier::IRON = new _Tier(2, 250, 6, 2, 14); //

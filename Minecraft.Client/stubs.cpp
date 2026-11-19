@@ -109,6 +109,7 @@ wchar_t Keyboard::m_wCurrentEventCharacter = 0;
 bool Mouse::m_bButtonDown[Mouse::MAX_BUTTONS] = { false };
 bool Mouse::m_bButtonPressed[Mouse::MAX_BUTTONS] = { false };
 std::deque<Mouse::MouseEvent> Mouse::m_mouseEvents;
+bool Mouse::m_bGrabbed = false;
 bool Mouse::m_bCurrentEventDown = false;
 int Mouse::m_iCurrentEventX = 0;
 int Mouse::m_iCurrentEventY = 0;
@@ -119,6 +120,8 @@ int Mouse::m_iY = 0;
 int Mouse::m_iDeltaX = 0;
 int Mouse::m_iDeltaY = 0;
 int Mouse::m_iWheelDelta = 0;
+
+bool Display::m_bActive = true;
 
 void Keyboard::enableRepeatEvents(bool enabled)
 {
@@ -326,6 +329,19 @@ bool Mouse::next()
 	return true;
 }
 
+void Mouse::syncPosition(int x, int y)
+{
+	m_iX = x;
+	m_iY = y;
+}
+
+void Mouse::resetDeltas()
+{
+	m_iDeltaX = 0;
+	m_iDeltaY = 0;
+	m_iWheelDelta = 0;
+}
+
 void Mouse::onMouseMove(int x, int y)
 {
 	m_iDeltaX += (x - m_iX);
@@ -342,7 +358,10 @@ void Mouse::onMouseDelta(int dx, int dy)
 
 void Mouse::onMouseButton(int button, bool isDown, int x, int y)
 {
-	onMouseMove(x, y);
+	if (!m_bGrabbed)
+	{
+		onMouseMove(x, y);
+	}
 
 	if (button >= 0 && button < MAX_BUTTONS)
 	{
@@ -368,7 +387,10 @@ void Mouse::onMouseButton(int button, bool isDown, int x, int y)
 
 void Mouse::onMouseWheel(int delta, int x, int y)
 {
-	onMouseMove(x, y);
+	if (!m_bGrabbed)
+	{
+		onMouseMove(x, y);
+	}
 
 	int wheelSteps = 0;
 #ifdef WHEEL_DELTA

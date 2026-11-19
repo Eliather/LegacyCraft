@@ -20,6 +20,7 @@ void SetThreadName( DWORD dwThreadID, LPCSTR szThreadName )
     info.dwFlags = 0;
 	
 #if ( defined _WINDOWS64 | defined _DURANGO )
+#ifdef _MSC_VER
 	__try
 	{
 		RaiseException( 0x406D1388, 0, sizeof(info)/sizeof(DWORD), (ULONG_PTR *)&info );
@@ -28,7 +29,9 @@ void SetThreadName( DWORD dwThreadID, LPCSTR szThreadName )
 	{
 	}
 #endif
+#endif
 #ifdef _XBOX
+#ifdef _MSC_VER
     __try
     {
         RaiseException( 0x406D1388, 0, sizeof(info)/sizeof(DWORD), (DWORD *)&info );
@@ -36,6 +39,7 @@ void SetThreadName( DWORD dwThreadID, LPCSTR szThreadName )
     __except( GetExceptionCode()==0x406D1388 ? EXCEPTION_CONTINUE_EXECUTION : EXCEPTION_EXECUTE_HANDLER )
     {
     }
+#endif
 #endif
 #endif // __PS3__
 }

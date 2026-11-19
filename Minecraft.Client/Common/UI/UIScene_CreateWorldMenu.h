@@ -113,7 +113,12 @@ private:
 
 protected:
 	static int KeyboardCompleteWorldNameCallback(LPVOID lpParam,const bool bRes);
+	static int NameInputCompleteWorldNameCallback(LPVOID lpParam, bool bAccepted, const wchar_t *pwchText);
 	static int KeyboardCompleteSeedCallback(LPVOID lpParam,const bool bRes);
+#ifdef _WINDOWS64
+	static void ModalCompleteWorldNameCallback(LPVOID lpParam, bool bAccepted, const std::wstring &text);
+	static void ModalCompleteSeedCallback(LPVOID lpParam, bool bAccepted, const std::wstring &text);
+#endif
 	void handlePress(F64 controlId, F64 childId);
 	void handleSliderMove(F64 sliderId, F64 currentValue);
 	

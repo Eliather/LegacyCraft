@@ -18,6 +18,11 @@
 
 wstring Tile::TILE_DESCRIPTION_PREFIX = L"Tile."; 
 
+const int Tile::bookshelf_Id;
+const int Tile::cloth_Id;
+const int Tile::glass_Id;
+const int Tile::lightGem_Id; 
+
 const float Tile::INDESTRUCTIBLE_DESTROY_TIME = -1.0f;
 
 Tile::SoundType *Tile::SOUND_NORMAL = NULL;

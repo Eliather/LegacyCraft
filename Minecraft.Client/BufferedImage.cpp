@@ -49,6 +49,8 @@ void BufferedImage::ByteFlip4(unsigned int &data)
 // 24-bits used (ie no alpha channel) whereas method 0 is a full 32-bit image with a valid alpha channel. 
 BufferedImage::BufferedImage(const wstring& File, bool filenameHasExtension /*=false*/, bool bTitleUpdateTexture /*=false*/, const wstring &drive /*=L""*/)
 {
+	width = 0;
+	height = 0;
 	HRESULT hr;
 	wstring wDrive;
 	wstring filePath;

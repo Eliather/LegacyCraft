@@ -6,6 +6,189 @@
 #include "..\..\..\Minecraft.World\net.minecraft.world.item.h"
 #include "..\..\MultiplayerLocalPlayer.h"
 
+#ifdef _WINDOWS64
+#include <math.h>
+
+namespace
+{
+	struct ContainerMouseState
+	{
+		bool initialized;
+		bool mouseControlActive;
+		int lastMouseX;
+		int lastMouseY;
+		UIVec2D lastMoviePos;
+
+		ContainerMouseState()
+			: initialized(false)
+			, mouseControlActive(false)
+			, lastMouseX(0)
+			, lastMouseY(0)
+		{
+			lastMoviePos.x = 0.0f;
+			lastMoviePos.y = 0.0f;
+		}
+	};
+
+	static unordered_map<const UIScene_AbstractContainerMenu *, ContainerMouseState> s_containerMouseStates;
+
+	static bool GetContainerMouseMoviePos(UILayer *parentLayer, int movieWidth, int movieHeight, UIControl &mainPanel, UIVec2D &outMoviePos)
+	{
+		if(parentLayer == NULL || movieWidth <= 0 || movieHeight <= 0)
+		{
+			return false;
+		}
+
+		S32 renderW = 0;
+		S32 renderH = 0;
+		parentLayer->getRenderDimensions(renderW, renderH);
+		if(renderW <= 0 || renderH <= 0)
+		{
+			return false;
+		}
+
+		const S32 screenW = (S32)ui.getScreenWidth();
+		const S32 screenH = (S32)ui.getScreenHeight();
+		S32 originX = 0;
+		S32 originY = 0;
+
+		switch(parentLayer->getViewport())
+		{
+		case C4JRender::VIEWPORT_TYPE_SPLIT_TOP:
+			originX = screenW / 4;
+			break;
+		case C4JRender::VIEWPORT_TYPE_SPLIT_BOTTOM:
+			originX = screenW / 4;
+			originY = screenH / 2;
+			break;
+		case C4JRender::VIEWPORT_TYPE_SPLIT_LEFT:
+			originY = screenH / 4;
+			break;
+		case C4JRender::VIEWPORT_TYPE_SPLIT_RIGHT:
+			originX = screenW / 2;
+			originY = screenH / 4;
+			break;
+		case C4JRender::VIEWPORT_TYPE_QUADRANT_TOP_LEFT:
+			break;
+		case C4JRender::VIEWPORT_TYPE_QUADRANT_TOP_RIGHT:
+			originX = screenW / 2;
+			break;
+		case C4JRender::VIEWPORT_TYPE_QUADRANT_BOTTOM_LEFT:
+			originY = screenH / 2;
+			break;
+		case C4JRender::VIEWPORT_TYPE_QUADRANT_BOTTOM_RIGHT:
+			originX = screenW / 2;
+			originY = screenH / 2;
+			break;
+		case C4JRender::VIEWPORT_TYPE_FULLSCREEN:
+		default:
+			break;
+		}
+
+		mainPanel.UpdateControl();
+		const float localX = (float)((S32)Mouse::getX() - originX);
+		const float localY = (float)((S32)Mouse::getY() - originY);
+		outMoviePos.x = localX * ((float)movieWidth / (float)renderW) - (float)mainPanel.getXPos();
+		outMoviePos.y = localY * ((float)movieHeight / (float)renderH) - (float)mainPanel.getYPos();
+		return true;
+	}
+
+	static bool SyncContainerPointerFromWindowsMouse(
+		UIScene_AbstractContainerMenu *scene,
+		int iPad,
+		UILayer *parentLayer,
+		int movieWidth,
+		int movieHeight,
+		UIControl &mainPanel,
+		float minX,
+		float maxX,
+		float minY,
+		float maxY,
+		float offsetX,
+		float offsetY,
+		UIVec2D &pointerPos,
+		bool allowButtonActivation,
+		bool &outResetTapState)
+	{
+		outResetTapState = false;
+		if(iPad != ProfileManager.GetPrimaryPad())
+		{
+			return false;
+		}
+
+		ContainerMouseState &state = s_containerMouseStates[scene];
+		if(Mouse::isGrabbed())
+		{
+			state.initialized = false;
+			state.mouseControlActive = false;
+			return false;
+		}
+
+		const int mouseX = Mouse::getX();
+		const int mouseY = Mouse::getY();
+		const bool buttonClicked = allowButtonActivation && (Mouse::isButtonPressed(0) || Mouse::isButtonPressed(1));
+
+		if(!state.initialized)
+		{
+			state.initialized = true;
+			state.lastMouseX = mouseX;
+			state.lastMouseY = mouseY;
+			state.mouseControlActive = buttonClicked;
+			if(!state.mouseControlActive)
+			{
+				return false;
+			}
+		}
+
+		const float sens = (float)app.GetGameSettings(iPad, eGameSetting_Sensitivity_InMenu) / 100.0f;
+		const float stickX = InputManager.GetJoypadStick_LX(iPad, false) * sens;
+		const float stickY = InputManager.GetJoypadStick_LY(iPad, false) * sens;
+		if(fabsf(stickX) >= 0.01f || fabsf(stickY) >= 0.01f)
+		{
+			state.mouseControlActive = false;
+			state.lastMouseX = mouseX;
+			state.lastMouseY = mouseY;
+			return false;
+		}
+
+		if(mouseX != state.lastMouseX || mouseY != state.lastMouseY || buttonClicked)
+		{
+			state.lastMouseX = mouseX;
+			state.lastMouseY = mouseY;
+			state.mouseControlActive = true;
+		}
+
+		if(!state.mouseControlActive)
+		{
+			return false;
+		}
+
+		UIVec2D moviePos;
+		if(!GetContainerMouseMoviePos(parentLayer, movieWidth, movieHeight, mainPanel, moviePos))
+		{
+			return false;
+		}
+
+		const float clampMinX = minX - offsetX;
+		const float clampMaxX = maxX - offsetX;
+		const float clampMinY = minY - offsetY;
+		const float clampMaxY = maxY - offsetY;
+		if(moviePos.x < clampMinX) moviePos.x = clampMinX;
+		else if(moviePos.x > clampMaxX) moviePos.x = clampMaxX;
+		if(moviePos.y < clampMinY) moviePos.y = clampMinY;
+		else if(moviePos.y > clampMaxY) moviePos.y = clampMaxY;
+
+		moviePos.x = floorf(moviePos.x);
+		moviePos.y = floorf(moviePos.y);
+
+		pointerPos = moviePos;
+		state.lastMoviePos = moviePos;
+		outResetTapState = true;
+		return true;
+	}
+}
+#endif
+
 UIScene_AbstractContainerMenu::UIScene_AbstractContainerMenu(int iPad, UILayer *parentLayer) : UIScene(iPad, parentLayer)
 {
 	m_focusSection = eSectionNone;
@@ -29,6 +212,9 @@ UIScene_AbstractContainerMenu::UIScene_AbstractContainerMenu(int iPad, UILayer *
 
 UIScene_AbstractContainerMenu::~UIScene_AbstractContainerMenu()
 {
+#ifdef _WINDOWS64
+	s_containerMouseStates.erase(this);
+#endif
 	app.DebugPrintf("UIScene_AbstractContainerMenu::~UIScene_AbstractContainerMenu\n");
 }
 
@@ -59,6 +245,9 @@ void UIScene_AbstractContainerMenu::handleDestroy()
 	ui.OverrideSFX(m_iPad,ACTION_MENU_RIGHT,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_UP,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_DOWN,false);
+#ifdef _WINDOWS64
+	s_containerMouseStates.erase(this);
+#endif
 }
 
 void UIScene_AbstractContainerMenu::InitDataAssociations(int iPad, AbstractContainerMenu *menu, int startIndex)
@@ -161,6 +350,10 @@ void UIScene_AbstractContainerMenu::PlatformInitialize(int iPad, int startIndex)
 	IggyEventResult result;
 	IggyPlayerDispatchEventRS ( getMovie() , &mouseEvent , &result );
 
+#ifdef _WINDOWS64
+	s_containerMouseStates.erase(this);
+#endif
+
 #ifdef USE_POINTER_ACCEL	
 	m_fPointerVelX = 0.0f;
 	m_fPointerVelY = 0.0f;
@@ -173,7 +366,27 @@ void UIScene_AbstractContainerMenu::tick()
 {
 	UIScene::tick();
 
+#ifdef _WINDOWS64
+	bool resetTapState = false;
+	const bool mouseControlled = SyncContainerPointerFromWindowsMouse(
+		this, m_iPad, m_parentLayer, m_movieWidth, m_movieHeight, m_controlMainPanel,
+		m_fPointerMinX, m_fPointerMaxX, m_fPointerMinY, m_fPointerMaxY,
+		m_fPointerImageOffsetX, m_fPointerImageOffsetY,
+		m_pointerPos, false, resetTapState);
+	if(resetTapState)
+	{
+		m_eCurrTapState = eTapStateNoInput;
+	}
+#endif
+
 	onMouseTick();
+
+#ifdef _WINDOWS64
+	if(mouseControlled)
+	{
+		m_pointerPos = s_containerMouseStates[this].lastMoviePos;
+	}
+#endif
 
 	IggyEvent mouseEvent;
 	S32 width, height;
@@ -255,6 +468,33 @@ void UIScene_AbstractContainerMenu::handleInput(int iPad, int key, bool repeat, 
 
 	if(pressed)
 	{
+#ifdef _WINDOWS64
+		if(key == ACTION_MENU_LEFT || key == ACTION_MENU_RIGHT || key == ACTION_MENU_UP || key == ACTION_MENU_DOWN)
+		{
+			ContainerMouseState &state = s_containerMouseStates[this];
+			state.mouseControlActive = false;
+			state.lastMouseX = Mouse::getX();
+			state.lastMouseY = Mouse::getY();
+		}
+		else if((key == ACTION_MENU_OK || key == ACTION_MENU_X) && !Mouse::isGrabbed() &&
+		        (Mouse::isButtonPressed(0) || Mouse::isButtonPressed(1)))
+		{
+			bool resetTapState = false;
+			if(SyncContainerPointerFromWindowsMouse(
+				this, m_iPad, m_parentLayer, m_movieWidth, m_movieHeight, m_controlMainPanel,
+				m_fPointerMinX, m_fPointerMaxX, m_fPointerMinY, m_fPointerMaxY,
+				m_fPointerImageOffsetX, m_fPointerImageOffsetY,
+				m_pointerPos, true, resetTapState))
+			{
+				if(resetTapState)
+				{
+					m_eCurrTapState = eTapStateNoInput;
+				}
+				onMouseTick();
+				m_pointerPos = s_containerMouseStates[this].lastMoviePos;
+			}
+		}
+#endif
 		handled = handleKeyDown(m_iPad, key, repeat);
 	}
 }

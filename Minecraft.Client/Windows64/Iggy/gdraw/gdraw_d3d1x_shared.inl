@@ -376,8 +376,27 @@ extern GDrawTexture *gdraw_D3D1X_(WrappedTextureCreate)(ID3D1X(ShaderResourceVie
    p->handle.tex.d3d = NULL;
    p->handle.tex.d3d_view = tex_view;
    p->handle.tex.d3d_rtview = NULL;
-   p->handle.tex.w = 1;
-   p->handle.tex.h = 1;
+   S32 texW = 1, texH = 1;
+   if (tex_view)
+   {
+      ID3D1X(Resource) *res = NULL;
+      tex_view->GetResource(&res);
+      if (res)
+      {
+         ID3D1X(Texture2D) *tex2d = NULL;
+         if (SUCCEEDED(res->QueryInterface(__uuidof(ID3D1X(Texture2D)), (void **)&tex2d)) && tex2d)
+         {
+            D3D1X_(TEXTURE2D_DESC) desc;
+            tex2d->GetDesc(&desc);
+            if (desc.Width > 0) texW = (S32)desc.Width;
+            if (desc.Height > 0) texH = (S32)desc.Height;
+            tex2d->Release();
+         }
+         res->Release();
+      }
+   }
+   p->handle.tex.w = texW;
+   p->handle.tex.h = texH;
    gdraw_HandleCacheAllocateEnd(p, 0, NULL, GDRAW_HANDLE_STATE_user_owned);
    return (GDrawTexture *) p;
 }
@@ -2383,6 +2402,7 @@ GDrawTexture * RADLINK gdraw_D3D1X_(MakeTextureFromResource)(U8 *resource_file, 
 {
    char *failed_call="";
    U8 *free_data = 0;
+   U8 *data = 0;
    GDrawTexture *t=0;
    S32 width, height, mipmaps, size, blk;
    ID3D1X(Texture2D) *tex=0;
@@ -2415,7 +2435,7 @@ GDrawTexture * RADLINK gdraw_D3D1X_(MakeTextureFromResource)(U8 *resource_file, 
 
    desc.Format = d3dfmt;
 
-   U8 *data = resource_file + texture->file_offset;
+   data = resource_file + texture->file_offset;
 
    if (texture->format == IFT_FORMAT_i_8 || texture->format == IFT_FORMAT_i_4) {
       // convert from intensity to luma+alpha

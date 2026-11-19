@@ -69,7 +69,11 @@ namespace
 
 		StorageManager.SetSaveTitle(levelName.c_str());
 
-		const char *preparedSaveId = app.GetUniqueMapName();
+		const char *preparedSaveId = app.GetPreparedSaveId();
+		if(preparedSaveId == NULL || preparedSaveId[0] == 0)
+		{
+			preparedSaveId = app.GetUniqueMapName();
+		}
 		if(preparedSaveId != NULL && preparedSaveId[0] != 0)
 		{
 			StorageManager.SetSaveUniqueFilename((char *)preparedSaveId);
@@ -108,7 +112,11 @@ namespace
 
 	std::string GetPreparedWindows64SaveId()
 	{
-		const char *preparedSaveId = app.GetUniqueMapName();
+		const char *preparedSaveId = app.GetPreparedSaveId();
+		if(preparedSaveId == NULL || preparedSaveId[0] == 0)
+		{
+			preparedSaveId = app.GetUniqueMapName();
+		}
 		if(preparedSaveId != NULL && preparedSaveId[0] != 0)
 		{
 			return preparedSaveId;
@@ -203,7 +211,7 @@ namespace
 			return false;
 		}
 
-		if(!preparedSaveId.empty() && !IsTimestampLikeSaveId(preparedSaveId))
+		if(!preparedSaveId.empty())
 		{
 			const std::wstring preferredDirPath = CombineWindows64Path(storageRootPath, filenametowstring(preparedSaveId.c_str()));
 			if(Windows64PathIsDirectory(preferredDirPath))

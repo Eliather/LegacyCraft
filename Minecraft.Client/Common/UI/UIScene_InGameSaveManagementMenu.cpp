@@ -48,6 +48,9 @@ UIScene_InGameSaveManagementMenu::UIScene_InGameSaveManagementMenu(int iPad, voi
 
 #if defined(_XBOX_ONE) || defined(__ORBIS__)
 	m_spaceIndicatorSaves.init(L"",eControl_SpaceIndicator,0, (4LL *1024LL * 1024LL * 1024LL) );
+#elif defined(_WINDOWS64)
+	m_spaceIndicatorSaves.init(L"",eControl_SpaceIndicator,0, (4LL *1024LL * 1024LL * 1024LL) );
+	m_spaceIndicatorSaves.setVisible(false);
 #endif
 	m_bUpdateSaveSize = false;
 

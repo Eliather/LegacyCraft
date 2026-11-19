@@ -33,6 +33,7 @@
 #endif
 #ifdef _WINDOWS64
 #include "..\zlib\zlib.h"
+#include "..\..\CustomTextInputModal.h"
 #endif
 
 
@@ -1267,6 +1268,7 @@ namespace
 	bool TryResolveWindows64SaveTitleFromBytes(void *saveData, DWORD fileSize, std::string &resolvedTitle)
 	{
 		bool success = false;
+#ifdef _MSC_VER
 		__try
 		{
 			success = TryResolveWindows64SaveTitleFromBytesUnsafe(saveData, fileSize, resolvedTitle);
@@ -1275,6 +1277,16 @@ namespace
 		{
 			success = false;
 		}
+#else
+		try
+		{
+			success = TryResolveWindows64SaveTitleFromBytesUnsafe(saveData, fileSize, resolvedTitle);
+		}
+		catch (...)
+		{
+			success = false;
+		}
+#endif
 
 		return success;
 	}
@@ -1577,6 +1589,9 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
 
 #if defined(_XBOX_ONE) || defined(__ORBIS__)
     m_spaceIndicatorSaves.init(L"",eControl_SpaceIndicator,0, (4LL *1024LL * 1024LL * 1024LL) );
+#elif defined(_WINDOWS64)
+    m_spaceIndicatorSaves.init(L"",eControl_SpaceIndicator,0, (4LL *1024LL * 1024LL * 1024LL) );
+    m_spaceIndicatorSaves.setVisible(false);
 #endif
     m_bUpdateSaveSize = false;
 
@@ -1927,11 +1942,18 @@ void UIScene_LoadOrJoinMenu::Initialise()
 void UIScene_LoadOrJoinMenu::updateComponents()
 {
     m_parentLayer->showComponent(m_iPad,eUIComponent_Panorama,true);
+#ifdef _WINDOWS64
+    m_parentLayer->showComponent(m_iPad,eUIComponent_Logo,false);
+#else
     m_parentLayer->showComponent(m_iPad,eUIComponent_Logo,true);
+#endif
 }
 
 void UIScene_LoadOrJoinMenu::handleDestroy()
 {
+#ifdef _WINDOWS64
+	CustomTextInputModal::ForceCloseForParam(this);
+#endif
 #ifdef __PSVITA__
 	app.DebugPrintf("missing InputManager.DestroyKeyboard on Vita !!!!!!\n");
 #endif
@@ -2136,21 +2158,30 @@ void UIScene_LoadOrJoinMenu::tick()
 
         if(!m_bExitScene && m_bSavesDisplayed && !m_bRetrievingSaveThumbnails && !m_bAllLoaded)
         {
-            if( m_iRequestingThumbnailId < (m_buttonListSaves.getItemCount() - m_iDefaultButtonsC ))
+            PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
+            const int totalSaves = m_buttonListSaves.getItemCount() - m_iDefaultButtonsC;
+            while( m_iRequestingThumbnailId < totalSaves )
             {
                 m_bRetrievingSaveThumbnails = true;
-                app.DebugPrintf("Requesting the first thumbnail\n");
+                app.DebugPrintf("Requesting thumbnail %d\n", m_iRequestingThumbnailId);
                 // set the save to load
-                PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
                 const int saveId = m_saveDetails[m_iRequestingThumbnailId].saveId;
                 C4JStorage::ESaveGameState eLoadStatus=StorageManager.LoadSaveDataThumbnail(&pSaveDetails->SaveInfoA[saveId],&LoadSaveDataThumbnailReturned,this);
 
-                if(eLoadStatus!=C4JStorage::ESaveGame_GetSaveThumbnail)
+                if(eLoadStatus == C4JStorage::ESaveGame_GetSaveThumbnail)
                 {
-                    // something went wrong
-                    m_bRetrievingSaveThumbnails=false;
-                    m_bAllLoaded = true;
+                    break;
                 }
+
+                // Missing or unavailable thumbnail: advance to the next save instead of aborting remaining saves
+                m_bRetrievingSaveThumbnails = false;
+                m_bSaveThumbnailReady = false;
+                ++m_iRequestingThumbnailId;
+            }
+            if( m_iRequestingThumbnailId >= totalSaves )
+            {
+                m_bRetrievingSaveThumbnails = false;
+                m_bAllLoaded = true;
             }
         }
         else if (m_bSavesDisplayed && m_bSaveThumbnailReady)
@@ -2208,21 +2239,24 @@ void UIScene_LoadOrJoinMenu::tick()
 				}
 
                 ++m_iRequestingThumbnailId;
-                if( m_iRequestingThumbnailId < (m_buttonListSaves.getItemCount() - m_iDefaultButtonsC ))
+                PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
+                const int totalSaves = m_buttonListSaves.getItemCount() - m_iDefaultButtonsC;
+                while( m_iRequestingThumbnailId < totalSaves )
                 {
                     app.DebugPrintf("Requesting another thumbnail\n");
                     // set the save to load
-                    PSAVE_DETAILS pSaveDetails=StorageManager.ReturnSavesInfo();
                     const int saveId = m_saveDetails[m_iRequestingThumbnailId].saveId;
                     C4JStorage::ESaveGameState eLoadStatus=StorageManager.LoadSaveDataThumbnail(&pSaveDetails->SaveInfoA[saveId],&LoadSaveDataThumbnailReturned,this);
-                    if(eLoadStatus!=C4JStorage::ESaveGame_GetSaveThumbnail)
+                    if(eLoadStatus == C4JStorage::ESaveGame_GetSaveThumbnail)
                     {
-                        // something went wrong
-                        m_bRetrievingSaveThumbnails=false;
-                        m_bAllLoaded = true;
+                        break;
                     }
+
+                    // Missing or unavailable thumbnail: advance to the next save instead of aborting remaining saves
+                    m_bSaveThumbnailReady = false;
+                    ++m_iRequestingThumbnailId;
                 }
-                else
+                if( m_iRequestingThumbnailId >= totalSaves )
                 {
                     m_bRetrievingSaveThumbnails = false;
                     m_bAllLoaded = true;
@@ -3825,6 +3859,38 @@ void UIScene_LoadOrJoinMenu::LoadRemoteFileFromDisk(char* remoteFilename)
 #endif
 
 
+#ifdef _WINDOWS64
+void UIScene_LoadOrJoinMenu::ModalRenameWorldCallback(LPVOID lpParam, bool bAccepted, const std::wstring &text)
+{
+	UIScene_LoadOrJoinMenu *pClass = (UIScene_LoadOrJoinMenu *)lpParam;
+	if(pClass == NULL)
+	{
+		return;
+	}
+
+	pClass->m_bIgnoreInput = false;
+	if(!bAccepted || trimString(text).empty())
+	{
+		pClass->updateTooltips();
+		return;
+	}
+
+	const int saveListIndex = pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC;
+	if(pClass->m_saveDetails != NULL && saveListIndex >= 0 && saveListIndex < pClass->m_iSaveDetailsCount)
+	{
+		const bool renameOk = TryRenameWindows64DirectSave(
+			pClass->m_saveDetails[saveListIndex].UTF8SaveFilename,
+			text.c_str());
+		if(renameOk)
+		{
+			pClass->m_iState = e_SavesRepopulate;
+			return;
+		}
+	}
+	pClass->updateTooltips();
+}
+#endif
+
 int UIScene_LoadOrJoinMenu::SaveOptionsDialogReturned(void *pParam,int iPad,C4JStorage::EMessageResult result)
 {
     UIScene_LoadOrJoinMenu* pClass = (UIScene_LoadOrJoinMenu*)pParam;
@@ -3839,6 +3905,27 @@ int UIScene_LoadOrJoinMenu::SaveOptionsDialogReturned(void *pParam,int iPad,C4JS
 #ifdef _DURANGO
             // bring up a keyboard
             InputManager.RequestKeyboard(app.GetString(IDS_RENAME_WORLD_TITLE), (pClass->m_saveDetails[pClass->m_iSaveListIndex-pClass->m_iDefaultButtonsC]).UTF16SaveName,(DWORD)0,25,&UIScene_LoadOrJoinMenu::KeyboardCompleteWorldNameCallback,pClass,C_4JInput::EKeyboardMode_Default);
+#elif defined(_WINDOWS64)
+            {
+                const int saveListIndex = pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC;
+                std::wstring currentTitle;
+                if(pClass->m_saveDetails != NULL && saveListIndex >= 0 && saveListIndex < pClass->m_iSaveDetailsCount)
+                {
+                    currentTitle = convStringToWstring(pClass->m_saveDetails[saveListIndex].UTF8SaveName);
+                }
+
+                CustomTextInputModal::Params modalParams;
+                const wchar_t *renameTitle = app.GetString(IDS_RENAME_WORLD_TITLE);
+                modalParams.title = (renameTitle != NULL && renameTitle[0] != 0) ? renameTitle : L"Rename World";
+                modalParams.initialText = currentTitle;
+                modalParams.minLength = 1;
+                modalParams.maxLength = 25;
+                modalParams.charFilter = &CustomTextInputModal::IsAcceptedWorldNameChar;
+                modalParams.validateFunc = &CustomTextInputModal::ValidateWorldNameNotEmpty;
+                modalParams.completeFunc = &UIScene_LoadOrJoinMenu::ModalRenameWorldCallback;
+                modalParams.completeParam = pClass;
+                CustomTextInputModal::Open(modalParams);
+            }
 #else
             // bring up a keyboard
             wchar_t wSaveName[128];

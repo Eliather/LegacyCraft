@@ -4,6 +4,7 @@
 #include "stdafx.h"
 
 #include <assert.h>
+#include <mmsystem.h>
 #include "GameConfig\Minecraft.spa.h"
 #include "..\MinecraftServer.h"
 #include "..\LocalPlayer.h"
@@ -75,6 +76,193 @@ BOOL g_bWidescreen = TRUE;
 
 int g_iScreenWidth = 1920;
 int g_iScreenHeight = 1080;
+bool g_bWindows64Fullscreen = false;
+
+extern HWND g_hWnd;
+
+static bool g_bRenderInitialized = false;
+static bool g_bInRuntimeResize = false;
+static int  g_iCliRendererOverride = -1;
+static int  g_iCliVsyncOverride = -1;
+static int  g_iSmokeFrames = 0;
+
+static void UpdateMouseLockCenter();
+
+static void GetWindows64ResolutionModeSize(int resolutionMode, int &width, int &height, bool &fullscreen)
+{
+	fullscreen = false;
+
+	switch(resolutionMode)
+	{
+	case 1:
+		width = 1280;
+		height = 720;
+		break;
+	case 2:
+		width = 1366;
+		height = 768;
+		break;
+	case 3:
+		width = 1920;
+		height = 1080;
+		break;
+	case 4:
+		width = GetSystemMetrics(SM_CXSCREEN);
+		height = GetSystemMetrics(SM_CYSCREEN);
+		fullscreen = true;
+		break;
+	default:
+		width = 1920;
+		height = 1080;
+		break;
+	}
+
+	if(width <= 0 || height <= 0)
+	{
+		width = GetSystemMetrics(SM_CXSCREEN);
+		height = GetSystemMetrics(SM_CYSCREEN);
+		fullscreen = false;
+	}
+}
+
+static void ComputeFittedWindowPlacement(HWND referenceWnd, int reqClientW, int reqClientH, bool fullscreen,
+	DWORD style, int &outX, int &outY, int &outWinW, int &outWinH, int &outClientW, int &outClientH)
+{
+	RECT targetRect = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+	if (fullscreen)
+	{
+		HMONITOR hMon = referenceWnd ? MonitorFromWindow(referenceWnd, MONITOR_DEFAULTTONEAREST)
+		                             : MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+		MONITORINFO mi = {};
+		mi.cbSize = sizeof(mi);
+		if (hMon && GetMonitorInfo(hMon, &mi))
+		{
+			targetRect = mi.rcMonitor;
+		}
+		outClientW = targetRect.right - targetRect.left;
+		outClientH = targetRect.bottom - targetRect.top;
+		outX = targetRect.left;
+		outY = targetRect.top;
+		outWinW = outClientW;
+		outWinH = outClientH;
+		return;
+	}
+
+	RECT workRect = targetRect;
+	HMONITOR hMon = referenceWnd ? MonitorFromWindow(referenceWnd, MONITOR_DEFAULTTONEAREST)
+	                             : MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+	MONITORINFO mi = {};
+	mi.cbSize = sizeof(mi);
+	if (hMon && GetMonitorInfo(hMon, &mi))
+	{
+		workRect = mi.rcWork;
+	}
+	else
+	{
+		SystemParametersInfo(SPI_GETWORKAREA, 0, &workRect, 0);
+	}
+
+	const int workW = workRect.right - workRect.left;
+	const int workH = workRect.bottom - workRect.top;
+
+	RECT frameRect = { 0, 0, 0, 0 };
+	AdjustWindowRect(&frameRect, style, FALSE);
+	const int nonClientW = frameRect.right - frameRect.left;
+	const int nonClientH = frameRect.bottom - frameRect.top;
+
+	const int maxClientW = (workW > nonClientW + 320) ? (workW - nonClientW) : workW;
+	const int maxClientH = (workH > nonClientH + 240) ? (workH - nonClientH) : workH;
+
+	outClientW = reqClientW;
+	outClientH = reqClientH;
+	if (outClientW > maxClientW || outClientH > maxClientH)
+	{
+		const float scaleW = (float)maxClientW / (float)reqClientW;
+		const float scaleH = (float)maxClientH / (float)reqClientH;
+		const float scale = (scaleW < scaleH) ? scaleW : scaleH;
+		outClientW = (int)((float)reqClientW * scale);
+		outClientH = (int)((float)reqClientH * scale);
+		if (outClientW < 320) outClientW = 320;
+		if (outClientH < 240) outClientH = 240;
+	}
+
+	outWinW = outClientW + nonClientW;
+	outWinH = outClientH + nonClientH;
+	outX = workRect.left + (workW - outWinW) / 2;
+	outY = workRect.top + (workH - outWinH) / 2;
+	if (outX < workRect.left) outX = workRect.left;
+	if (outY < workRect.top) outY = workRect.top;
+}
+
+static void ApplyWindows64ResolutionMode(int resolutionMode)
+{
+	GetWindows64ResolutionModeSize(resolutionMode, g_iScreenWidth, g_iScreenHeight, g_bWindows64Fullscreen);
+}
+
+static void SyncEngineViewportDimensions(int width, int height)
+{
+	if (width <= 0 || height <= 0) return;
+	g_iScreenWidth = width;
+	g_iScreenHeight = height;
+	UpdateMouseLockCenter();
+
+	Minecraft *minecraft = Minecraft::GetInstance();
+	if (minecraft != NULL)
+	{
+		minecraft->width_phys = width;
+		minecraft->height_phys = height;
+		minecraft->width = RenderManager.IsWidescreen() ? width : ((width * 3) / 4);
+		minecraft->height = height;
+	}
+}
+
+bool Windows64ApplyResolutionModeRuntime(int resolutionMode)
+{
+	int reqW = 1920;
+	int reqH = 1080;
+	bool fullscreen = false;
+	GetWindows64ResolutionModeSize(resolutionMode, reqW, reqH, fullscreen);
+
+	const DWORD style = fullscreen ? WS_POPUP : WS_OVERLAPPEDWINDOW;
+	int windowX = 0, windowY = 0, windowWidth = reqW, windowHeight = reqH, clientW = reqW, clientH = reqH;
+	ComputeFittedWindowPlacement(g_hWnd, reqW, reqH, fullscreen, style,
+		windowX, windowY, windowWidth, windowHeight, clientW, clientH);
+
+	if (g_hWnd == NULL)
+	{
+		g_iScreenWidth = clientW;
+		g_iScreenHeight = clientH;
+		g_bWindows64Fullscreen = fullscreen;
+		return true;
+	}
+
+	g_bInRuntimeResize = true;
+	g_bWindows64Fullscreen = fullscreen;
+	SetWindowLongPtr(g_hWnd, GWL_STYLE, (LONG_PTR)style);
+	SetWindowPos(g_hWnd, NULL, windowX, windowY, windowWidth, windowHeight,
+		SWP_NOZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+	RECT actualRc = {};
+	if (GetClientRect(g_hWnd, &actualRc))
+	{
+		if (actualRc.right - actualRc.left > 0) clientW = actualRc.right - actualRc.left;
+		if (actualRc.bottom - actualRc.top > 0) clientH = actualRc.bottom - actualRc.top;
+	}
+
+	bool resized = true;
+	if (g_bRenderInitialized)
+	{
+		resized = RenderManager.ResizeWindow(clientW, clientH, fullscreen);
+		if (resized)
+		{
+			ui.updateRenderTargets(clientW, clientH);
+		}
+	}
+
+	SyncEngineViewportDimensions(clientW, clientH);
+	g_bInRuntimeResize = false;
+	return resized;
+}
 
 void DefineActions(void)
 {
@@ -233,19 +421,25 @@ void MemSect(int sect) {}
 
 HINSTANCE               g_hInst = NULL;
 HWND                    g_hWnd = NULL;
-D3D_DRIVER_TYPE         g_driverType = D3D_DRIVER_TYPE_NULL;
-D3D_FEATURE_LEVEL       g_featureLevel = D3D_FEATURE_LEVEL_11_0;
-ID3D11Device*           g_pd3dDevice = NULL;
-ID3D11DeviceContext*    g_pImmediateContext = NULL;
-IDXGISwapChain*         g_pSwapChain = NULL;
-ID3D11RenderTargetView* g_pRenderTargetView = NULL;
-ID3D11DepthStencilView* g_pDepthStencilView = NULL;
-ID3D11Texture2D*		g_pDepthStencilBuffer = NULL;
 static bool             g_bMouseLocked = false;
 static int              g_iMouseLockCenterX = 0;
 static int              g_iMouseLockCenterY = 0;
 static float            g_fMouseDeltaRemainderX = 0.0f;
 static float            g_fMouseDeltaRemainderY = 0.0f;
+static bool             g_bIgnoreNextCenterWarp = false;
+static DWORD            g_dwLastRawInputTick = 0;
+static bool             g_bHasRawInput = false;
+static bool             g_bRawInputRegistered = false;
+
+static bool IsGameWindowFocused(HWND hWnd)
+{
+	if (hWnd == NULL || !IsWindow(hWnd) || IsIconic(hWnd))
+	{
+		return false;
+	}
+	HWND fg = GetForegroundWindow();
+	return (fg == hWnd) || (fg == NULL && GetFocus() == hWnd);
+}
 
 static void UpdateMouseLockCenter()
 {
@@ -272,6 +466,33 @@ static void ConvertClientToRenderCoords(HWND hWnd, int &x, int &y)
 	if (y >= g_iScreenHeight) y = g_iScreenHeight - 1;
 }
 
+static void GetMouseLockCenterRenderCoords(int &outRenderX, int &outRenderY)
+{
+	outRenderX = g_iMouseLockCenterX;
+	outRenderY = g_iMouseLockCenterY;
+	if (g_hWnd != NULL)
+	{
+		ConvertClientToRenderCoords(g_hWnd, outRenderX, outRenderY);
+	}
+}
+
+static void WarpCursorToLockCenter(bool ignoreNextMove)
+{
+	if (g_hWnd == NULL) return;
+	UpdateMouseLockCenter();
+	POINT center = { g_iMouseLockCenterX, g_iMouseLockCenterY };
+	ClientToScreen(g_hWnd, &center);
+	POINT current = {};
+	if (GetCursorPos(&current) && current.x == center.x && current.y == center.y)
+	{
+		return;
+	}
+	if (SetCursorPos(center.x, center.y) && ignoreNextMove)
+	{
+		g_bIgnoreNextCenterWarp = true;
+	}
+}
+
 static void SetCursorVisible(bool visible)
 {
 	if (visible) { while (ShowCursor(TRUE) < 0) {} }
@@ -284,34 +505,105 @@ static void SetMouseClip(bool locked)
 	if (g_hWnd == NULL) return;
 	RECT clientRect;
 	if (!GetClientRect(g_hWnd, &clientRect)) return;
+	if (clientRect.right <= clientRect.left || clientRect.bottom <= clientRect.top) return;
 	POINT topLeft = { clientRect.left, clientRect.top };
 	POINT bottomRight = { clientRect.right, clientRect.bottom };
 	ClientToScreen(g_hWnd, &topLeft);
 	ClientToScreen(g_hWnd, &bottomRight);
 	RECT clipRect = { topLeft.x, topLeft.y, bottomRight.x, bottomRight.y };
-	ClipCursor(&clipRect);
+	RECT currentClip = {};
+	if (!GetClipCursor(&currentClip) || !EqualRect(&currentClip, &clipRect))
+	{
+		ClipCursor(&clipRect);
+	}
 }
 
 static void SetMouseLocked(bool locked)
 {
-	if (g_hWnd == NULL) { g_bMouseLocked = locked; return; }
-	if (locked)
+	const bool wasLocked = g_bMouseLocked;
+
+	if (g_hWnd == NULL)
+	{
+		g_bMouseLocked = locked;
+		Mouse::setGrabbed(locked);
+		if (!locked && wasLocked)
+		{
+			Mouse::resetDeltas();
+			g_fMouseDeltaRemainderX = 0.0f;
+			g_fMouseDeltaRemainderY = 0.0f;
+		}
+		return;
+	}
+
+	if (!locked)
+	{
+		if (wasLocked)
+		{
+			SetMouseClip(false);
+			if (GetCapture() == g_hWnd)
+			{
+				ReleaseCapture();
+			}
+			SetCursorVisible(true);
+			g_bMouseLocked = false;
+			g_bIgnoreNextCenterWarp = false;
+			Mouse::setGrabbed(false);
+			Mouse::resetDeltas();
+			g_fMouseDeltaRemainderX = 0.0f;
+			g_fMouseDeltaRemainderY = 0.0f;
+
+			if (Display::isActive() && IsGameWindowFocused(g_hWnd))
+			{
+				WarpCursorToLockCenter(false);
+				int centerRenderX = 0;
+				int centerRenderY = 0;
+				GetMouseLockCenterRenderCoords(centerRenderX, centerRenderY);
+				Mouse::syncPosition(centerRenderX, centerRenderY);
+			}
+		}
+		return;
+	}
+
+	if (!wasLocked)
 	{
 		UpdateMouseLockCenter();
-		POINT center = { g_iMouseLockCenterX, g_iMouseLockCenterY };
-		ClientToScreen(g_hWnd, &center);
-		SetCursorPos(center.x, center.y);
-		int centerX = g_iMouseLockCenterX;
-		int centerY = g_iMouseLockCenterY;
-		ConvertClientToRenderCoords(g_hWnd, centerX, centerY);
-		Mouse::onMouseMove(centerX, centerY);
+		g_bMouseLocked = true;
+		SetMouseClip(true);
+		SetCapture(g_hWnd);
+		SetCursorVisible(false);
+		WarpCursorToLockCenter(true);
+		int centerRenderX = 0;
+		int centerRenderY = 0;
+		GetMouseLockCenterRenderCoords(centerRenderX, centerRenderY);
+		Mouse::syncPosition(centerRenderX, centerRenderY);
+		Mouse::resetDeltas();
+		g_fMouseDeltaRemainderX = 0.0f;
+		g_fMouseDeltaRemainderY = 0.0f;
+		Mouse::setGrabbed(true);
 	}
-	if (g_bMouseLocked == locked) return;
-	g_bMouseLocked = locked;
-	if (locked) SetCapture(g_hWnd);
-	else if (GetCapture() == g_hWnd) ReleaseCapture();
-	SetMouseClip(locked);
-	SetCursorVisible(!locked);
+	else
+	{
+		SetMouseClip(true);
+	}
+}
+
+static void ReleaseAllHeldInput()
+{
+	for (int key = 0; key < Keyboard::MAX_KEYS; ++key)
+	{
+		if (Keyboard::isKeyDown(key))
+		{
+			Keyboard::onKeyUp(key);
+		}
+	}
+	for (int button = 0; button < Mouse::MAX_BUTTONS; ++button)
+	{
+		if (Mouse::isButtonDown(button))
+		{
+			Mouse::onMouseButton(button, false, Mouse::getX(), Mouse::getY());
+		}
+	}
+	Mouse::clearPressedButtons();
 }
 
 static int TranslateWinKey(WPARAM wParam, LPARAM lParam)
@@ -356,46 +648,125 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CHAR:
 		Keyboard::onChar((wchar_t)wParam);
 		return 0;
+	case WM_ACTIVATE:
+	{
+		const WORD activeState = LOWORD(wParam);
+		const BOOL minimized = (HIWORD(wParam) != 0);
+		if (activeState == WA_INACTIVE || minimized)
+		{
+			Display::setActive(false);
+			SetMouseLocked(false);
+			SetMouseClip(false);
+			if (GetCapture() == hWnd) ReleaseCapture();
+			ReleaseAllHeldInput();
+		}
+		else
+		{
+			Display::setActive(!IsIconic(hWnd));
+		}
+		return 0;
+	}
+	case WM_SETFOCUS:
+		Display::setActive(!IsIconic(hWnd));
+		return 0;
 	case WM_KILLFOCUS:
+		Display::setActive(false);
+		SetMouseLocked(false);
 		SetMouseClip(false);
 		if (GetCapture() == hWnd) ReleaseCapture();
-		for (int key = 0; key < Keyboard::MAX_KEYS; ++key)
-			if (Keyboard::isKeyDown(key)) Keyboard::onKeyUp(key);
-		for (int button = 0; button < Mouse::MAX_BUTTONS; ++button)
-			if (Mouse::isButtonDown(button)) Mouse::onMouseButton(button, false, Mouse::getX(), Mouse::getY());
+		ReleaseAllHeldInput();
 		return 0;
+	case WM_MOVE:
+	case WM_EXITSIZEMOVE:
+		UpdateMouseLockCenter();
+		if (g_bMouseLocked)
+		{
+			SetMouseClip(true);
+			WarpCursorToLockCenter(true);
+		}
+		return 0;
+	case WM_INPUT:
+	{
+		UINT dwSize = 0;
+		GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
+		if (dwSize > 0)
+		{
+			BYTE stackBuf[128];
+			std::vector<BYTE> heapBuf;
+			BYTE *pBuf = stackBuf;
+			if (dwSize > sizeof(stackBuf))
+			{
+				heapBuf.resize(dwSize);
+				pBuf = heapBuf.data();
+			}
+			if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, pBuf, &dwSize, sizeof(RAWINPUTHEADER)) == dwSize)
+			{
+				const RAWINPUT *raw = reinterpret_cast<const RAWINPUT *>(pBuf);
+				if (g_bMouseLocked && Display::isActive() && raw->header.dwType == RIM_TYPEMOUSE)
+				{
+					if ((raw->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) == 0)
+					{
+						const int dx = (int)raw->data.mouse.lLastX;
+						const int dy = (int)raw->data.mouse.lLastY;
+						if (dx != 0 || dy != 0)
+						{
+							Mouse::onMouseDelta(dx, dy);
+							g_dwLastRawInputTick = GetTickCount();
+							g_bHasRawInput = true;
+						}
+					}
+				}
+			}
+		}
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	}
 	case WM_MOUSEMOVE:
 	{
 		int x = (short)LOWORD(lParam);
 		int y = (short)HIWORD(lParam);
 		if (g_bMouseLocked)
 		{
-			int dx = x - g_iMouseLockCenterX;
-			int dy = y - g_iMouseLockCenterY;
-			if (dx != 0 || dy != 0)
+			if (x == g_iMouseLockCenterX && y == g_iMouseLockCenterY)
 			{
-				RECT clientRect;
-				GetClientRect(hWnd, &clientRect);
-				const int clientW = clientRect.right - clientRect.left;
-				const int clientH = clientRect.bottom - clientRect.top;
-				float scaledDX = (float)dx;
-				float scaledDY = (float)dy;
-				if (clientW > 0 && clientH > 0)
-				{
-					scaledDX = ((float)dx * (float)g_iScreenWidth) / (float)clientW;
-					scaledDY = ((float)dy * (float)g_iScreenHeight) / (float)clientH;
-				}
-				scaledDX += g_fMouseDeltaRemainderX;
-				scaledDY += g_fMouseDeltaRemainderY;
-				int outDX = (scaledDX >= 0.0f) ? (int)(scaledDX + 0.5f) : (int)(scaledDX - 0.5f);
-				int outDY = (scaledDY >= 0.0f) ? (int)(scaledDY + 0.5f) : (int)(scaledDY - 0.5f);
-				g_fMouseDeltaRemainderX = scaledDX - (float)outDX;
-				g_fMouseDeltaRemainderY = scaledDY - (float)outDY;
-				if (outDX != 0 || outDY != 0) Mouse::onMouseDelta(outDX, outDY);
-				POINT center = { g_iMouseLockCenterX, g_iMouseLockCenterY };
-				ClientToScreen(hWnd, &center);
-				SetCursorPos(center.x, center.y);
+				g_bIgnoreNextCenterWarp = false;
+				return 0;
 			}
+			if (g_bIgnoreNextCenterWarp)
+			{
+				g_bIgnoreNextCenterWarp = false;
+				WarpCursorToLockCenter(false);
+				return 0;
+			}
+
+			const bool rawInputRecent = g_bHasRawInput && ((GetTickCount() - g_dwLastRawInputTick) < 250);
+			if (!rawInputRecent)
+			{
+				int dx = x - g_iMouseLockCenterX;
+				int dy = y - g_iMouseLockCenterY;
+				if (dx != 0 || dy != 0)
+				{
+					RECT clientRect;
+					GetClientRect(hWnd, &clientRect);
+					const int clientW = clientRect.right - clientRect.left;
+					const int clientH = clientRect.bottom - clientRect.top;
+					float scaledDX = (float)dx;
+					float scaledDY = (float)dy;
+					if (clientW > 0 && clientH > 0)
+					{
+						scaledDX = ((float)dx * (float)g_iScreenWidth) / (float)clientW;
+						scaledDY = ((float)dy * (float)g_iScreenHeight) / (float)clientH;
+					}
+					scaledDX += g_fMouseDeltaRemainderX;
+					scaledDY += g_fMouseDeltaRemainderY;
+					int outDX = (scaledDX >= 0.0f) ? (int)(scaledDX + 0.5f) : (int)(scaledDX - 0.5f);
+					int outDY = (scaledDY >= 0.0f) ? (int)(scaledDY + 0.5f) : (int)(scaledDY - 0.5f);
+					g_fMouseDeltaRemainderX = scaledDX - (float)outDX;
+					g_fMouseDeltaRemainderY = scaledDY - (float)outDY;
+					if (outDX != 0 || outDY != 0) Mouse::onMouseDelta(outDX, outDY);
+				}
+			}
+
+			WarpCursorToLockCenter(false);
 			return 0;
 		}
 		ConvertClientToRenderCoords(hWnd, x, y);
@@ -495,6 +866,38 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			return DefWindowProc(hWnd, message, wParam, lParam);
 		}
 		break;
+	case WM_SIZE:
+	{
+		if (wParam == SIZE_MINIMIZED)
+		{
+			Display::setActive(false);
+			SetMouseLocked(false);
+			SetMouseClip(false);
+			if (GetCapture() == hWnd) ReleaseCapture();
+			ReleaseAllHeldInput();
+			return 0;
+		}
+		if (g_bRenderInitialized && !g_bInRuntimeResize)
+		{
+			int newW = (int)LOWORD(lParam);
+			int newH = (int)HIWORD(lParam);
+			if (newW > 0 && newH > 0 && (newW != g_iScreenWidth || newH != g_iScreenHeight))
+			{
+				if (RenderManager.ResizeWindow(newW, newH, g_bWindows64Fullscreen))
+				{
+					ui.updateRenderTargets(newW, newH);
+				}
+				SyncEngineViewportDimensions(newW, newH);
+			}
+		}
+		UpdateMouseLockCenter();
+		if (g_bMouseLocked)
+		{
+			SetMouseClip(true);
+			WarpCursorToLockCenter(true);
+		}
+		return 0;
+	}
 	case WM_PAINT:
 		hdc = BeginPaint(hWnd, &ps);
 		EndPaint(hWnd, &ps);
@@ -512,15 +915,15 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 {
 	WNDCLASSEX wcex;
 	wcex.cbSize         = sizeof(WNDCLASSEX);
-	wcex.style          = CS_HREDRAW | CS_VREDRAW;
+	wcex.style          = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 	wcex.lpfnWndProc    = WndProc;
 	wcex.cbClsExtra     = 0;
 	wcex.cbWndExtra     = 0;
 	wcex.hInstance      = hInstance;
 	wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MINECRAFTWINDOWS));
 	wcex.hCursor        = LoadCursor(NULL, IDC_ARROW);
-	wcex.hbrBackground  = (HBRUSH)(COLOR_WINDOW+1);
-	wcex.lpszMenuName   = "Minecraft";
+	wcex.hbrBackground  = (HBRUSH)GetStockObject(BLACK_BRUSH);
+	wcex.lpszMenuName   = NULL;
 	wcex.lpszClassName  = "MinecraftClass";
 	wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 	return RegisterClassEx(&wcex);
@@ -529,13 +932,33 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	g_hInst = hInstance;
-	RECT wr = {0, 0, g_iScreenWidth, g_iScreenHeight};
-	AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
-	g_hWnd = CreateWindow("MinecraftClass", "Minecraft: Legacy Edition", WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT, 0,
-		wr.right - wr.left, wr.bottom - wr.top,
+	const DWORD windowStyle = g_bWindows64Fullscreen ? WS_POPUP : WS_OVERLAPPEDWINDOW;
+	int windowX = 0, windowY = 0, windowWidth = g_iScreenWidth, windowHeight = g_iScreenHeight;
+	int fittedClientW = g_iScreenWidth, fittedClientH = g_iScreenHeight;
+	ComputeFittedWindowPlacement(NULL, g_iScreenWidth, g_iScreenHeight, g_bWindows64Fullscreen,
+		windowStyle, windowX, windowY, windowWidth, windowHeight, fittedClientW, fittedClientH);
+	g_iScreenWidth = fittedClientW;
+	g_iScreenHeight = fittedClientH;
+
+	g_hWnd = CreateWindow("MinecraftClass", "Minecraft: Legacy Edition", windowStyle,
+		windowX, windowY,
+		windowWidth, windowHeight,
 		NULL, NULL, hInstance, NULL);
 	if (!g_hWnd) return FALSE;
+
+	RAWINPUTDEVICE rid = {};
+	rid.usUsagePage = 0x01;
+	rid.usUsage = 0x02;
+	rid.dwFlags = 0;
+	rid.hwndTarget = g_hWnd;
+	g_bRawInputRegistered = (RegisterRawInputDevices(&rid, 1, sizeof(rid)) == TRUE);
+
+	RECT rcClient = {};
+	if (GetClientRect(g_hWnd, &rcClient))
+	{
+		if (rcClient.right - rcClient.left > 0) g_iScreenWidth = rcClient.right - rcClient.left;
+		if (rcClient.bottom - rcClient.top > 0) g_iScreenHeight = rcClient.bottom - rcClient.top;
+	}
 	ShowWindow(g_hWnd, nCmdShow);
 	UpdateWindow(g_hWnd);
 	return TRUE;
@@ -577,107 +1000,48 @@ LRESULT CALLBACK DlgProc(HWND hWndDlg, UINT Msg, WPARAM wParam, LPARAM lParam)
 	return FALSE;
 }
 
-HRESULT InitDevice()
+static void ParseWin64CommandLine(LPCTSTR lpCmdLine)
 {
-	HRESULT hr = S_OK;
-	RECT rc;
-	GetClientRect(g_hWnd, &rc);
-	UINT width  = g_iScreenWidth;
-	UINT height = g_iScreenHeight;
-	app.DebugPrintf("width: %d, height: %d\n", width, height);
+	if (!lpCmdLine || !lpCmdLine[0]) return;
 
-	UINT createDeviceFlags = 0;
-#ifdef _DEBUG
-	createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
+	if      (lpCmdLine[0] == '1') { ApplyWindows64ResolutionMode(1); }
+	else if (lpCmdLine[0] == '2') { ApplyWindows64ResolutionMode(2); }
+	else if (lpCmdLine[0] == '3') { ApplyWindows64ResolutionMode(3); }
+	else if (lpCmdLine[0] == '4') { ApplyWindows64ResolutionMode(3); }
+	else if (lpCmdLine[0] == '5') { ApplyWindows64ResolutionMode(4); }
 
-	D3D_DRIVER_TYPE driverTypes[] = { D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP, D3D_DRIVER_TYPE_REFERENCE };
-	UINT numDriverTypes = ARRAYSIZE(driverTypes);
+	if (_tcsstr(lpCmdLine, _T("--renderer=dx12")) != NULL || _tcsstr(lpCmdLine, _T("--renderer=d3d12")) != NULL) { g_iCliRendererOverride = 3; }
+	else if (_tcsstr(lpCmdLine, _T("--renderer=vulkan")) != NULL) { g_iCliRendererOverride = 2; }
+	else if (_tcsstr(lpCmdLine, _T("--renderer=opengl")) != NULL || _tcsstr(lpCmdLine, _T("--renderer=gl")) != NULL) { g_iCliRendererOverride = 1; }
+	else if (_tcsstr(lpCmdLine, _T("--renderer=dx11")) != NULL || _tcsstr(lpCmdLine, _T("--renderer=d3d11")) != NULL) { g_iCliRendererOverride = 0; }
 
-	D3D_FEATURE_LEVEL featureLevels[] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0 };
-	UINT numFeatureLevels = ARRAYSIZE(featureLevels);
+	if (_tcsstr(lpCmdLine, _T("--vsync=1")) != NULL) { g_iCliVsyncOverride = 1; }
+	else if (_tcsstr(lpCmdLine, _T("--vsync=0")) != NULL) { g_iCliVsyncOverride = 0; }
 
-	DXGI_SWAP_CHAIN_DESC sd;
-	ZeroMemory(&sd, sizeof(sd));
-	sd.BufferCount                        = 1;
-	sd.BufferDesc.Width                   = width;
-	sd.BufferDesc.Height                  = height;
-	sd.BufferDesc.Format                  = DXGI_FORMAT_R8G8B8A8_UNORM;
-	sd.BufferDesc.RefreshRate.Numerator   = 60;
-	sd.BufferDesc.RefreshRate.Denominator = 1;
-	sd.BufferUsage                        = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	sd.OutputWindow                       = g_hWnd;
-	sd.SampleDesc.Count                   = 1;
-	sd.SampleDesc.Quality                 = 0;
-	sd.Windowed                           = TRUE;
-
-	for (UINT driverTypeIndex = 0; driverTypeIndex < numDriverTypes; driverTypeIndex++)
+	LPCTSTR smokePtr = _tcsstr(lpCmdLine, _T("--smoke-frames="));
+	if (smokePtr != NULL)
 	{
-		g_driverType = driverTypes[driverTypeIndex];
-		hr = D3D11CreateDeviceAndSwapChain(NULL, g_driverType, NULL, createDeviceFlags,
-			featureLevels, numFeatureLevels, D3D11_SDK_VERSION,
-			&sd, &g_pSwapChain, &g_pd3dDevice, &g_featureLevel, &g_pImmediateContext);
-		if (HRESULT_SUCCEEDED(hr)) break;
+		int val = _ttoi(smokePtr + 15);
+		if (val > 0) g_iSmokeFrames = val;
 	}
-	if (FAILED(hr)) return hr;
-
-	ID3D11Texture2D* pBackBuffer = NULL;
-	hr = g_pSwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID*)&pBackBuffer);
-	if (FAILED(hr)) return hr;
-
-	D3D11_TEXTURE2D_DESC descDepth;
-	descDepth.Width              = width;
-	descDepth.Height             = height;
-	descDepth.MipLevels          = 1;
-	descDepth.ArraySize          = 1;
-	descDepth.Format             = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	descDepth.SampleDesc.Count   = 1;
-	descDepth.SampleDesc.Quality = 0;
-	descDepth.Usage              = D3D11_USAGE_DEFAULT;
-	descDepth.BindFlags          = D3D11_BIND_DEPTH_STENCIL;
-	descDepth.CPUAccessFlags     = 0;
-	descDepth.MiscFlags          = 0;
-	hr = g_pd3dDevice->CreateTexture2D(&descDepth, NULL, &g_pDepthStencilBuffer);
-
-	D3D11_DEPTH_STENCIL_VIEW_DESC descDSView;
-	descDSView.Format             = DXGI_FORMAT_D24_UNORM_S8_UINT;
-	descDSView.ViewDimension      = D3D11_DSV_DIMENSION_TEXTURE2D;
-	descDSView.Texture2D.MipSlice = 0;
-	hr = g_pd3dDevice->CreateDepthStencilView(g_pDepthStencilBuffer, &descDSView, &g_pDepthStencilView);
-
-	hr = g_pd3dDevice->CreateRenderTargetView(pBackBuffer, NULL, &g_pRenderTargetView);
-	pBackBuffer->Release();
-	if (FAILED(hr)) return hr;
-
-	g_pImmediateContext->OMSetRenderTargets(1, &g_pRenderTargetView, g_pDepthStencilView);
-
-	D3D11_VIEWPORT vp;
-	vp.Width    = (FLOAT)width;
-	vp.Height   = (FLOAT)height;
-	vp.MinDepth = 0.0f;
-	vp.MaxDepth = 1.0f;
-	vp.TopLeftX = 0;
-	vp.TopLeftY = 0;
-	g_pImmediateContext->RSSetViewports(1, &vp);
-
-	RenderManager.Initialise(g_pd3dDevice, g_pSwapChain);
-	return S_OK;
 }
 
-void Render()
+HRESULT InitDevice()
 {
-	float ClearColor[4] = { 0.0f, 0.125f, 0.3f, 1.0f };
-	g_pImmediateContext->ClearRenderTargetView(g_pRenderTargetView, ClearColor);
-	g_pSwapChain->Present(0, 0);
+	const int preferredBackend = (g_iCliRendererOverride >= 0) ? g_iCliRendererOverride : (int)UserData_Info::GetRendererBackend();
+	const bool vsyncEnabled = (g_iCliVsyncOverride >= 0) ? (g_iCliVsyncOverride != 0) : UserData_Info::GetVsyncEnabled();
+	if (!RenderManager.InitialiseWindow(g_hWnd, g_iScreenWidth, g_iScreenHeight, g_bWindows64Fullscreen, preferredBackend, vsyncEnabled))
+	{
+		return E_FAIL;
+	}
+	g_bRenderInitialized = true;
+	return S_OK;
 }
 
 void CleanupDevice()
 {
-	if (g_pImmediateContext) g_pImmediateContext->ClearState();
-	if (g_pRenderTargetView) g_pRenderTargetView->Release();
-	if (g_pSwapChain)        g_pSwapChain->Release();
-	if (g_pImmediateContext) g_pImmediateContext->Release();
-	if (g_pd3dDevice)        g_pd3dDevice->Release();
+	g_bRenderInitialized = false;
+	RenderManager.Shutdown();
 }
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
@@ -686,14 +1050,11 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 					   _In_ int       nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
 
-	if (lpCmdLine)
-	{
-		if      (lpCmdLine[0] == '1') { g_iScreenWidth = 1280; g_iScreenHeight = 720; }
-		else if (lpCmdLine[0] == '2') { g_iScreenWidth = 640;  g_iScreenHeight = 480; }
-		else if (lpCmdLine[0] == '3') { g_iScreenWidth = 720;  g_iScreenHeight = 408; }
-	}
+	SetProcessDPIAware();
+	UserData_Info::EnsureLoaded();
+	ApplyWindows64ResolutionMode((int)UserData_Info::GetResolutionMode());
+	ParseWin64CommandLine(lpCmdLine);
 
 	MyRegisterClass(hInstance);
 	if (!InitInstance(hInstance, nCmdShow)) return FALSE;
@@ -710,9 +1071,8 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 #endif
 
 	app.loadMediaArchive();
-	RenderManager.Initialise(g_pd3dDevice, g_pSwapChain);
 	app.loadStringTable();
-	ui.init(g_pd3dDevice, g_pImmediateContext, g_pRenderTargetView, g_pDepthStencilView, g_iScreenWidth, g_iScreenHeight);
+	ui.init(g_iScreenWidth, g_iScreenHeight);
 
 	InputManager.Initialise(1, 3, MINECRAFT_ACTION_MAX, ACTION_MAX_MENU);
 	DefineActions();
@@ -739,6 +1099,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	Tile::CreateNewThreadStorage();
 
 	Minecraft::main();
+	SyncEngineViewportDimensions(g_iScreenWidth, g_iScreenHeight);
 	Minecraft *pMinecraft = Minecraft::GetInstance();
 
 	app.InitGameSettings();
@@ -763,15 +1124,38 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	pMinecraft->options->set(Options::Option::SOUND, 1.0f);
 
 	MSG msg = {0};
+	timeBeginPeriod(1);
+	LARGE_INTEGER menuFrameFreq = {};
+	LARGE_INTEGER menuFrameNext = {};
+	QueryPerformanceFrequency(&menuFrameFreq);
+	QueryPerformanceCounter(&menuFrameNext);
+	const LONGLONG menuTargetInterval = (menuFrameFreq.QuadPart > 0) ? (menuFrameFreq.QuadPart / 60) : 0;
+
+	int renderedSmokeFrames = 0;
+	LARGE_INTEGER smokeFreq = {}, smokeStart = {};
+	if (g_iSmokeFrames > 0)
+	{
+		QueryPerformanceFrequency(&smokeFreq);
+		QueryPerformanceCounter(&smokeStart);
+	}
 	while (WM_QUIT != msg.message)
 	{
-		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		int msgBudget = 256;
+		while (msgBudget-- > 0 && PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
-			continue;
+			if (WM_QUIT == msg.message) break;
 		}
+		if (WM_QUIT == msg.message) break;
+		Display::setActive(IsGameWindowFocused(g_hWnd));
 		RenderManager.StartFrame();
+		if (!app.GetGameStarted())
+		{
+			static const float kMenuClear[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+			RenderManager.SetClearColour(kMenuClear);
+			RenderManager.Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		}
 
 		app.UpdateTime();
 		PIXBeginNamedEvent(0,"Input manager tick");   InputManager.Tick();   PIXEndNamedEvent();
@@ -780,7 +1164,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		PIXBeginNamedEvent(0,"Render manager tick");  RenderManager.Tick();  PIXEndNamedEvent();
 		PIXBeginNamedEvent(0,"Social network manager tick"); /*CSocialManager::Instance()->Tick();*/ PIXEndNamedEvent();
 		PIXBeginNamedEvent(0,"Sentient tick"); MemSect(37); /*SentientManager.Tick();*/ MemSect(0); PIXEndNamedEvent();
-		PIXBeginNamedEvent(0,"Network manager do work #1"); /*g_NetworkManager.DoWork();*/ PIXEndNamedEvent();
+		PIXBeginNamedEvent(0,"Network manager do work #1"); g_NetworkManager.DoWork(); PIXEndNamedEvent();
 
 		if (app.GetGameStarted())
 		{
@@ -812,8 +1196,10 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		RenderManager.Present();
 		ui.CheckMenuDisplayed();
 
+		const bool windowFocused = IsGameWindowFocused(g_hWnd);
+		Display::setActive(windowFocused);
 		bool shouldLockMouse = false;
-		if ((GetForegroundWindow() == g_hWnd) && app.GetGameStarted() && (pMinecraft != NULL))
+		if (windowFocused && app.GetGameStarted() && (pMinecraft != NULL))
 			shouldLockMouse = (pMinecraft->getScreen() == NULL) && !ui.GetMenuDisplayed(ProfileManager.GetPrimaryPad());
 		SetMouseLocked(shouldLockMouse);
 
@@ -835,10 +1221,59 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 		}
 
 		Vec3::resetPool();
+
+		if (g_iSmokeFrames > 0)
+		{
+			++renderedSmokeFrames;
+			if (renderedSmokeFrames >= g_iSmokeFrames)
+			{
+				LARGE_INTEGER smokeEnd = {};
+				QueryPerformanceCounter(&smokeEnd);
+				double elapsedSec = (smokeFreq.QuadPart > 0) ? (double)(smokeEnd.QuadPart - smokeStart.QuadPart) / (double)smokeFreq.QuadPart : 1.0;
+				double avgFps = (elapsedSec > 0.0) ? ((double)renderedSmokeFrames / elapsedSec) : 0.0;
+				printf("[SmokeTest] backend=%s adapter=%s frames=%d elapsed=%.3fs fps=%.1f res=%dx%d\n",
+					RenderManager.GetBackendName(), RenderManager.GetAdapterName(),
+					renderedSmokeFrames, elapsedSec, avgFps, g_iScreenWidth, g_iScreenHeight);
+				fflush(stdout);
+				PostQuitMessage(0);
+			}
+		}
+		else if (!app.GetGameStarted() && menuTargetInterval > 0)
+		{
+			/* Cap frontend menus cleanly to 60 FPS so skin/splash animations run at natural speed */
+			menuFrameNext.QuadPart += menuTargetInterval;
+			LARGE_INTEGER now = {};
+			QueryPerformanceCounter(&now);
+			if (now.QuadPart - menuFrameNext.QuadPart > menuTargetInterval * 3)
+			{
+				menuFrameNext.QuadPart = now.QuadPart;
+			}
+			while (now.QuadPart < menuFrameNext.QuadPart)
+			{
+				LONGLONG remTicks = menuFrameNext.QuadPart - now.QuadPart;
+				double remMs = ((double)remTicks * 1000.0) / (double)menuFrameFreq.QuadPart;
+				if (remMs > 2.0)
+				{
+					Sleep((DWORD)(remMs - 1.5));
+				}
+				else
+				{
+					Sleep(0);
+				}
+				QueryPerformanceCounter(&now);
+			}
+		}
+		else if (app.GetGameStarted())
+		{
+			QueryPerformanceCounter(&menuFrameNext);
+		}
 	}
 
+	timeEndPeriod(1);
 	SetMouseLocked(false);
-	g_pd3dDevice->Release();
+	ui.shutdown();
+	CleanupDevice();
+	return 0;
 }
 
 #ifdef MEMORY_TRACKING

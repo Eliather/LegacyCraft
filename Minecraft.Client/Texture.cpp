@@ -133,7 +133,9 @@ void Texture::_init(const wstring &name, int mode, int width, int height, int de
 				for(unsigned int level = 1; level < m_iMipLevels; ++level)
 				{
 					int ww = width >> level;
-					int hh = height >> height;
+					int hh = height >> level;
+					if (ww < 1) ww = 1;
+					if (hh < 1) hh = 1;
 
 					byteArray tempBytes = byteArray(ww * hh * depth * 4);
 					for (int index = 0; index < tempBytes.length; index++)
@@ -231,6 +233,7 @@ void Texture::fill(const Rect2i *rect, int color)
 		}
 	}
 	delete myRect;
+	data[0]->position(width * height * 4);
 
 	if (immediateUpdate)
 	{
@@ -378,12 +381,19 @@ void Texture::blit(int x, int y, Texture *source, bool rotated)
 	//{
 	//	return;
 	//}
+	if (source == NULL) return;
+
+#ifdef _XBOX
+	int byteRemapRGBA[] = { 0, 1, 2, 3 };
+#else
+	int byteRemapRGBA[] = { 3, 0, 1, 2 };
+#endif
+	int byteRemapBGRA[] = { 3, 2, 1, 0 };
+	int *byteRemap = ((format == TFMT_BGRA) ? byteRemapBGRA : byteRemapRGBA);
 
 	for(unsigned int level = 0; level < m_iMipLevels; ++level)
 	{
-		ByteBuffer *srcBuffer = source->getData(level);
-
-		if(srcBuffer == NULL) break;
+		if(data[level] == NULL) break;
 
 		int yy = y >> level;
 		int xx = x >> level;
@@ -391,105 +401,158 @@ void Texture::blit(int x, int y, Texture *source, bool rotated)
 		int ww = width >> level;
 		int shh = source->getHeight() >> level;
 		int sww = source->getWidth() >> level;
+		if(ww <= 0 || hh <= 0) break;
 
+		ByteBuffer *srcBuffer = source->getData(level);
+
+		data[level]->limit(ww * hh * 4);
 		data[level]->position(0);
-		srcBuffer->position(0);
+
+		if(srcBuffer != NULL && sww > 0 && shh > 0)
+		{
+			srcBuffer->position(0);
 
 #if defined __PS3__ && !defined DISABLE_SPU_CODE
-		if(g_texBlitJobQueuePort->hasCompleted())
-		{
-			// all outstanding blits have completed, so reset to the start of the blit list
-			g_currentTexBlit = 0;
-		}
-		Texture_blit_DataIn& dataIn = g_textureBlitDataIn[g_currentTexBlit];
-		g_currentTexBlit++;
-		if(g_currentTexBlit >= sc_maxTextureBlits)
-		{
-			app.DebugPrintf("ran out of tex blit slots, stalling for completion\n");
-			g_texBlitJobQueuePort->waitForCompletion();
-			g_currentTexBlit = 0;
-		}
-		dataIn.pSrcData = srcBuffer->getBuffer();
-		dataIn.pDstData = data[level]->getBuffer();
-		dataIn.yy = yy;
-		dataIn.xx = xx;
-		dataIn.hh = hh;
-		dataIn.ww = ww;
-		dataIn.shh = shh;
-		dataIn.sww = sww;
-		dataIn.rotated = rotated;
+			if(g_texBlitJobQueuePort->hasCompleted())
+			{
+				// all outstanding blits have completed, so reset to the start of the blit list
+				g_currentTexBlit = 0;
+			}
+			Texture_blit_DataIn& dataIn = g_textureBlitDataIn[g_currentTexBlit];
+			g_currentTexBlit++;
+			if(g_currentTexBlit >= sc_maxTextureBlits)
+			{
+				app.DebugPrintf("ran out of tex blit slots, stalling for completion\n");
+				g_texBlitJobQueuePort->waitForCompletion();
+				g_currentTexBlit = 0;
+			}
+			dataIn.pSrcData = srcBuffer->getBuffer();
+			dataIn.pDstData = data[level]->getBuffer();
+			dataIn.yy = yy;
+			dataIn.xx = xx;
+			dataIn.hh = hh;
+			dataIn.ww = ww;
+			dataIn.shh = shh;
+			dataIn.sww = sww;
+			dataIn.rotated = rotated;
 
-		C4JSpursJob_Texture_blit blitJob(&dataIn);
-		g_texBlitJobQueuePort->submitJob(&blitJob);
-// 		p.waitForCompletion();
+			C4JSpursJob_Texture_blit blitJob(&dataIn);
+			g_texBlitJobQueuePort->submitJob(&blitJob);
+// 			p.waitForCompletion();
 
 #elif __PSVITA__
-		unsigned int *src = (unsigned int *) srcBuffer->getBuffer();
-		unsigned int *dst = (unsigned int *) data[level]->getBuffer();
+			unsigned int *src = (unsigned int *) srcBuffer->getBuffer();
+			unsigned int *dst = (unsigned int *) data[level]->getBuffer();
 
-		for (int srcY = 0; srcY < shh; srcY++)
-		{
-			int dstY = yy + srcY;
-			int srcLine = srcY * sww;
-			int dstLine = dstY * ww;
-
-			if (rotated)
+			for (int srcY = 0; srcY < shh; srcY++)
 			{
-				dstY = yy + (shh - srcY);
-			}
-
-			if (!rotated)
-			{
-				memcpy(dst + dstLine + xx, src + srcLine, sww * 4);
-			}
-			else
-			{
-				for (int srcX = 0; srcX < sww; srcX++)
-				{
-					int dstPos = dstLine + (srcX + xx);
-					int srcPos = srcLine + srcX;
-
-					if (rotated)
-					{
-						dstPos = (xx + srcX * ww) + dstY;
-					}
-
-					dst[dstPos] = src[srcPos];
-				}
-			}
-		}
-#else
-
-		for (int srcY = 0; srcY < shh; srcY++)
-		{
-			int dstY = yy + srcY;
-			int srcLine = srcY * sww * 4;
-			int dstLine = dstY * ww * 4;
-
-			if (rotated)
-			{
-				dstY = yy + (shh - srcY);
-			}
-
-			for (int srcX = 0; srcX < sww; srcX++)
-			{
-				int dstPos = dstLine + (srcX + xx) * 4;
-				int srcPos = srcLine + srcX * 4;
+				int dstY = yy + srcY;
+				int srcLine = srcY * sww;
+				int dstLine = dstY * ww;
 
 				if (rotated)
 				{
-					dstPos = (xx + srcX * ww * 4) + dstY * 4;
+					dstY = yy + (shh - srcY);
 				}
 
-				data[level]->put(dstPos + 0, srcBuffer->get(srcPos + 0));
-				data[level]->put(dstPos + 1, srcBuffer->get(srcPos + 1));
-				data[level]->put(dstPos + 2, srcBuffer->get(srcPos + 2));
-				data[level]->put(dstPos + 3, srcBuffer->get(srcPos + 3));
+				if (!rotated)
+				{
+					memcpy(dst + dstLine + xx, src + srcLine, sww * 4);
+				}
+				else
+				{
+					for (int srcX = 0; srcX < sww; srcX++)
+					{
+						int dstPos = dstLine + (srcX + xx);
+						int srcPos = srcLine + srcX;
+
+						if (rotated)
+						{
+							dstPos = (xx + srcX * ww) + dstY;
+						}
+
+						dst[dstPos] = src[srcPos];
+					}
+				}
+			}
+#else
+
+			for (int srcY = 0; srcY < shh; srcY++)
+			{
+				int dstY = yy + srcY;
+				int srcLine = srcY * sww * 4;
+				int dstLine = dstY * ww * 4;
+
+				if (rotated)
+				{
+					dstY = yy + (shh - srcY);
+				}
+
+				for (int srcX = 0; srcX < sww; srcX++)
+				{
+					int dstPos = dstLine + (srcX + xx) * 4;
+					int srcPos = srcLine + srcX * 4;
+
+					if (rotated)
+					{
+						dstPos = (xx + srcX * ww * 4) + dstY * 4;
+					}
+
+					data[level]->put(dstPos + 0, srcBuffer->get(srcPos + 0));
+					data[level]->put(dstPos + 1, srcBuffer->get(srcPos + 1));
+					data[level]->put(dstPos + 2, srcBuffer->get(srcPos + 2));
+					data[level]->put(dstPos + 3, srcBuffer->get(srcPos + 3));
+				}
+			}
+			// Don't delete this, as it belongs to the source texture
+			//delete srcBuffer;
+#endif
+		}
+		else if(level > 0 && data[level - 1] != NULL)
+		{
+			// Source lacked mip data for this level; downsample the updated region from level - 1
+			// so mipmaps remain synchronized and data[level] keeps valid position/limit on flip().
+			int ow = width >> (level - 1);
+			int oh = height >> (level - 1);
+			int dstW = (sww > 0) ? sww : 1;
+			int dstH = (shh > 0) ? shh : 1;
+			int xEnd = xx + dstW;
+			int yEnd = yy + dstH;
+			if(xEnd > ww) xEnd = ww;
+			if(yEnd > hh) yEnd = hh;
+
+			for (int dy = (yy < 0 ? 0 : yy); dy < yEnd; dy++)
+			{
+				int sy0 = dy * 2;
+				int sy1 = (sy0 + 1 < oh) ? (sy0 + 1) : sy0;
+				for (int dx = (xx < 0 ? 0 : xx); dx < xEnd; dx++)
+				{
+					int sx0 = dx * 2;
+					int sx1 = (sx0 + 1 < ow) ? (sx0 + 1) : sx0;
+
+					int c0 = data[level - 1]->getInt((sx0 + sy0 * ow) * 4);
+					int c1 = data[level - 1]->getInt((sx1 + sy0 * ow) * 4);
+					int c2 = data[level - 1]->getInt((sx1 + sy1 * ow) * 4);
+					int c3 = data[level - 1]->getInt((sx0 + sy1 * ow) * 4);
+#ifndef _XBOX
+					c0 = ( ( c0 >> 8 ) & 0x00ffffff ) | ( c0 << 24 );
+					c1 = ( ( c1 >> 8 ) & 0x00ffffff ) | ( c1 << 24 );
+					c2 = ( ( c2 >> 8 ) & 0x00ffffff ) | ( c2 << 24 );
+					c3 = ( ( c3 >> 8 ) & 0x00ffffff ) | ( c3 << 24 );
+#endif
+					int col = crispBlend(crispBlend(c0, c1), crispBlend(c2, c3));
+					int byteIndex = (dy * ww + dx) * 4;
+					data[level]->put(byteIndex + byteRemap[0], (byte)((col >> 24) & 0xff));
+					data[level]->put(byteIndex + byteRemap[1], (byte)((col >> 16) & 0xff));
+					data[level]->put(byteIndex + byteRemap[2], (byte)((col >>  8) & 0xff));
+					data[level]->put(byteIndex + byteRemap[3], (byte)((col >>  0) & 0xff));
+				}
 			}
 		}
-		// Don't delete this, as it belongs to the source texture
-		//delete srcBuffer;
-#endif
+		else
+		{
+			break;
+		}
 		data[level]->position(ww * hh * 4);
 	}
 
@@ -839,8 +902,10 @@ void Texture::updateOnGPU()
 			{
 				for (int level = 1; level < m_iMipLevels; level++)
 				{
+					if (data[level] == NULL) break;
 					int levelWidth = width >> level;
 					int levelHeight = height >> level;
+					if (levelWidth <= 0 || levelHeight <= 0) break;
 
 #ifdef __PSVITA__
 					// AP - replace the dynamic ram buffer to one that points to a newly allocated video ram texture buffer. This means we don't have to memcpy
@@ -868,12 +933,18 @@ void Texture::updateOnGPU()
 
 			if(mipmapped)
 			{
+#ifdef _XBOX
 				if (RenderManager.TextureGetTextureLevels() > 1)
+#else
+				if (m_iMipLevels > 1)
+#endif
 				{
 					for (int level = 1; level < m_iMipLevels; level++)
 					{
+						if (data[level] == NULL) break;
 						int levelWidth = width >> level;
 						int levelHeight = height >> level;
+						if (levelWidth <= 0 || levelHeight <= 0) break;
 					
 #ifdef _XBOX
 						RenderManager.TextureDataUpdate(data[level]->getBuffer(),level);

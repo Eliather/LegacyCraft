@@ -13,6 +13,9 @@ namespace UserData_Info
 		unsigned char gamma;
 		unsigned char fov;
 		unsigned char renderDistance;
+		unsigned char resolutionMode;
+		unsigned char rendererBackend;
+		unsigned char vsyncEnabled;
 	};
 
 	void EnsureLoaded();
@@ -28,6 +31,9 @@ namespace UserData_Info
 	unsigned char GetGamma();
 	unsigned char GetFov();
 	unsigned char GetRenderDistance();
+	unsigned char GetResolutionMode();
+	unsigned char GetRendererBackend();
+	bool GetVsyncEnabled();
 
 	void SetPlayerName(const std::wstring &playerName);
 	void SetSkinSlim(bool skinSlim);
@@ -37,4 +43,7 @@ namespace UserData_Info
 	void SetGamma(unsigned char gamma);
 	void SetFov(unsigned char fov);
 	void SetRenderDistance(unsigned char renderDistance);
+	void SetResolutionMode(unsigned char resolutionMode);
+	void SetRendererBackend(unsigned char rendererBackend);
+	void SetVsyncEnabled(bool vsyncEnabled);
 }

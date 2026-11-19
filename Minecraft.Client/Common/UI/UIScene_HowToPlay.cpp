@@ -265,7 +265,7 @@ void UIScene_HowToPlay::StartPage( EHowToPlayPage ePage )
 	// Replace button identifiers in the text with actual button images.
 	wstring replacedText = app.FormatHTMLString(m_iPad, app.GetString( pDef->m_iTextStringID ));
 	// 4J-PB - replace the title with the platform specific title, and the platform name
-//	replacedText = replaceAll(replacedText,L"{*TITLE_UPDATE_NAME*}",app.GetString(IDS_TITLE_UPDATE_NAME));
+	replacedText = replaceAll(replacedText,L"{*TITLE_UPDATE_NAME*}",app.GetString(IDS_TITLE_UPDATE_NAME));
 #ifndef _WINDOWS64
 	replacedText = replaceAll(replacedText,L"{*KICK_PLAYER_DESCRIPTION*}",app.GetString(IDS_KICK_PLAYER_DESCRIPTION));
 #endif

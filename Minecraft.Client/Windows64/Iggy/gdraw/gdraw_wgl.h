@@ -20,6 +20,7 @@ struct IggyCustomDrawCallbackRegion;
 extern int gdraw_GL_SetResourceLimits(gdraw_gl_resourcetype type, S32 num_handles, S32 num_bytes);
 extern GDrawFunctions * gdraw_GL_CreateContext(S32 min_w, S32 min_h, S32 msaa_samples);
 extern void gdraw_GL_DestroyContext(void);
+extern void gdraw_GL_SetRendertargetSize(S32 w, S32 h);
 extern void gdraw_GL_SetTileOrigin(S32 vx, S32 vy, U32 framebuffer); // framebuffer=FBO handle, or 0 for main frame buffer
 extern void gdraw_GL_NoMoreGDrawThisFrame(void);
 
@@ -28,7 +29,10 @@ extern void          gdraw_GL_WrappedTextureChange(GDrawTexture *tex, S32 new_gl
 extern void          gdraw_GL_WrappedTextureDestroy(GDrawTexture *tex);
 
 extern void gdraw_GL_BeginCustomDraw(struct IggyCustomDrawCallbackRegion *region, F32 *matrix);
+extern void RADLINK gdraw_GL_BeginCustomDraw_4J(struct IggyCustomDrawCallbackRegion *region, F32 mat[16]);
+extern void RADLINK gdraw_GL_CalculateCustomDraw_4J(struct IggyCustomDrawCallbackRegion *region, F32 mat[16]);
 extern void gdraw_GL_EndCustomDraw(struct IggyCustomDrawCallbackRegion *region);
+extern void RADLINK gdraw_GL_setViewport_4J(void);
 
 extern GDrawTexture * RADLINK gdraw_GL_MakeTextureFromResource(U8 *resource_file, S32 resource_len, IggyFileTextureRaw *texture);
 extern void RADLINK gdraw_GL_DestroyTextureFromResource(GDrawTexture *tex);

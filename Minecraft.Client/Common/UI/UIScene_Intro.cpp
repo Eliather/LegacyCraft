@@ -87,7 +87,7 @@ void UIScene_Intro::handleInput(int iPad, int key, bool repeat, bool pressed, bo
 				ui.NavigateToScene(0,eUIScene_EULA);			
 				break;
 			}
-#elif defined _XBOX_ONE
+#elif defined(_XBOX_ONE) || defined(_WINDOWS64)
 			ui.NavigateToScene(0,eUIScene_MainMenu);
 #else
 			ui.NavigateToScene(0,eUIScene_SaveMessage);
@@ -137,9 +137,7 @@ void UIScene_Intro::handleAnimationEnd()
 		}
 
 
-#elif defined _XBOX_ONE
-		// Don't navigate to the main menu if we don't have focus, as we could have the quadrant sign-in or a join game timer screen running, and then when Those finish they'll
-		// give the main menu focus which clears the signed in players and therefore breaks transitioning into the game
+#elif defined(_XBOX_ONE) || defined(_WINDOWS64)
 		if( hasFocus( m_iPad ) )
 		{
 			ui.NavigateToScene(0,eUIScene_MainMenu);

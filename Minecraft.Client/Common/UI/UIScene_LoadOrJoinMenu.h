@@ -20,7 +20,7 @@ private:
 	{
 		eControl_SavesList,
 		eControl_GamesList,
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE) || defined(__ORBIS__) || defined(_WINDOWS64)
 		eControl_SpaceIndicator,
 #endif
 	};
@@ -52,7 +52,7 @@ protected:
 	UIControl_SaveList m_buttonListGames;
 	UIControl_Label m_labelSavesListTitle, m_labelJoinListTitle, m_labelNoGames;
 	UIControl m_controlSavesTimer, m_controlJoinTimer;
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE) || defined(__ORBIS__) || defined(_WINDOWS64)
 	UIControl_SpaceIndicatorBar m_spaceIndicatorSaves;
 #endif
 
@@ -68,7 +68,7 @@ private:
 		UI_MAP_ELEMENT( m_controlSavesTimer, "SavesTimer")
 		UI_MAP_ELEMENT( m_controlJoinTimer, "JoinTimer")
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE) || defined(__ORBIS__) || defined(_WINDOWS64)
 		UI_MAP_ELEMENT( m_spaceIndicatorSaves, "SaveSizeBar")
 #endif
 	UI_END_MAP_ELEMENTS_AND_NAMES()
@@ -161,6 +161,9 @@ public:
 	static int DeleteSaveDataReturned(LPVOID lpParam,bool bRes);
 	static int RenameSaveDataReturned(LPVOID lpParam,bool bRes);
 	static int KeyboardCompleteWorldNameCallback(LPVOID lpParam,bool bRes);
+#ifdef _WINDOWS64
+	static void ModalRenameWorldCallback(LPVOID lpParam, bool bAccepted, const std::wstring &text);
+#endif
 protected:
 	void handlePress(F64 controlId, F64 childId);
 	void LoadLevelGen(LevelGenerationOptions *levelGen);

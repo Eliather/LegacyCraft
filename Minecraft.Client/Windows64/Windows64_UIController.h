@@ -4,11 +4,9 @@
 
 class ConsoleUIController : public UIController
 {
-private:
-	ID3D11RenderTargetView* m_pRenderTargetView;
-	ID3D11DepthStencilView* m_pDepthStencilView;
 public:
-	void init(ID3D11Device *dev, ID3D11DeviceContext *ctx, ID3D11RenderTargetView* pRenderTargetView, ID3D11DepthStencilView* pDepthStencilView, S32 w, S32 h);
+	void init(S32 w, S32 h);
+	virtual void updateRenderTargets(S32 w, S32 h);
 
 	void render();
 	void beginIggyCustomDraw4J(IggyCustomDrawCallbackRegion *region, CustomDrawData *customDrawRegion);

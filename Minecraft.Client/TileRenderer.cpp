@@ -22,6 +22,7 @@ void TileRenderer::_init()
 	fixedTexture = NULL;
 	xFlipTexture = false;
 	noCulling = false;
+	breakingOverlay = false;
 	blsmooth = 1;
 	applyAmbienceOcclusion = false;
 	setColor = true;
@@ -239,7 +240,9 @@ void TileRenderer::clearFixedShape()
 void TileRenderer::tesselateInWorldFixedTexture( Tile* tile, int x, int y, int z, Icon *fixedTexture )	// 4J renamed to differentiate from tesselateInWorld
 {
 	this->setFixedTexture(fixedTexture);
+	this->breakingOverlay = true;
 	tesselateInWorld( tile, x, y, z );
+	this->breakingOverlay = false;
 	this->clearFixedTexture();
 }
 
@@ -6459,7 +6462,7 @@ void TileRenderer::renderFaceDown( Tile* tt, double x, double y, double z, Icon 
 
 	double x0 = x + tileShapeX0;
 	double x1 = x + tileShapeX1;
-	double y0 = y + tileShapeY0;
+	double y0 = y + tileShapeY0 - (breakingOverlay ? 0.002 : 0.0);
 	double z0 = z + tileShapeZ0;
 	double z1 = z + tileShapeZ1;
 
@@ -6571,7 +6574,7 @@ void TileRenderer::renderFaceUp( Tile* tt, double x, double y, double z, Icon *t
 
 	double x0 = x + tileShapeX0;
 	double x1 = x + tileShapeX1;
-	double y1 = y + tileShapeY1;
+	double y1 = y + tileShapeY1 + (breakingOverlay ? 0.002 : 0.0);
 	double z0 = z + tileShapeZ0;
 	double z1 = z + tileShapeZ1;
 
@@ -6692,7 +6695,7 @@ void TileRenderer::renderNorth( Tile* tt, double x, double y, double z, Icon *te
 	double x1 = x + tileShapeX1;
 	double y0 = y + tileShapeY0;
 	double y1 = y + tileShapeY1;
-	double z0 = z + tileShapeZ0;
+	double z0 = z + tileShapeZ0 - (breakingOverlay ? 0.002 : 0.0);
 
 	if ( applyAmbienceOcclusion )
 	{
@@ -6811,7 +6814,7 @@ void TileRenderer::renderSouth( Tile* tt, double x, double y, double z, Icon *te
 	double x1 = x + tileShapeX1;
 	double y0 = y + tileShapeY0;
 	double y1 = y + tileShapeY1;
-	double z1 = z + tileShapeZ1;
+	double z1 = z + tileShapeZ1 + (breakingOverlay ? 0.002 : 0.0);
 
 	if ( applyAmbienceOcclusion )
 	{
@@ -6925,7 +6928,7 @@ void TileRenderer::renderWest( Tile* tt, double x, double y, double z, Icon *tex
 		v10 = v11;
 	}
 
-	double x0 = x + tileShapeX0;
+	double x0 = x + tileShapeX0 - (breakingOverlay ? 0.002 : 0.0);
 	double y0 = y + tileShapeY0;
 	double y1 = y + tileShapeY1;
 	double z0 = z + tileShapeZ0;
@@ -7043,7 +7046,7 @@ void TileRenderer::renderEast( Tile* tt, double x, double y, double z, Icon *tex
 		v10 = v11;
 	}
 
-	double x1 = x + tileShapeX1;
+	double x1 = x + tileShapeX1 + (breakingOverlay ? 0.002 : 0.0);
 	double y0 = y + tileShapeY0;
 	double y1 = y + tileShapeY1;
 	double z0 = z + tileShapeZ0;

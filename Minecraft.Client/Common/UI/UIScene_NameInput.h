@@ -8,6 +8,8 @@ class UIScene_NameInput : public UIScene
 private:
 	bool m_bDonePressed;
 	bool m_bCompletionSent;
+	bool m_bHandlePressCalledThisTick;
+	bool m_bMouseCaps;
 	int m_charLimit;
 	NameInputCompleteFunc m_completeFunc;
 	LPVOID m_completeFuncParam;
@@ -60,6 +62,9 @@ protected:
 	virtual wstring getMoviePath();
 
 private:
+	void dispatchMouseInputToMovie();
+	bool handleMouseKeyboardClick(S32 mouseX, S32 mouseY);
+	void appendInputCharacter(wchar_t ch);
 	bool processDirectKeyboardInput();
 	void sanitiseCurrentInputText();
 	void setInputText(const wstring &text, bool force = false);

@@ -50,6 +50,8 @@ private:
 	bool m_bAnimatingToFacing;
 
 	float m_swingTime;
+	__int64 m_lastRenderQpc;
+	__int64 m_renderQpcFreq;
 
 	ESkinPreviewAnimations m_currentAnimation;
 	//vector<Model::SKIN_BOX *> *m_pvAdditionalBoxes;

@@ -22,7 +22,7 @@ protected:
 private:
 	UIControl_CheckBox m_checkboxViewBob, m_checkboxShowHints, m_checkboxShowTooltips, m_checkboxInGameGamertags, m_checkboxMashupWorlds; // Checkboxes
 	UIControl_Slider m_sliderAutosave, m_sliderDifficulty; // Sliders
-	UIControl_Label m_labelDifficultyText; //Text
+	UIControl_HTMLLabel m_labelDifficultyText; //Text
 	UI_BEGIN_MAP_ELEMENTS_AND_NAMES(UIScene)
 		UI_MAP_ELEMENT( m_checkboxViewBob, "ViewBob")
 		UI_MAP_ELEMENT( m_checkboxShowHints, "ShowHints")

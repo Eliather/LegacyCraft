@@ -357,6 +357,7 @@ CMinecraftApp::CMinecraftApp()
 	mfTrialPausedTime=0.0f;
 	m_uiAutosaveTimer=0;
 	ZeroMemory(m_pszUniqueMapName,sizeof(m_pszUniqueMapName));
+	ZeroMemory(m_szPreparedSaveId,sizeof(m_szPreparedSaveId));
 
 
 	m_bNewDLCAvailable=false;
@@ -5530,7 +5531,7 @@ bool CMinecraftApp::StartInstallDLCProcess(int iPad)
 		app.DebugPrintf("--- CMinecraftApp::StartInstallDLCProcess - StorageManager.GetInstalledDLC\n");
 
 		StorageManager.GetInstalledDLC(iPad,&CMinecraftApp::DLCInstalledCallback,this);
-		return true;
+		return m_bDLCInstallPending;
 	}
 	else
 	{
@@ -7739,34 +7740,6 @@ namespace
 		return normalizedTitle;
 	}
 
-	char ToLowerAscii(char ch)
-	{
-		if(ch >= 'A' && ch <= 'Z')
-		{
-			return (char)(ch - 'A' + 'a');
-		}
-
-		return ch;
-	}
-
-	bool EqualsIgnoreCaseAscii(const std::string &a, const std::string &b)
-	{
-		if(a.length() != b.length())
-		{
-			return false;
-		}
-
-		for(size_t i = 0; i < a.length(); ++i)
-		{
-			if(ToLowerAscii(a[i]) != ToLowerAscii(b[i]))
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
 	std::string BuildWindows64DuplicateSaveId(const std::string &baseId, int duplicateIndex)
 	{
 		if(duplicateIndex <= 1)
@@ -7792,64 +7765,21 @@ namespace
 		return candidate;
 	}
 
-	std::string CanonicalizeWindows64PreferredSaveId(LPCWSTR pwchSaveTitle, const char *pszPreferredSaveId)
+	std::wstring GetWindows64SaveStorageRoot()
 	{
-		if(pszPreferredSaveId == NULL || pszPreferredSaveId[0] == 0)
+		wchar_t modulePath[MAX_PATH] = {};
+		const DWORD length = GetModuleFileNameW(NULL, modulePath, MAX_PATH);
+		if(length > 0 && length < MAX_PATH)
 		{
-			return std::string();
-		}
-
-		std::string canonicalId = pszPreferredSaveId;
-		const std::string baseId = BuildWindows64SaveIdBase(pwchSaveTitle);
-		if(baseId.empty())
-		{
-			return canonicalId;
-		}
-
-		if(EqualsIgnoreCaseAscii(baseId, canonicalId))
-		{
-			return baseId;
-		}
-
-		size_t suffixStart = canonicalId.length();
-		while(suffixStart > 0 && canonicalId[suffixStart - 1] >= '0' && canonicalId[suffixStart - 1] <= '9')
-		{
-			--suffixStart;
-		}
-
-		if(suffixStart < canonicalId.length())
-		{
-			size_t baseEnd = suffixStart;
-			const bool hadSeparator = baseEnd > 0 && canonicalId[baseEnd - 1] == '-';
-			if(baseEnd > 0 && canonicalId[baseEnd - 1] == '-')
+			std::wstring fullPath(modulePath, length);
+			const size_t slash = fullPath.find_last_of(L"\\/");
+			if(slash != std::wstring::npos && slash > 0)
 			{
-				--baseEnd;
-			}
-
-			if(baseEnd == baseId.length() &&
-				EqualsIgnoreCaseAscii(baseId, canonicalId.substr(0, baseEnd)))
-			{
-				int duplicateIndex = 0;
-				for(size_t i = suffixStart; i < canonicalId.length(); ++i)
-				{
-					duplicateIndex = (duplicateIndex * 10) + (canonicalId[i] - '0');
-				}
-
-				if(duplicateIndex >= 2)
-				{
-					if(hadSeparator)
-					{
-						return BuildWindows64DuplicateSaveId(baseId, duplicateIndex);
-					}
-
-					return baseId + canonicalId.substr(suffixStart);
-				}
-
-				return baseId;
+				return fullPath.substr(0, slash) + L"\\Windows64\\GameHDD";
 			}
 		}
 
-		return canonicalId;
+		return L"Windows64\\GameHDD";
 	}
 
 	bool Windows64SaveIdExists(const std::string &saveId)
@@ -7859,7 +7789,7 @@ namespace
 			return false;
 		}
 
-		File storageRoot(L"Windows64\\GameHDD");
+		File storageRoot(GetWindows64SaveStorageRoot());
 		if(!storageRoot.exists() || !storageRoot.isDirectory())
 		{
 			return false;
@@ -7867,6 +7797,36 @@ namespace
 
 		File candidate(storageRoot, filenametowstring(saveId.c_str()));
 		return candidate.exists() && candidate.isDirectory();
+	}
+
+	bool IsSafeExistingWindows64SaveId(const char *value)
+	{
+		if(value == NULL || value[0] == 0)
+		{
+			return false;
+		}
+
+		const size_t len = strlen(value);
+		if(len >= MAX_SAVEFILENAME_LENGTH)
+		{
+			return false;
+		}
+
+		if(strcmp(value, ".") == 0 || strcmp(value, "..") == 0)
+		{
+			return false;
+		}
+
+		for(size_t i = 0; i < len; ++i)
+		{
+			const char ch = value[i];
+			if(ch == '\\' || ch == '/' || ch == ':')
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	void BuildWindows64StableSaveId(char *outId, size_t outSize, LPCWSTR pwchSaveTitle, const char *pszSalt)
@@ -7955,19 +7915,14 @@ void CMinecraftApp::SetPreparedSaveIdentity(LPCWSTR pwchSaveTitle, LPCSTR pszPre
 	StorageManager.SetSaveTitle(pwchSaveTitle ? pwchSaveTitle : L"");
 
 #ifdef _WINDOWS64
-	char stableSaveId[15];
+	char stableSaveId[MAX_SAVEFILENAME_LENGTH];
 	ZeroMemory(stableSaveId, sizeof(stableSaveId));
 
-	const bool usePreferredSaveId =
-		pszPreferredSaveId != NULL &&
-		pszPreferredSaveId[0] != 0 &&
-		strlen(pszPreferredSaveId) <= 14 &&
-		!IsTimestampLikeSaveId(pszPreferredSaveId);
-
-	if(usePreferredSaveId)
+	if(IsSafeExistingWindows64SaveId(pszPreferredSaveId))
 	{
-		const std::string canonicalPreferredSaveId = CanonicalizeWindows64PreferredSaveId(pwchSaveTitle, pszPreferredSaveId);
-		strncpy_s(stableSaveId, sizeof(stableSaveId), canonicalPreferredSaveId.c_str(), 14);
+		// Preserve the exact existing save folder ID on load (including -2, -1, >14 chars, or timestamp IDs)
+		// so autosave, manual save, and save-on-exit overwrite the loaded world in place.
+		strncpy_s(stableSaveId, sizeof(stableSaveId), pszPreferredSaveId, _TRUNCATE);
 	}
 	else
 	{
@@ -7999,6 +7954,8 @@ void CMinecraftApp::SetPreparedSaveIdentity(LPCWSTR pwchSaveTitle, LPCSTR pszPre
 		BuildWindows64StableSaveId(stableSaveId, sizeof(stableSaveId), pwchSaveTitle, salt);
 	}
 
+	ZeroMemory(m_szPreparedSaveId, sizeof(m_szPreparedSaveId));
+	strncpy_s(m_szPreparedSaveId, sizeof(m_szPreparedSaveId), stableSaveId, _TRUNCATE);
 	SetUniqueMapName(stableSaveId);
 	StorageManager.SetSaveUniqueFilename(stableSaveId);
 #endif
@@ -8008,6 +7965,11 @@ void CMinecraftApp::PrepareNewSaveData(LPCWSTR pwchDefaultSaveName)
 {
 	StorageManager.ResetSaveData();
 	SetPreparedSaveIdentity(pwchDefaultSaveName);
+}
+
+const char *CMinecraftApp::GetPreparedSaveId(void) const
+{
+	return m_szPreparedSaveId;
 }
 
 void CMinecraftApp::SetUniqueMapName(char *pszUniqueMapName)

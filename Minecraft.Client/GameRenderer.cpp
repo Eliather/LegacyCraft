@@ -309,6 +309,7 @@ void GameRenderer::tick(bool first)		// 4J - add bFirst
 		}
 	}
 
+#if 0
     if (mc->options->smoothCamera)
 	{
         // update player view in tick() instead of render() to maintain
@@ -322,6 +323,7 @@ void GameRenderer::tick(bool first)		// 4J - add bFirst
         accumulatedSmoothXO = 0;
         accumulatedSmoothYO = 0;
     }
+#endif
 
 	if (mc->cameraTargetPlayer == NULL)
 	{
@@ -888,10 +890,14 @@ void GameRenderer::turnOnLightLayer(double alpha)
     }
 #endif
 	RenderManager.TextureBindVertex(getLightTexture(mc->player->GetXboxPad(), mc->level));
+#if 0
+	// Applied to TextureBindVertex lightmap slot (t1/s1), which is already Linear+Clamp in C4J_Render;
+	// calling glTexParameteri(GL_TEXTURE_2D, ...) here mutates the currently bound diffuse texture (terrain.png).
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+#endif
 }
 
 // 4J - change brought forward from 1.8.2
@@ -1016,6 +1022,7 @@ void GameRenderer::updateLightTexture(float a)
 
 		mc->textures->replaceTextureDirect( lightPixels[j], 16, 16, getLightTexture(j,level) );
 	}
+	_updateLightTexture = false;
 }
 
 float GameRenderer::getNightVisionScale(shared_ptr<Player> player, float a)
@@ -1045,55 +1052,79 @@ int GameRenderer::getLightTexture(int iPad, Level *level)
 void GameRenderer::render(float a, bool bFirst)
 {
 	if( _updateLightTexture && bFirst) updateLightTexture(a);
-	if (Display::isActive())
+
+	if (bFirst)
 	{
-		lastActiveTime = System::currentTimeMillis();
-	}
-	else
-	{
-		if (System::currentTimeMillis() - lastActiveTime > 500)
+		if (Display::isActive() || mc == NULL || mc->level == NULL || !app.GetGameStarted())
 		{
-			mc->pauseGame();
+			lastActiveTime = System::currentTimeMillis();
 		}
-	}
-
-#if 0	// 4J - TODO
-	if (mc->mouseGrabbed) {
-		mc->mouseHandler.poll();
-
-		float ss = mc->options->sensitivity * 0.6f + 0.2f;
-		float sens = (ss * ss * ss) * 8;
-		float xo = mc->mouseHandler.xd * sens;
-		float yo = mc->mouseHandler.yd * sens;
-
-		int yAxis = 1;
-		if (mc->options->invertYMouse) yAxis = -1;
-
-		if (Minecraft.DEADMAU5_CAMERA_CHEATS) {
-			if (!mc->options->fixedCamera) {
-				if (Keyboard.isKeyDown(Keyboard.KEY_J)) {
-					xo = -12f * mc->options->sensitivity;
-				} else if (Keyboard.isKeyDown(Keyboard.KEY_L)) {
-					xo = 12f * mc->options->sensitivity;
-				}
-				if (Keyboard.isKeyDown(Keyboard.KEY_I)) {
-					yo = 12f * mc->options->sensitivity;
-				} else if (Keyboard.isKeyDown(Keyboard.KEY_K)) {
-					yo = -12f * mc->options->sensitivity;
-				}
+		else if (mc->screen == NULL && !ui.GetMenuDisplayed(ProfileManager.GetPrimaryPad()))
+		{
+			if (System::currentTimeMillis() - lastActiveTime > 500)
+			{
+				mc->pauseGame();
 			}
 		}
-
-		if (mc->options->smoothCamera) {
-
-			xo = smoothTurnX.getNewDeltaValue(xo, .05f * sens);
-			yo = smoothTurnY.getNewDeltaValue(yo, .05f * sens);
-
-		}
-
-		mc->player.turn(xo, yo * yAxis);
 	}
+
+	if (bFirst && mc != NULL && mc->player != NULL && mc->level != NULL &&
+		Mouse::isGrabbed() && Display::isActive() && !app.IsAppPaused())
+	{
+		int iPad = mc->player->GetXboxPad();
+		if (mc->screen == NULL && !ui.GetMenuDisplayed(iPad))
+		{
+			float rawDX = (float)Mouse::getDX();
+			float rawDY = (float)-Mouse::getDY();
+
+			if (mc->gameMode != NULL)
+			{
+				if (!mc->gameMode->isInputAllowed(MINECRAFT_ACTION_LOOK_LEFT) && !mc->gameMode->isInputAllowed(MINECRAFT_ACTION_LOOK_RIGHT))
+				{
+					rawDX = 0.0f;
+				}
+				if (!mc->gameMode->isInputAllowed(MINECRAFT_ACTION_LOOK_UP) && !mc->gameMode->isInputAllowed(MINECRAFT_ACTION_LOOK_DOWN))
+				{
+					rawDY = 0.0f;
+				}
+			}
+
+			const float kMaxDeltaPerFrame = 2000.0f;
+			if (rawDX > kMaxDeltaPerFrame) rawDX = kMaxDeltaPerFrame;
+			else if (rawDX < -kMaxDeltaPerFrame) rawDX = -kMaxDeltaPerFrame;
+			if (rawDY > kMaxDeltaPerFrame) rawDY = kMaxDeltaPerFrame;
+			else if (rawDY < -kMaxDeltaPerFrame) rawDY = -kMaxDeltaPerFrame;
+
+			int sensitivitySetting = app.GetGameSettings(iPad, eGameSetting_Sensitivity_InGame);
+			if (sensitivitySetting < 0) sensitivitySetting = 0;
+			else if (sensitivitySetting > 200) sensitivitySetting = 200;
+
+			float normSens = (float)sensitivitySetting / 200.0f;
+			float f = normSens * 0.6f + 0.2f;
+			float sens = (f * f * f) * 8.0f;
+
+			float xo = rawDX * sens;
+			float yo = rawDY * sens;
+
+			int yAxis = app.GetGameSettings(iPad, eGameSetting_ControlInvertLook) ? -1 : 1;
+
+			if (mc->options != NULL && mc->options->smoothCamera)
+			{
+				xo = smoothTurnX.getNewDeltaValue(xo, 0.05f * sens);
+				yo = smoothTurnY.getNewDeltaValue(yo, 0.05f * sens);
+			}
+
+#ifndef _CONTENT_PACKAGE
+			if (app.GetFreezePlayers())
+			{
+				xo = 0.0f;
+				yo = 0.0f;
+			}
 #endif
+
+			mc->player->turn(xo, yo * (float)yAxis);
+		}
+	}
 
 	if (mc->noRender) return;
 	GameRenderer::anaglyph3d = mc->options->anaglyph3d;
@@ -1189,7 +1220,19 @@ void GameRenderer::AddForDelete(SparseDataStorage *deleteThis)
 
 void GameRenderer::FinishedReassigning()
 {
+#ifdef MULTITHREAD_ENABLE
+	bool hasDeletes = !m_deleteStackByte.empty() ||
+		!m_deleteStackSparseLightStorage.empty() ||
+		!m_deleteStackCompressedTileStorage.empty() ||
+		!m_deleteStackSparseDataStorage.empty();
 	LeaveCriticalSection(&m_csDeleteStack);
+	if( hasDeletes && m_updateEvents != NULL && updateRunning )
+	{
+		m_updateEvents->Set(eUpdateCanRun);
+	}
+#else
+	LeaveCriticalSection(&m_csDeleteStack);
+#endif
 }
 
 int GameRenderer::runUpdate(LPVOID lpParam)
@@ -1212,37 +1255,56 @@ int GameRenderer::runUpdate(LPVOID lpParam)
 		//m_updateEvents->Clear(eUpdateEventIsFinished);
 		//m_updateEvents->WaitForSingle(eUpdateCanRun,INFINITE);
 		// 4J Stu - We Need to have this happen atomically to avoid deadlocks
-		m_updateEvents->WaitForAll(INFINITE);
+		DWORD waitResult = m_updateEvents->WaitForAll(INFINITE);
 
 		if( !ShutdownManager::ShouldRun(ShutdownManager::eRenderChunkUpdateThread) )
 		{
 			break;
 		}
+		if( waitResult != WAIT_OBJECT_0 )
+		{
+			continue;
+		}
 
-		m_updateEvents->Set(eUpdateCanRun);
+		// If DisableUpdateThread() was called just as we woke up, mark finished and return to sleep.
+		if( !updateRunning )
+		{
+			m_updateEvents->Set(eUpdateEventIsFinished);
+			continue;
+		}
 
 //		PIXBeginNamedEvent(0,"Updating dirty chunks %d",(count++)&7);
 
-		// Update chunks atomically until there aren't any very near ones left - they will be deferred for rendering
-		// until the call to CBuffDeferredModeEnd if we have anything near to render here
-		// Now limiting maximum number of updates that can be deferred as have noticed that with redstone clock circuits, it is possible to create
-		// things that need constant updating, so if you stand near them, the render data Never gets updated and the game just keeps going until it runs out of render memory...
-		int count = 0;
-		static const int MAX_DEFERRED_UPDATES = 10;
-		bool shouldContinue = false;
-		do
+		bool hasMoreDirtyChunks = false;
+		if( minecraft != NULL && minecraft->levelRenderer != NULL )
 		{
-			shouldContinue = minecraft->levelRenderer->updateDirtyChunks();
-			count++;
-		} while ( shouldContinue && count < MAX_DEFERRED_UPDATES );
+			// Update chunks atomically until there aren't any very near ones left - they will be deferred for rendering
+			// until the call to CBuffDeferredModeEnd if we have anything near to render here
+			// Now limiting maximum number of updates that can be deferred as have noticed that with redstone clock circuits, it is possible to create
+			// things that need constant updating, so if you stand near them, the render data Never gets updated and the game just keeps going until it runs out of render memory...
+			int count = 0;
+			static const int MAX_DEFERRED_UPDATES = 10;
+			bool shouldContinue = false;
+			bool wasDirtyPresent = minecraft->levelRenderer->dirtyChunkPresent;
+			do
+			{
+				shouldContinue = minecraft->levelRenderer->updateDirtyChunks();
+				count++;
+			} while ( shouldContinue && count < MAX_DEFERRED_UPDATES && updateRunning && ShutdownManager::ShouldRun(ShutdownManager::eRenderChunkUpdateThread) );
 
-//		while( minecraft->levelRenderer->updateDirtyChunks() )
-//			;
-		RenderManager.CBuffDeferredModeEnd();
+//			while( minecraft->levelRenderer->updateDirtyChunks() )
+//				;
+			RenderManager.CBuffDeferredModeEnd();
 
-		// If any renderable tile entities were flagged in this last block of chunk(s) that were udpated, then change their
-		// flags to say that this deferred chunk is over and they are actually safe to be removed now
-		minecraft->levelRenderer->fullyFlagRenderableTileEntitiesToBeRemoved();
+			if( wasDirtyPresent || count > 1 || minecraft->levelRenderer->dirtyChunkPresent )
+			{
+				// If any renderable tile entities were flagged in this last block of chunk(s) that were udpated, then change their
+				// flags to say that this deferred chunk is over and they are actually safe to be removed now
+				minecraft->levelRenderer->fullyFlagRenderableTileEntitiesToBeRemoved();
+			}
+
+			hasMoreDirtyChunks = minecraft->levelRenderer->dirtyChunkPresent;
+		}
 
 		// We've got stacks for things that can only safely be deleted whilst this thread isn't updating things - delete those things now
 		EnterCriticalSection(&m_csDeleteStack);
@@ -1273,6 +1335,13 @@ int GameRenderer::runUpdate(LPVOID lpParam)
 		AABB::resetPool();
 		Vec3::resetPool();
 		IntCache::Reset();	
+
+		// Keep eUpdateCanRun signaled only while enabled and more dirty chunks remain;
+		// otherwise WaitForAll(INFINITE) sleeps with 0% CPU until new dirty chunks or EnableUpdateThread() arrive.
+		if( updateRunning && hasMoreDirtyChunks )
+		{
+			m_updateEvents->Set(eUpdateCanRun);
+		}
 		m_updateEvents->Set(eUpdateEventIsFinished);
 	}
 
@@ -1407,6 +1476,9 @@ void GameRenderer::renderLevel(float a, __int64 until)
 		mc->textures->bindTexture(TN_TERRAIN);	// 4J was L"/terrain.png"
 		MemSect(0);
 		Lighting::turnOff();
+		// Explicitly restore alpha test state before terrain pass in case Iggy CustomDraw disabled it
+		glEnable(GL_ALPHA_TEST);
+		glAlphaFunc(GL_GREATER, 0.1f);
 		PIXBeginNamedEvent(0,"Level render");
  		levelRenderer->render(cameraEntity, 0, a, updateChunks);
 		PIXEndNamedEvent();
@@ -1460,13 +1532,15 @@ void GameRenderer::renderLevel(float a, __int64 until)
 		setupFog(0, a);
 		glEnable(GL_BLEND);
 		glDisable(GL_CULL_FACE);
+		glEnable(GL_ALPHA_TEST);
+		glAlphaFunc(GL_GREATER, 0.1f);
 		MemSect(31);
 		mc->textures->bindTexture(TN_TERRAIN);		// 4J was L"/terrain.png"
 		MemSect(0);
 		// 4J - have changed this fancy rendering option to work with our command buffers. The original used to use frame buffer flags to disable
 		// writing to colour when doing the z-only pass, but that value gets obliterated by our command buffers. Using alpha blend function instead
 		// to achieve the same effect.
-		if (true)	// (mc->options->fancyGraphics)
+		if (mc->options->fancyGraphics)
 		{
 			if (mc->options->ambientOcclusion)
 			{
@@ -1490,9 +1564,14 @@ void GameRenderer::renderLevel(float a, __int64 until)
 		}
 		else
 		{
+			if (mc->options->ambientOcclusion)
+			{
+				GL11::glShadeModel(GL11::GL_SMOOTH);
+			}
 			PIXBeginNamedEvent(0,"Second pass level render");
 			levelRenderer->render(cameraEntity, 1, a, updateChunks);
 			PIXEndNamedEvent();
+			GL11::glShadeModel(GL11::GL_FLAT);
 		}
 
 

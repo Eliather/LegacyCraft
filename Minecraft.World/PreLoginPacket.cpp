@@ -93,7 +93,10 @@ void PreLoginPacket::read(DataInputStream *dis) //throws IOException
 
 	if(hasUniqueSaveName)
 	{
-		app.SetUniqueMapName((char *)m_szUniqueSaveName);
+		char safeUniqueSaveName[m_iSaveNameLen + 1];
+		memcpy(safeUniqueSaveName, m_szUniqueSaveName, m_iSaveNameLen);
+		safeUniqueSaveName[m_iSaveNameLen] = 0;
+		app.SetUniqueMapName(safeUniqueSaveName);
 	}
 }
 
@@ -111,7 +114,10 @@ void PreLoginPacket::write(DataOutputStream *dos) //throws IOException
 		dos->writePlayerUID( m_playerXuids[i] );
 	}
 
-	app.DebugPrintf("*** PreLoginPacket::write - %s\n",m_szUniqueSaveName);
+	char safeUniqueSaveName[m_iSaveNameLen + 1];
+	memcpy(safeUniqueSaveName, m_szUniqueSaveName, m_iSaveNameLen);
+	safeUniqueSaveName[m_iSaveNameLen] = 0;
+	app.DebugPrintf("*** PreLoginPacket::write - %s\n", safeUniqueSaveName);
 	for(DWORD i = 0; i < m_iSaveNameLen; ++i)
 	{
 		dos->writeByte(m_szUniqueSaveName[i]);

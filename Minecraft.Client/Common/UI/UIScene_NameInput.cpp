@@ -8,6 +8,40 @@
 namespace
 {
 	const int DEFAULT_NAME_INPUT_CHAR_LIMIT = 15;
+	const int NAME_INPUT_BUTTON_DONE = 0;
+	const int NAME_INPUT_BUTTON_SPACE = 1;
+	const int NAME_INPUT_BUTTON_CURSOR_LEFT = 2;
+	const int NAME_INPUT_BUTTON_CURSOR_RIGHT = 3;
+	const int NAME_INPUT_BUTTON_CAPS = 4;
+	const int NAME_INPUT_BUTTON_SYMBOLS = 5;
+	const int NAME_INPUT_BUTTON_BACKSPACE = 6;
+	const int NAME_INPUT_MOUSE_BASE_WIDTH = 1920;
+	const int NAME_INPUT_MOUSE_BASE_HEIGHT = 1080;
+
+	S32 ToNameInputBaseX(S32 x)
+	{
+		const S32 screenWidth = (S32)ui.getScreenWidth();
+		if(screenWidth > 0 && screenWidth != NAME_INPUT_MOUSE_BASE_WIDTH)
+		{
+			return (x * NAME_INPUT_MOUSE_BASE_WIDTH) / screenWidth;
+		}
+		return x;
+	}
+
+	S32 ToNameInputBaseY(S32 y)
+	{
+		const S32 screenHeight = (S32)ui.getScreenHeight();
+		if(screenHeight > 0 && screenHeight != NAME_INPUT_MOUSE_BASE_HEIGHT)
+		{
+			return (y * NAME_INPUT_MOUSE_BASE_HEIGHT) / screenHeight;
+		}
+		return y;
+	}
+
+	bool NameInputHitRect(S32 x, S32 y, S32 left, S32 top, S32 width, S32 height)
+	{
+		return x >= left && x <= (left + width) && y >= top && y <= (top + height);
+	}
 
 	bool IsAcceptedNameInputCharacter(wchar_t ch)
 	{
@@ -76,13 +110,13 @@ UIScene_NameInput::UIScene_NameInput(int iPad, void *initData, UILayer *parentLa
 	m_TextInput.init(initialText, 1);
 	m_TextInput.SetCharLimit(m_charLimit);
 
-	m_ButtonSpace.init(L"Space", -1);
-	m_ButtonCursorLeft.init(L"Cursor Left", -1);
-	m_ButtonCursorRight.init(L"Cursor Right", -1);
-	m_ButtonCaps.init(L"Caps", -1);
-	m_ButtonDone.init(L"Done", 0);
-	m_ButtonSymbols.init(L"Symbols", -1);
-	m_ButtonBackspace.init(L"Backspace", -1);
+	m_ButtonSpace.init(L"Space", NAME_INPUT_BUTTON_SPACE);
+	m_ButtonCursorLeft.init(L"Cursor Left", NAME_INPUT_BUTTON_CURSOR_LEFT);
+	m_ButtonCursorRight.init(L"Cursor Right", NAME_INPUT_BUTTON_CURSOR_RIGHT);
+	m_ButtonCaps.init(L"Caps", NAME_INPUT_BUTTON_CAPS);
+	m_ButtonDone.init(L"Done", NAME_INPUT_BUTTON_DONE);
+	m_ButtonSymbols.init(L"Symbols", NAME_INPUT_BUTTON_SYMBOLS);
+	m_ButtonBackspace.init(L"Backspace", NAME_INPUT_BUTTON_BACKSPACE);
 
 	wstring label = L"Abc";
 	IggyStringUTF16 stringVal;
@@ -98,8 +132,14 @@ UIScene_NameInput::UIScene_NameInput(int iPad, void *initData, UILayer *parentLa
 
 	m_bDonePressed = false;
 	m_bCompletionSent = false;
+	m_bHandlePressCalledThisTick = false;
+	m_bMouseCaps = false;
 
 	parentLayer->addComponent(iPad, eUIComponent_MenuBackground);
+#ifdef _WINDOWS64
+	while(Mouse::next()) {}
+	while(Keyboard::next()) {}
+#endif
 	Keyboard::enableRepeatEvents(true);
 	SetFocusToElement(m_TextInput.getId());
 
@@ -109,6 +149,10 @@ UIScene_NameInput::UIScene_NameInput(int iPad, void *initData, UILayer *parentLa
 UIScene_NameInput::~UIScene_NameInput()
 {
 	Keyboard::enableRepeatEvents(false);
+#ifdef _WINDOWS64
+	while(Mouse::next()) {}
+	while(Keyboard::next()) {}
+#endif
 	m_parentLayer->removeComponent(eUIComponent_MenuBackground);
 }
 
@@ -126,13 +170,11 @@ wstring UIScene_NameInput::getMoviePath()
 
 void UIScene_NameInput::tick()
 {
+	m_bHandlePressCalledThisTick = false;
+	dispatchMouseInputToMovie();
+	processDirectKeyboardInput();
+
 	UIScene::tick();
-
-	if(processDirectKeyboardInput())
-	{
-		return;
-	}
-
 	sanitiseCurrentInputText();
 }
 
@@ -158,6 +200,11 @@ bool UIScene_NameInput::allowRepeat(int key)
 void UIScene_NameInput::handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled)
 {
 	IggyDataValue result;
+
+	if(pressed)
+	{
+		m_bHandlePressCalledThisTick = false;
+	}
 
 	if(repeat || pressed)
 	{
@@ -207,6 +254,12 @@ void UIScene_NameInput::handleInput(int iPad, int key, bool repeat, bool pressed
 	switch(key)
 	{
 	case ACTION_MENU_OK:
+#ifdef _WINDOWS64
+		// Physical Enter/Space and mouse clicks are handled directly; forwarding OK
+		// to Keyboard.swf activates its focused virtual key (e.g. '1').
+		handled = true;
+		break;
+#endif
 	case ACTION_MENU_LEFT:
 	case ACTION_MENU_RIGHT:
 	case ACTION_MENU_UP:
@@ -219,11 +272,149 @@ void UIScene_NameInput::handleInput(int iPad, int key, bool repeat, bool pressed
 
 void UIScene_NameInput::handlePress(F64 controlId, F64 childId)
 {
-	if((int)controlId == 0 && !m_bDonePressed)
+	UNREFERENCED_PARAMETER(childId);
+
+	m_bHandlePressCalledThisTick = true;
+
+	IggyDataValue result;
+
+	switch((int)controlId)
 	{
-		addTimer(NAME_INPUT_DONE_TIMER_ID, NAME_INPUT_DONE_TIMER_TIME);
-		m_bDonePressed = true;
+	case NAME_INPUT_BUTTON_DONE:
+		if(!m_bDonePressed)
+		{
+			addTimer(NAME_INPUT_DONE_TIMER_ID, NAME_INPUT_DONE_TIMER_TIME);
+			m_bDonePressed = true;
+		}
+		break;
+	case NAME_INPUT_BUTTON_SPACE:
+		IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcSpaceButtonPressed, 0, NULL);
+		break;
+	case NAME_INPUT_BUTTON_CURSOR_LEFT:
+		IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcCursorLeftButtonPressed, 0, NULL);
+		break;
+	case NAME_INPUT_BUTTON_CURSOR_RIGHT:
+		IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcCursorRightButtonPressed, 0, NULL);
+		break;
+	case NAME_INPUT_BUTTON_CAPS:
+		IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcCapsButtonPressed, 0, NULL);
+		break;
+	case NAME_INPUT_BUTTON_SYMBOLS:
+		IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcSymbolButtonPressed, 0, NULL);
+		break;
+	case NAME_INPUT_BUTTON_BACKSPACE:
+		IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcBackspaceButtonPressed, 0, NULL);
+		break;
 	}
+}
+
+void UIScene_NameInput::dispatchMouseInputToMovie()
+{
+#ifdef _WINDOWS64
+	if(!hasMovie())
+	{
+		return;
+	}
+
+	while(Mouse::next())
+	{
+		S32 eventX = (S32)Mouse::getEventX();
+		S32 eventY = (S32)Mouse::getEventY();
+
+		const int button = Mouse::getEventButton();
+		if(button == 0 && Mouse::getEventButtonState())
+		{
+			handleMouseKeyboardClick(eventX, eventY);
+		}
+	}
+#endif
+}
+
+bool UIScene_NameInput::handleMouseKeyboardClick(S32 mouseX, S32 mouseY)
+{
+	const S32 x = ToNameInputBaseX(mouseX);
+	const S32 y = ToNameInputBaseY(mouseY);
+
+	const S32 leftSpecialX = 267;
+	const S32 mainX = 410;
+	const S32 rightSpecialX = 1516;
+	const S32 topY = 570;
+	const S32 keyW = 102;
+	const S32 keyH = 65;
+	const S32 keyStepX = 109;
+	const S32 keyStepY = 73;
+
+	static const wchar_t *rows[4] =
+	{
+		L"1234567890",
+		L"qwertyuiop",
+		L"asdfghjkl,",
+		L"zxcvbnm,.?"
+	};
+
+	if(NameInputHitRect(x, y, leftSpecialX, topY, 136, 210))
+	{
+		IggyDataValue result;
+		IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcCursorLeftButtonPressed, 0, NULL);
+		return true;
+	}
+
+	if(NameInputHitRect(x, y, rightSpecialX, topY, 136, 210))
+	{
+		IggyDataValue result;
+		IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcCursorRightButtonPressed, 0, NULL);
+		return true;
+	}
+
+	for(int row = 0; row < 4; ++row)
+	{
+		const S32 rowY = topY + (row * keyStepY);
+		if(y < rowY || y > rowY + keyH)
+		{
+			continue;
+		}
+
+		for(int col = 0; col < 10; ++col)
+		{
+			const S32 keyX = mainX + (col * keyStepX);
+			if(NameInputHitRect(x, y, keyX, rowY, keyW, keyH))
+			{
+				appendInputCharacter(rows[row][col]);
+				return true;
+			}
+		}
+	}
+
+	if(NameInputHitRect(x, y, leftSpecialX, topY + keyStepY * 3, 136, 137))
+	{
+		m_bMouseCaps = !m_bMouseCaps;
+		return true;
+	}
+
+	if(NameInputHitRect(x, y, mainX, topY + keyStepY * 4, 320, keyH))
+	{
+		return true;
+	}
+
+	if(NameInputHitRect(x, y, mainX + 327, topY + keyStepY * 4, 430, keyH))
+	{
+		appendInputCharacter(L' ');
+		return true;
+	}
+
+	if(NameInputHitRect(x, y, mainX + 764, topY + keyStepY * 4, 320, keyH))
+	{
+		backspaceInputText();
+		return true;
+	}
+
+	if(NameInputHitRect(x, y, rightSpecialX, topY + keyStepY * 3, 136, 137))
+	{
+		handleDonePressed();
+		return true;
+	}
+
+	return false;
 }
 
 void UIScene_NameInput::handleTimerComplete(int id)
@@ -242,6 +433,8 @@ void UIScene_NameInput::handleDestroy()
 
 bool UIScene_NameInput::processDirectKeyboardInput()
 {
+	bool handledAny = false;
+
 	while(Keyboard::next())
 	{
 		const int eventKey = Keyboard::getEventKey();
@@ -264,12 +457,14 @@ bool UIScene_NameInput::processDirectKeyboardInput()
 			return true;
 		case Keyboard::KEY_BACK:
 			backspaceInputText();
+			handledAny = true;
 			continue;
 		}
 
 		if(eventKey == VK_DELETE)
 		{
-			clearInputText();
+			backspaceInputText();
+			handledAny = true;
 			continue;
 		}
 
@@ -288,17 +483,33 @@ bool UIScene_NameInput::processDirectKeyboardInput()
 			continue;
 		}
 
-		wstring currentText = SanitiseNameInputText(m_TextInput.getLabel(), m_charLimit);
-		if((int)currentText.length() >= m_charLimit)
-		{
-			continue;
-		}
-
-		currentText += eventChar;
-		setInputText(currentText);
+		appendInputCharacter(eventChar);
+		handledAny = true;
 	}
 
-	return false;
+	return handledAny;
+}
+
+void UIScene_NameInput::appendInputCharacter(wchar_t ch)
+{
+	if(ch >= L'a' && ch <= L'z' && m_bMouseCaps)
+	{
+		ch = (wchar_t)(ch - L'a' + L'A');
+	}
+
+	if(!IsAcceptedNameInputCharacter(ch))
+	{
+		return;
+	}
+
+	wstring currentText = SanitiseNameInputText(m_TextInput.getLabel(), m_charLimit);
+	if((int)currentText.length() >= m_charLimit)
+	{
+		return;
+	}
+
+	currentText += ch;
+	setInputText(currentText);
 }
 
 void UIScene_NameInput::sanitiseCurrentInputText()

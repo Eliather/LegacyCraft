@@ -141,8 +141,14 @@ bool CustomGenericButton::Update(Minecraft *minecraft)
 {
 	if(minecraft == NULL) return false;
 
-	const float mouseX = ((float)Mouse::getX() / 1920.0f) * (float)minecraft->width_phys;
-	const float mouseY = ((float)Mouse::getY() / 1080.0f) * (float)minecraft->height_phys;
+	const float screenW = ui.getScreenWidth();
+	const float screenH = ui.getScreenHeight();
+	const float mouseX = (screenW > 0.0f && minecraft->width_phys > 0)
+		? (((float)Mouse::getX() * (float)minecraft->width_phys) / screenW)
+		: (float)Mouse::getX();
+	const float mouseY = (screenH > 0.0f && minecraft->height_phys > 0)
+		? (((float)Mouse::getY() * (float)minecraft->height_phys) / screenH)
+		: (float)Mouse::getY();
 
 	m_hovered = HitTest(mouseX, mouseY);
 
@@ -218,10 +224,11 @@ void CustomGenericButton::Render(Minecraft *minecraft, Font *font,
 	// Draw centred text label
 	if(font != NULL && !label.empty())
 	{
-		const float textScale = 2.0f;
+		const float rawScale = 2.0f * (h / 40.0f);
+		const float textScale = (rawScale < 1.25f) ? 1.25f : rawScale;
 		const float textWidth = (float)font->width(label) * textScale;
-		const float textX = m_x + ((w - textWidth) * 0.5f) + 5.0f;
-		const float textY = m_y + ((h - 8.0f * textScale) * 0.5f) - 1.0f;
+		const float textX = m_x + ((w - textWidth) * 0.5f) + 5.0f * (h / 40.0f);
+		const float textY = m_y + ((h - 8.0f * textScale) * 0.5f) - 1.0f * (h / 40.0f);
 
 		// Text colour: white normally, yellow on hover
 		const unsigned int textColor = m_hovered ? 0xffffff00 : 0xffffffff;

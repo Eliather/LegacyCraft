@@ -8,8 +8,12 @@
 #include "gdraw.h"
 #include "gdraw_wgl.h"
 #include <windows.h>
-#include <gl/gl.h>
+#include <GL/gl.h>
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#include <GL/glext.h>
+#else
 #include "glext.h"
+#endif
 #include <string.h>
 #include <math.h>
 
@@ -54,6 +58,7 @@
    GLE(GetProgramiv,                   "GetObjectParameterivARB",          GETOBJECTPARAMETERIVARB) \
    GLE(GetProgramInfoLog,              "GetInfoLogARB",                    GETINFOLOGARB) \
    GLE(Uniform1i,                      "Uniform1iARB",                     UNIFORM1IARB) \
+   GLE(Uniform1f,                      "Uniform1fARB",                     UNIFORM1FARB) \
    GLE(Uniform4f,                      "Uniform4fARB",                     UNIFORM4FARB) \
    GLE(Uniform4fv,                     "Uniform4fvARB",                    UNIFORM4FVARB) \
    /* GL_ARB_vertex_shader */ \

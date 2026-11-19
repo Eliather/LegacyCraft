@@ -306,6 +306,10 @@ public:
 	static void onMouseDelta(int dx, int dy);
 	static void onMouseButton(int button, bool isDown, int x, int y);
 	static void onMouseWheel(int delta, int x, int y);
+	static void setGrabbed(bool grabbed) { m_bGrabbed = grabbed; }
+	static bool isGrabbed() { return m_bGrabbed; }
+	static void syncPosition(int x, int y);
+	static void resetDeltas();
 	static int getX() { return m_iX; }
 	static int getY() { return m_iY; }
 	static int getDX() { int dX = m_iDeltaX; m_iDeltaX = 0; return dX; }
@@ -325,6 +329,7 @@ public:
 	static bool m_bButtonDown[MAX_BUTTONS];
 	static bool m_bButtonPressed[MAX_BUTTONS];
 	static std::deque<MouseEvent> m_mouseEvents;
+	static bool m_bGrabbed;
 	static bool m_bCurrentEventDown;
 	static int m_iCurrentEventX;
 	static int m_iCurrentEventY;
@@ -340,7 +345,9 @@ public:
 class Display
 {
 public:
-	static bool isActive() {return true;}
+	static bool m_bActive;
+	static bool isActive() { return m_bActive; }
+	static void setActive(bool active) { m_bActive = active; }
 	static void update();
 	static void swapBuffers();
 	static void destroy() {}

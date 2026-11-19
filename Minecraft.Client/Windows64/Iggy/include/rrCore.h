@@ -1645,6 +1645,10 @@ RADDEFSTART
 
       #define RR_BREAK __debugbreak
 
+    #elif defined(__GNUC__)
+
+      #define RR_BREAK() __builtin_trap()
+
     #else
 
       #define RR_BREAK() RAD_STATEMENT_WRAPPER( __asm {int 3} )

@@ -13,6 +13,8 @@
 #include "..\..\CustomGenericBackground.h"
 #include "..\..\CustomSlider.h"
 
+extern bool Windows64ApplyResolutionModeRuntime(int resolutionMode);
+
 #ifndef GL_SCISSOR_TEST
 #define GL_SCISSOR_TEST 0x0C11
 #endif
@@ -29,6 +31,8 @@ namespace
 		eSettingsUICustomSlider_AnimatedCharacter,
 		eSettingsUICustomSlider_UISize,
 		eSettingsUICustomSlider_UISizeSplitscreen,
+		eSettingsUICustomSlider_Renderer,
+		eSettingsUICustomSlider_Vsync,
 		eSettingsUICustomSlider_Count
 	};
 
@@ -37,16 +41,19 @@ namespace
 	bool g_settingsUIControlsInitialised = false;
 	int g_settingsUIWidth = -1;
 	int g_settingsUIHeight = -1;
+	bool g_settingsUIResolutionSliderWaitForRelease = false;
+	int g_settingsUIResolutionSliderCooldownTicks = 0;
+	int g_settingsUIResolutionSliderLockedValue = -1;
 
 	const float kSettingsUIPanelWidth = 920.0f;
-	const float kSettingsUIPanelHeight = 470.0f;
+	const float kSettingsUIPanelHeight = 560.0f;
 	const float kSettingsUITitleScale = 3.0f;
 	const float kSettingsUISliderXInset = 140.0f;
-	const float kSettingsUISliderStartYOffset = 110.0f;
+	const float kSettingsUISliderStartYOffset = 92.0f;
 	const float kSettingsUISliderWidth = 640.0f;
 	const float kSettingsUISliderHeight = 36.0f;
-	const float kSettingsUISliderGap = 18.0f;
-	const int kSettingsUIRenderDistanceMin = 4;
+	const float kSettingsUISliderGap = 14.0f;
+	const int kSettingsUIRenderDistanceMin = 2;
 	const int kSettingsUIRenderDistanceDefault = 18;
 	const int kSettingsUIRenderDistanceMax = 32;
 
@@ -65,11 +72,6 @@ namespace
 
 	int ClampSettingsUIRenderDistance(int renderDistance)
 	{
-		if(renderDistance >= 0 && renderDistance <= 3)
-		{
-			static const int kLegacyRenderDistances[4] = { 18, 12, 8, 4 };
-			return kLegacyRenderDistances[renderDistance];
-		}
 		if(renderDistance < kSettingsUIRenderDistanceMin)
 		{
 			return kSettingsUIRenderDistanceMin;
@@ -86,7 +88,6 @@ namespace
 		switch(slider)
 		{
 		case eSettingsUICustomSlider_Gamma:              return eGameSetting_Gamma;
-		case eSettingsUICustomSlider_AnimatedCharacter:  return eGameSetting_AnimatedCharacter;
 		case eSettingsUICustomSlider_UISize:             return eGameSetting_UISize;
 		case eSettingsUICustomSlider_UISizeSplitscreen:  return eGameSetting_UISizeSplitscreen;
 		default:                                         return -1;
@@ -99,7 +100,6 @@ namespace
 		{
 		case eSettingsUICustomSlider_Gamma:              return IDS_BRIGHTNESS;
 		case eSettingsUICustomSlider_RenderDistance:     return IDS_RENDER_DISTANCE;
-		case eSettingsUICustomSlider_AnimatedCharacter:  return IDS_CHECKBOX_ANIMATED_CHARACTER;
 		case eSettingsUICustomSlider_UISize:             return IDS_SLIDER_UISIZE;
 		case eSettingsUICustomSlider_UISizeSplitscreen:  return IDS_SLIDER_UISIZESPLITSCREEN;
 		default:                                         return IDS_OPTIONS;
@@ -116,9 +116,15 @@ namespace
 			return 100;
 		case eSettingsUICustomSlider_RenderDistance:
 			return kSettingsUIRenderDistanceMax - kSettingsUIRenderDistanceMin;
+		case eSettingsUICustomSlider_AnimatedCharacter:
+			return 3;
 		case eSettingsUICustomSlider_UISize:
 		case eSettingsUICustomSlider_UISizeSplitscreen:
 			return 2;
+		case eSettingsUICustomSlider_Renderer:
+			return 3;
+		case eSettingsUICustomSlider_Vsync:
+			return 1;
 		default:
 			return 1;
 		}
@@ -128,10 +134,34 @@ namespace
 	{
 		switch(slider)
 		{
-		case eSettingsUICustomSlider_AnimatedCharacter:
+		case eSettingsUICustomSlider_Vsync:
 			return true;
 		default:
 			return false;
+		}
+	}
+
+	const wchar_t *GetSettingsUIResolutionModeLabel(int mode)
+	{
+		switch(mode)
+		{
+		case 1: return L"1280x720";
+		case 2: return L"1366x768";
+		case 3: return L"1920x1080";
+		case 4: return L"Pantalla completa";
+		default: return L"1920x1080";
+		}
+	}
+
+	const wchar_t *GetSettingsUIRendererBackendLabel(int backend)
+	{
+		switch(backend)
+		{
+		case 0: return L"DirectX 11";
+		case 1: return L"OpenGL";
+		case 2: return L"Vulkan";
+		case 3: return L"DirectX 12";
+		default: return L"DirectX 11";
 		}
 	}
 
@@ -149,6 +179,29 @@ namespace
 				return ClampSettingsUIRenderDistance(minecraft->options->viewDistance) - kSettingsUIRenderDistanceMin;
 			}
 			return ClampSettingsUIRenderDistance((int)UserData_Info::GetRenderDistance()) - kSettingsUIRenderDistanceMin;
+		}
+		if(slider == eSettingsUICustomSlider_AnimatedCharacter)
+		{
+			if(g_settingsUIResolutionSliderLockedValue >= 0)
+			{
+				return g_settingsUIResolutionSliderLockedValue;
+			}
+
+			const int resolutionMode = (int)UserData_Info::GetResolutionMode();
+			if(resolutionMode < 1 || resolutionMode > 4)
+			{
+				return 2;
+			}
+			return resolutionMode - 1;
+		}
+		if(slider == eSettingsUICustomSlider_Renderer)
+		{
+			int b = (int)UserData_Info::GetRendererBackend();
+			return (b >= 0 && b <= 3) ? b : 0;
+		}
+		if(slider == eSettingsUICustomSlider_Vsync)
+		{
+			return RenderManager.IsVsyncEnabled() ? 1 : 0;
 		}
 
 		const int settingId = GetSettingsUIGameSetting(slider);
@@ -176,9 +229,9 @@ namespace
 	float GetSettingsUIPanelY(int height)
 	{
 		float y = ((float)height - kSettingsUIPanelHeight) * 0.5f - 10.0f;
-		if(y < 120.0f)
+		if(y < 70.0f)
 		{
-			y = 120.0f;
+			y = 70.0f;
 		}
 		return y;
 	}
@@ -279,6 +332,46 @@ namespace
 			}
 			return;
 		}
+		if(slider == eSettingsUICustomSlider_AnimatedCharacter)
+		{
+			const int resolutionMode = value + 1;
+			const int previousResolutionMode = (int)UserData_Info::GetResolutionMode();
+			if(previousResolutionMode == resolutionMode)
+			{
+				return;
+			}
+
+			g_settingsUIResolutionSliderLockedValue = resolutionMode - 1;
+			g_settingsUIResolutionSliderWaitForRelease = true;
+			g_settingsUIResolutionSliderCooldownTicks = 20;
+			g_settingsUISliders[slider].SetValue(g_settingsUIResolutionSliderLockedValue);
+			UserData_Info::SetResolutionMode((unsigned char)resolutionMode);
+			Windows64ApplyResolutionModeRuntime(resolutionMode);
+			InvalidateSettingsUILayout();
+			return;
+		}
+		if(slider == eSettingsUICustomSlider_Renderer)
+		{
+			const unsigned char backend = (unsigned char)((value >= 0 && value <= 3) ? value : 0);
+			if(UserData_Info::GetRendererBackend() != backend)
+			{
+				UserData_Info::SetRendererBackend(backend);
+			}
+			return;
+		}
+		if(slider == eSettingsUICustomSlider_Vsync)
+		{
+			const bool enabled = (value != 0);
+			if(RenderManager.IsVsyncEnabled() != enabled)
+			{
+				RenderManager.SetVsyncEnabled(enabled);
+			}
+			if(UserData_Info::GetVsyncEnabled() != enabled)
+			{
+				UserData_Info::SetVsyncEnabled(enabled);
+			}
+			return;
+		}
 
 		const int settingId = GetSettingsUIGameSetting(slider);
 		if(settingId < 0)
@@ -321,6 +414,25 @@ namespace
 		if(slider == eSettingsUICustomSlider_RenderDistance)
 		{
 			_snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"%ls: %d", baseLabel, value + kSettingsUIRenderDistanceMin);
+			return std::wstring(buffer);
+		}
+		if(slider == eSettingsUICustomSlider_AnimatedCharacter)
+		{
+			const int resolutionMode = value + 1;
+			_snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"Resolucion: %d - %ls", resolutionMode, GetSettingsUIResolutionModeLabel(resolutionMode));
+			return std::wstring(buffer);
+		}
+		if(slider == eSettingsUICustomSlider_Renderer)
+		{
+			const bool pendingRestart = (value != RenderManager.GetBackendType());
+			_snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"API Grafica: %ls%ls",
+				GetSettingsUIRendererBackendLabel(value),
+				pendingRestart ? L" (reiniciar)" : L"");
+			return std::wstring(buffer);
+		}
+		if(slider == eSettingsUICustomSlider_Vsync)
+		{
+			_snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"VSync: %ls", (value != 0) ? L"Activado" : L"Desactivado");
 			return std::wstring(buffer);
 		}
 
@@ -552,6 +664,22 @@ void UIScene_SettingsUIMenu::tick()
 
 		for(int i = 0; i < eSettingsUICustomSlider_Count; ++i)
 		{
+			if(i == eSettingsUICustomSlider_AnimatedCharacter && g_settingsUIResolutionSliderWaitForRelease)
+			{
+				g_settingsUISliders[i].SetValue(GetSettingsUISliderValue(m_iPad, (ESettingsUICustomSlider)i));
+				if(g_settingsUIResolutionSliderCooldownTicks > 0)
+				{
+					--g_settingsUIResolutionSliderCooldownTicks;
+				}
+
+				if(!Mouse::isButtonDown(0) && g_settingsUIResolutionSliderCooldownTicks <= 0)
+				{
+					g_settingsUIResolutionSliderWaitForRelease = false;
+					g_settingsUIResolutionSliderLockedValue = -1;
+				}
+				continue;
+			}
+
 			if(g_settingsUISliders[i].Update(minecraft))
 			{
 				ApplySettingsUISliderValue(m_iPad, (ESettingsUICustomSlider)i);

@@ -952,7 +952,7 @@ int Textures::loadMemTexture(const wstring& url, const wstring& backup)
 		{
 			// 4J - Disable mipmapping in general for skins & capes. Have seen problems with edge-on polys for some eg mumbo jumbo
 			if( ( url.substr(0,7) == L"dlcskin" ) ||
-				( url.substr(0,7) == L"dlccape" ) )
+				( url.substr(0,7) == L"dlccape" ) || ( url.substr(0,7) == L"ugcskin" ) || ( url.substr(0,7) == L"defskin" ) )
 			{
 				MIPMAP = false;
 			}
@@ -997,7 +997,7 @@ int Textures::loadMemTexture(const wstring& url, int backup)
 		{
 			// 4J - Disable mipmapping in general for skins & capes. Have seen problems with edge-on polys for some eg mumbo jumbo
 			if( ( url.substr(0,7) == L"dlcskin" ) ||
-				( url.substr(0,7) == L"dlccape" ) )
+				( url.substr(0,7) == L"dlccape" ) || ( url.substr(0,7) == L"ugcskin" ) || ( url.substr(0,7) == L"defskin" ) )
 			{
 				MIPMAP = false;
 			}

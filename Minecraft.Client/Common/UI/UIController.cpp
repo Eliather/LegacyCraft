@@ -7,10 +7,13 @@
 #include "..\..\DLCTexturePack.h"
 #include "..\..\TexturePackRepository.h"
 #include "..\..\Minecraft.h"
+#include "..\..\Options.h"
+#include "..\..\KeyMapping.h"
 #include "..\..\..\Minecraft.World\net.minecraft.world.entity.boss.enderdragon.h"
 #include "..\..\EnderDragonRenderer.h"
 #include "..\..\MultiPlayerLocalPlayer.h"
 #include "UIFontData.h"
+#include "..\..\CustomTextInputModal.h"
 #ifdef __PSVITA__
 #include <message_dialog.h>
 #endif
@@ -454,6 +457,13 @@ void UIController::tick()
 		}
 	}
 
+#if defined(_WINDOWS64)
+	if(CustomTextInputModal::IsSuppressingMenuInput())
+	{
+		CustomTextInputModal::Tick(Minecraft::GetInstance());
+	}
+#endif
+
 	if(m_accumulatedTicks == 0) tickInput();
 	m_accumulatedTicks = 0;
 
@@ -488,13 +498,17 @@ void UIController::loadSkins()
 #elif defined __PSVITA__
 	platformSkinPath = L"skinVita.swf";
 #elif defined _WINDOWS64
-	if(m_fScreenHeight==1080.0f)
+	if(m_fScreenHeight > 720.0f)
 	{
 		platformSkinPath = L"skinHDWin.swf";
 	}
 	else
 	{
 		platformSkinPath = L"skinWin.swf";	
+	}
+	if(!app.hasArchiveFile(platformSkinPath))
+	{
+		platformSkinPath = L"skinWin.swf";
 	}
 #elif defined _DURANGO
 	if(m_fScreenHeight==1080.0f)
@@ -516,6 +530,10 @@ void UIController::loadSkins()
 	}
 
 #endif
+#if defined(_WINDOWS64)
+	m_iggyLibraries[eLibrary_Platform] = loadSkin(platformSkinPath, L"platformskinHD.swf");
+	m_iggyLibraries[eLibraryFallback_Platform] = loadSkin(platformSkinPath, L"platformskin.swf");
+#else
 	if(m_fScreenHeight==1080.0f)
 	{
 		m_iggyLibraries[eLibrary_Platform] = loadSkin(platformSkinPath, L"platformskinHD.swf");
@@ -524,6 +542,7 @@ void UIController::loadSkins()
 	{
 		m_iggyLibraries[eLibrary_Platform] = loadSkin(platformSkinPath, L"platformskin.swf");
 	}
+#endif
 
 #if defined(__PS3__) || defined(__PSVITA__)
 	m_iggyLibraries[eLibrary_GraphicsDefault] = loadSkin(L"skinGraphics.swf", L"skinGraphics.swf");
@@ -731,6 +750,12 @@ void UIController::tickInput()
 
 void UIController::handleInput()
 {
+#if defined(_WINDOWS64)
+	if(CustomTextInputModal::IsSuppressingMenuInput())
+	{
+		return;
+	}
+#endif
 	for(unsigned int iPad = 0; iPad < XUSER_MAX_COUNT; ++iPad)
 	{
 #ifdef _DURANGO
@@ -740,7 +765,8 @@ void UIController::handleInput()
 #ifdef _WINDOWS64
 		// FIX: Update mouse focus for ALL menus every tick, not just when a menu is displayed.
 		// This ensures submenus and alert layers also respond to hover/focus correctly.
-		if((int)iPad == ProfileManager.GetPrimaryPad())
+		// Skip while mouse is grabbed in gameplay so no phantom mouse events reach Iggy/tooltips.
+		if((int)iPad == ProfileManager.GetPrimaryPad() && !Mouse::isGrabbed())
 		{
 			const S32 mouseX = (S32)Mouse::getX();
 			const S32 mouseY = (S32)Mouse::getY();
@@ -813,7 +839,42 @@ static bool IsMouseHitControlType(UIControl::eUIControlType controlType)
 		controlType != UIControl::eBitmapIcon &&
 		controlType != UIControl::eMinecraftPlayer &&
 		controlType != UIControl::ePlayerSkinPreview &&
-		controlType != UIControl::eProgress;
+		controlType != UIControl::eProgress &&
+		controlType != UIControl::eSlotList;
+}
+
+static bool IsAbstractContainerScene(UIScene *scene)
+{
+	if(scene == NULL)
+	{
+		return false;
+	}
+
+	switch(scene->getSceneType())
+	{
+	case eUIScene_InventoryMenu:
+	case eUIScene_CreativeMenu:
+	case eUIScene_ContainerMenu:
+	case eUIScene_LargeContainerMenu:
+	case eUIScene_FurnaceMenu:
+	case eUIScene_DispenserMenu:
+	case eUIScene_BrewingStandMenu:
+	case eUIScene_EnchantingMenu:
+	case eUIScene_AnvilMenu:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static int GetInventoryToggleKey()
+{
+	Minecraft *pMinecraft = Minecraft::GetInstance();
+	if(pMinecraft != NULL && pMinecraft->options != NULL && pMinecraft->options->keyBuild != NULL)
+	{
+		return pMinecraft->options->keyBuild->key;
+	}
+	return 'E';
 }
 
 static int s_iPendingMouseWheelMenuSteps = 0;
@@ -832,6 +893,18 @@ static bool IsFocusedTextInput(UIScene *scene)
 		return false;
 	}
 
+	if(scene->getSceneType() == eUIScene_NameInput)
+	{
+		return true;
+	}
+
+#if defined(_WINDOWS64)
+	if(CustomTextInputModal::IsSuppressingMenuInput())
+	{
+		return true;
+	}
+#endif
+
 	const int focusedControlId = scene->getControlFocus();
 	vector<UIControl *> *controls = scene->GetControls();
 	for(size_t i = 0; i < controls->size(); ++i)
@@ -840,6 +913,31 @@ static bool IsFocusedTextInput(UIScene *scene)
 		if(control != NULL &&
 			control->getId() == focusedControlId &&
 			control->getControlType() == UIControl::eTextInput)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+static bool SceneHasMouseHitControls(UIScene *scene)
+{
+	if(scene == NULL)
+	{
+		return false;
+	}
+
+	vector<UIControl *> *controls = scene->GetControls();
+	if(controls == NULL)
+	{
+		return false;
+	}
+
+	for(size_t i = 0; i < controls->size(); ++i)
+	{
+		UIControl *control = (*controls)[i];
+		if(control != NULL && IsMouseHitControlType(control->getControlType()))
 		{
 			return true;
 		}
@@ -867,7 +965,7 @@ static UIScene *GetActiveGroupScene(UIGroup *group)
 	return NULL;
 }
 
-static void ApplyWindowsMenuKeyboardFallback(unsigned int action, bool &down, bool &pressed, bool &released, bool textInputFocused)
+static void ApplyWindowsMenuKeyboardFallback(unsigned int action, bool &down, bool &pressed, bool &released, bool textInputFocused, bool isContainerScene)
 {
 	switch(action)
 	{
@@ -906,7 +1004,7 @@ static void ApplyWindowsMenuKeyboardFallback(unsigned int action, bool &down, bo
 		}
 		break;
 	case ACTION_MENU_RIGHT_SCROLL:
-		if(!textInputFocused)
+		if(!textInputFocused && !isContainerScene)
 		{
 			AddKeyboardState(down, pressed, released, 'E');
 		}
@@ -931,11 +1029,21 @@ static void ApplyWindowsMenuKeyboardFallback(unsigned int action, bool &down, bo
 		}
 		break;
 	case ACTION_MENU_CANCEL:
+		AddKeyboardState(down, pressed, released, VK_ESCAPE);
+		if(!textInputFocused)
+		{
+			AddKeyboardState(down, pressed, released, VK_BACK);
+		}
+		break;
 	case ACTION_MENU_B:
 		AddKeyboardState(down, pressed, released, VK_ESCAPE);
 		if(!textInputFocused)
 		{
 			AddKeyboardState(down, pressed, released, VK_BACK);
+			if(isContainerScene)
+			{
+				AddKeyboardState(down, pressed, released, GetInventoryToggleKey());
+			}
 		}
 		break;
 	}
@@ -1027,6 +1135,10 @@ static void GetViewportRect(C4JRender::eViewportType viewport, S32 screenW, S32 
 static bool FocusMouseControlInScene(UIScene *pScene, S32 mouseX, S32 mouseY, S32 viewportX, S32 viewportY, S32 viewportW, S32 viewportH)
 {
 	if(!pScene) return false;
+#if defined(_WINDOWS64)
+	if(CustomTextInputModal::IsSuppressingMenuInput()) return false;
+	if(IsAbstractContainerScene(pScene)) return false;
+#endif
 	if(!pScene->hasMovie()) return false;
 	if(viewportW <= 0 || viewportH <= 0) return false;
 	if(mouseX < viewportX || mouseX > (viewportX + viewportW) || mouseY < viewportY || mouseY > (viewportY + viewportH)) return false;
@@ -1064,6 +1176,8 @@ static bool FocusMouseControlInScene(UIScene *pScene, S32 mouseX, S32 mouseY, S3
 			iMainPanelOffsetY = pMainPanel->getYPos();
 		}
 	}
+
+	UIControl *gapFallbackButton = NULL;
 
 	for(S32 controlIndex = (S32)pControls->size() - 1; controlIndex >= 0; --controlIndex)
 	{
@@ -1128,6 +1242,15 @@ static bool FocusMouseControlInScene(UIScene *pScene, S32 mouseX, S32 mouseY, S3
 			}
 		}
 
+		if(!mouseHitControl && gapFallbackButton == NULL && control->getControlType() == UIControl::eButton)
+		{
+			const S32 buttonGapExtensionY = 14;
+			if(localX >= x1 && localX <= x2 && localY > y2 && localY <= (y2 + buttonGapExtensionY))
+			{
+				gapFallbackButton = control;
+			}
+		}
+
 		if(mouseHitControl)
 		{
 			if(control->getControlType() == UIControl::eSlider)
@@ -1158,12 +1281,21 @@ static bool FocusMouseControlInScene(UIScene *pScene, S32 mouseX, S32 mouseY, S3
 				pButtonList->SetTouchFocus(localX, localY, false);
 			}
 
-			if(pScene->getControlFocus() != control->getId())
+			if(pScene->getControlFocus() != control->getId() && pScene->getSceneType() != eUIScene_NameInput)
 			{
 				pScene->SetFocusToElement(control->getId());
 			}
 			return true;
 		}
+	}
+
+	if(gapFallbackButton != NULL)
+	{
+		if(pScene->getControlFocus() != gapFallbackButton->getId() && pScene->getSceneType() != eUIScene_NameInput)
+		{
+			pScene->SetFocusToElement(gapFallbackButton->getId());
+		}
+		return true;
 	}
 
 	return false;
@@ -1337,6 +1469,7 @@ void UIController::handleKeyPress(unsigned int iPad, unsigned int key)
 #ifdef _WINDOWS64
 	if((int)iPad == ProfileManager.GetPrimaryPad())
 	{
+		const bool mouseGrabbed = Mouse::isGrabbed();
 		const bool menuDisplayed = GetMenuDisplayed(iPad) || m_groups[(int)eUIGroup_Fullscreen]->GetMenuDisplayed();
 		UIScene *menuScene = NULL;
 
@@ -1350,42 +1483,52 @@ void UIController::handleKeyPress(unsigned int iPad, unsigned int key)
 		}
 
 		const bool textInputFocused = IsFocusedTextInput(menuScene);
+		const bool isContainerScene = IsAbstractContainerScene(menuScene);
 
-		if(key == ACTION_MENU_OK)
+		if(!mouseGrabbed)
 		{
-			if(Mouse::isButtonPressed(0))
+			if(key == ACTION_MENU_OK)
 			{
-				const S32 mouseX = (S32)Mouse::getX();
-				const S32 mouseY = (S32)Mouse::getY();
-				const S32 screenW = (S32)getScreenWidth();
-				const S32 screenH = (S32)getScreenHeight();
-
-				// FIX: Try ALL groups top-down when a click lands, not just
-				// Fullscreen + player group. This is what makes submenu buttons
-				// actually register the click after focus has been set correctly.
-				bool mouseHitControl = false;
-				for(int g = (int)eUIGroup_COUNT - 1; g >= 0 && !mouseHitControl; --g)
+				if(Mouse::isButtonPressed(0))
 				{
-					mouseHitControl = FocusMouseControl(m_groups[g], mouseX, mouseY, screenW, screenH);
-				}
+					const S32 mouseX = (S32)Mouse::getX();
+					const S32 mouseY = (S32)Mouse::getY();
+					const S32 screenW = (S32)getScreenWidth();
+					const S32 screenH = (S32)getScreenHeight();
 
-				// FIX: Always activate the click as long as any menu is visible,
-				// even if no hittable control was found under the cursor. This lets
-				// Escape/Cancel areas and modal backdrops work too.
-				if(mouseHitControl || menuDisplayed)
-				{
-					down = true;
-					pressed = true;
+					// FIX: Try ALL groups top-down when a click lands, not just
+					// Fullscreen + player group. This is what makes submenu buttons
+					// actually register the click after focus has been set correctly.
+					bool mouseHitControl = false;
+					for(int g = (int)eUIGroup_COUNT - 1; g >= 0 && !mouseHitControl; --g)
+					{
+						mouseHitControl = FocusMouseControl(m_groups[g], mouseX, mouseY, screenW, screenH);
+					}
+
+					// FIX: For non-container scenes that have mouse-hittable controls (e.g. PauseMenu, MainMenu),
+					// only fire ACTION_MENU_OK when a control was actually hit under the cursor so clicking
+					// empty space never triggers the previously focused button.
+					const bool allowUnfocusedClick = isContainerScene || (menuDisplayed && !SceneHasMouseHitControls(menuScene));
+					if(mouseHitControl || allowUnfocusedClick)
+					{
+						down = true;
+						pressed = true;
+					}
 				}
 			}
+			else if(menuDisplayed && isContainerScene && key == ACTION_MENU_X)
+			{
+				down = down || Mouse::isButtonDown(1);
+				pressed = pressed || Mouse::isButtonPressed(1);
+			}
+			else if(menuDisplayed && !isContainerScene && key == ACTION_MENU_RIGHT_SCROLL)
+			{
+				down = down || Mouse::isButtonDown(1);
+				pressed = pressed || Mouse::isButtonPressed(1);
+			}
+			ApplyWindowsMenuMouseWheelFallback(key, menuDisplayed, down, pressed);
 		}
-		else if(menuDisplayed && key == ACTION_MENU_RIGHT_SCROLL)
-		{
-			down = down || Mouse::isButtonDown(1);
-			pressed = pressed || Mouse::isButtonPressed(1);
-		}
-		ApplyWindowsMenuKeyboardFallback(key, down, pressed, released, textInputFocused);
-		ApplyWindowsMenuMouseWheelFallback(key, menuDisplayed, down, pressed);
+		ApplyWindowsMenuKeyboardFallback(key, down, pressed, released, textInputFocused, isContainerScene);
 	}
 #endif
 
@@ -1576,7 +1719,12 @@ void UIController::setupCustomDrawGameState()
 	m_customRenderingClearRect.top = LONG_MAX;
 	m_customRenderingClearRect.bottom = LONG_MIN;
 
-#if defined _WINDOWS64 || _DURANGO
+#if defined _WINDOWS64
+	PIXBeginNamedEvent(0,"StartFrame");
+	RenderManager.StartFrame();
+	PIXEndNamedEvent();
+	RenderManager.GDrawSetViewport4J();
+#elif defined _DURANGO
 	PIXBeginNamedEvent(0,"StartFrame");
 	RenderManager.StartFrame();
 	PIXEndNamedEvent();
@@ -2150,6 +2298,26 @@ void UIController::SetMenuDisplayed(int iPad,bool bVal)
 	}
 	else
 	{
+#ifdef _WINDOWS64
+		if(iPad==XUSER_INDEX_ANY)
+		{
+			for(int i=0;i<XUSER_MAX_COUNT;i++)
+			{
+				m_bMenuToBeClosed[i]=false;
+				m_iCountDown[i]=0;
+				m_bMenuDisplayed[i]=false;
+				InputManager.SetMenuDisplayed(i,false);
+			}
+		}
+		else
+		{
+			m_bMenuToBeClosed[iPad]=false;
+			m_iCountDown[iPad]=0;
+			m_bMenuDisplayed[iPad]=false;
+			InputManager.SetMenuDisplayed(iPad,false);
+		}
+		Mouse::resetDeltas();
+#else
 		if(iPad==XUSER_INDEX_ANY)
 		{
 			for(int i=0;i<XUSER_MAX_COUNT;i++)
@@ -2168,6 +2336,7 @@ void UIController::SetMenuDisplayed(int iPad,bool bVal)
 				InputManager.SetEnabledGtcButtons(_360_GTC_MENU | _360_GTC_PAUSE | _360_GTC_VIEW);
 #endif
 		}
+#endif
 	}
 }
 

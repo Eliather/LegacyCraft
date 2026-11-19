@@ -4,6 +4,7 @@
 #include "..\..\..\Minecraft.World\Random.h"
 #include "..\..\CustomGenericButton.h"
 #include "..\..\CustomSlider.h"
+#include "..\..\CustomTextInputModal.h"
 #include "..\..\User.h"
 #include "..\..\UserData_Info.h"
 #include "..\..\Windows64Media\strings.h"
@@ -28,7 +29,7 @@ namespace
 	// FIX: Primary and fallback were both the same path. Give fallback a distinct name
 	// so it can actually serve as a real fallback if the primary is missing.
 	const wchar_t *kMainMenuLogoFilePrimary  = L"/Graphics/MenuTitle.png";
-	const wchar_t *kMainMenuLogoFileFallback = L"/Graphics/MenuTitle_fallback.png";
+	const wchar_t *kMainMenuLogoFileFallback = L"/title/mclogo.png";
 
 	int g_mainMenuLogoWidth = 0;
 	int g_mainMenuLogoHeight = 0;
@@ -105,22 +106,35 @@ namespace
 		}
 	}
 
-	void SetupCustomMenuButtons()
+	void SetupCustomMenuButtons(S32 width, S32 height)
 	{
-		if(g_customMenuButtonsInitialized) return;
+		static S32 s_lastMenuW = -1;
+		static S32 s_lastMenuH = -1;
+		if(g_customMenuButtonsInitialized && s_lastMenuW == width && s_lastMenuH == height) return;
 		g_customMenuButtonsInitialized = true;
+		s_lastMenuW = width;
+		s_lastMenuH = height;
+
+		const float sx = (width > 0) ? ((float)width / 1280.0f) : 1.0f;
+		const float sy = (height > 0) ? ((float)height / 720.0f) : 1.0f;
+		const float scale = (sx < sy) ? sx : sy;
+		const float btnW = kCustomMenuButtonWidth * scale;
+		const float btnH = kCustomMenuButtonHeight * scale;
+		const float gap = kCustomMenuButtonGap * scale;
+		const float btnX = ((float)width - btnW) * 0.5f;
+		const float startY = kCustomMenuButtonStartY * sy;
 
 		for(int i = 0; i < kCustomMenuButtonCount; ++i)
 		{
-			float y = kCustomMenuButtonStartY + (float)i * (kCustomMenuButtonHeight + kCustomMenuButtonGap);
-			g_customMenuButtons[i].SetupMenuButton(kCustomMenuButtonX, y);
+			float y = startY + (float)i * (btnH + gap);
+			g_customMenuButtons[i].Setup(NULL, NULL, btnX, y, btnW, btnH);
 		}
 	}
 
 	void DrawCustomMenuButtons(Minecraft *minecraft, C4JRender::eViewportType viewport)
 	{
 		if(minecraft == NULL || minecraft->textures == NULL || minecraft->font == NULL) return;
-		SetupCustomMenuButtons();
+		SetupCustomMenuButtons(minecraft->width_phys, minecraft->height_phys);
 
 		const wchar_t *labels[kCustomMenuButtonCount] = {
 			GetCustomMainMenuButtonLabel(eCMB_PlayGame),
@@ -185,47 +199,139 @@ namespace
 		return sanitised;
 	}
 
-	int MainMenuNameInputComplete(LPVOID lpParam, bool bAccepted, const wchar_t *pwchText)
+	bool g_nameEditWasBadgePressed = false;
+
+	struct NameBadgeLayout
+	{
+		wstring name;
+		float scale;
+		float x0, y0, x1, y1;
+		float textX, textY;
+	};
+
+	const wchar_t *GetNameEditHintText()
+	{
+		switch(XGetLanguage())
+		{
+		case XC_LANGUAGE_SPANISH:
+			return L"3 a 16 caracteres (A-Z, 0-9, _)";
+		case XC_LANGUAGE_FRENCH:
+			return L"3 a 16 caracteres (A-Z, 0-9, _)";
+		case XC_LANGUAGE_GERMAN:
+			return L"3-16 Zeichen (A-Z, 0-9, _)";
+		case XC_LANGUAGE_ITALIAN:
+			return L"3-16 caratteri (A-Z, 0-9, _)";
+		case XC_LANGUAGE_PORTUGUESE:
+		case MINECRAFT_LANGUAGE_BRAZILIAN:
+			return L"3 a 16 caracteres (A-Z, 0-9, _)";
+		default:
+			return L"3-16 characters (A-Z, 0-9, _)";
+		}
+	}
+
+	const wchar_t *GetNameEditLengthErrorText()
+	{
+		switch(XGetLanguage())
+		{
+		case XC_LANGUAGE_SPANISH:
+			return L"El nombre debe tener al menos 3 caracteres";
+		case XC_LANGUAGE_FRENCH:
+			return L"3 caracteres minimum requis";
+		case XC_LANGUAGE_GERMAN:
+			return L"Mindestens 3 Zeichen erforderlich";
+		case XC_LANGUAGE_ITALIAN:
+			return L"Minimo 3 caratteri richiesti";
+		case XC_LANGUAGE_PORTUGUESE:
+		case MINECRAFT_LANGUAGE_BRAZILIAN:
+			return L"Minimo de 3 caracteres obrigatorio";
+		default:
+			return L"Name must be at least 3 characters";
+		}
+	}
+
+	void FillSolidRect(float x0, float y0, float x1, float y1, int r, int g, int b, int a)
+	{
+		Tesselator *t = Tesselator::getInstance();
+		t->begin();
+		t->color(r, g, b, a);
+		t->vertex(x0, y0, 0.0f);
+		t->vertex(x1, y0, 0.0f);
+		t->vertex(x1, y1, 0.0f);
+		t->vertex(x0, y1, 0.0f);
+		t->end();
+	}
+
+	NameBadgeLayout ComputeMainMenuNameBadgeLayout(Font *font, S32 width, S32 height)
+	{
+		NameBadgeLayout b;
+		b.name = UserData_Info::GetPlayerName();
+		if(b.name.empty())
+		{
+			b.name = L"Steve";
+		}
+		const float sx = (width > 0) ? ((float)width / 1280.0f) : 1.0f;
+		const float sy = (height > 0) ? ((float)height / 720.0f) : 1.0f;
+		const float uiscale = (sx < sy) ? sx : sy;
+		b.scale = 2.0f * uiscale;
+		const float overlayX = 115.0f * sx;
+		const float overlayY = 170.0f * sy;
+		const float nameWidth = (font != NULL) ? ((float)font->width(b.name) * b.scale) : 0.0f;
+		const float padX = 14.0f * uiscale;
+		const float padY = 8.0f * uiscale;
+		const float extraWidth = 28.0f * uiscale;
+		const float textHeight = 8.0f * b.scale;
+		const float baseHeight = 18.0f * b.scale;
+		const float bgWidth = nameWidth + padX * 2.0f + extraWidth;
+		const float bgHeight = (baseHeight + padY * 2.0f) * 0.75f;
+		b.x0 = overlayX;
+		b.y0 = overlayY;
+		b.x1 = overlayX + bgWidth;
+		b.y1 = overlayY + bgHeight;
+		b.textX = b.x0 + ((bgWidth - nameWidth) * 0.5f);
+		b.textY = b.y0 + ((bgHeight - textHeight) * 0.5f);
+		return b;
+	}
+
+	void OnMainMenuNameEditComplete(LPVOID lpParam, bool bAccepted, const wstring &text)
 	{
 		UNREFERENCED_PARAMETER(lpParam);
-
 		if(!bAccepted)
 		{
-			return 0;
+			return;
 		}
 
-		const wstring sanitisedName = SanitiseNicknameInput(pwchText);
-		if(sanitisedName.empty())
+		const wstring sanitisedName = SanitiseNicknameInput(text.c_str());
+		if(sanitisedName.length() < 3)
 		{
-			return 0;
+			return;
 		}
 
 		UserData_Info::SetPlayerName(sanitisedName);
-		UserData_Info::Save();
-
 		Minecraft *minecraft = Minecraft::GetInstance();
 		if(minecraft != NULL && minecraft->user != NULL)
 		{
 			minecraft->user->name = UserData_Info::GetPlayerName();
 		}
-
-		return 0;
 	}
 
-	void OpenMainMenuNameInput(int iPad)
+	void OpenMainMenuNameEdit(void *ownerScene)
 	{
-		NameInputParams *params = new NameInputParams();
-		params->iPad = iPad;
-		params->title = GetMainMenuChangeNameButtonLabel();
-		params->initialText = UserData_Info::GetPlayerName();
-		params->charLimit = 16;
-		params->completeFunc = &MainMenuNameInputComplete;
-		params->completeFuncParam = NULL;
-
-		if(!ui.NavigateToScene(iPad, eUIScene_NameInput, params, eUILayer_Alert, eUIGroup_Fullscreen))
+		CustomTextInputModal::Params modalParams;
+		modalParams.title = GetMainMenuChangeNameButtonLabel();
+		wstring initialName = SanitiseNicknameInput(UserData_Info::GetPlayerName().c_str());
+		if(initialName.empty())
 		{
-			delete params;
+			initialName = L"Steve";
 		}
+		modalParams.initialText = initialName;
+		modalParams.hintText = GetNameEditHintText();
+		modalParams.lengthErrorText = GetNameEditLengthErrorText();
+		modalParams.minLength = 3;
+		modalParams.maxLength = 16;
+		modalParams.charFilter = &IsAcceptedNicknameCharacter;
+		modalParams.completeFunc = &OnMainMenuNameEditComplete;
+		modalParams.completeParam = ownerScene;
+		CustomTextInputModal::Open(modalParams);
 	}
 
 	void EnsureMainMenuLogoTexture(Minecraft *minecraft)
@@ -323,11 +429,18 @@ namespace
 	void DrawMainMenuChangeNameButton(Minecraft *minecraft, S32 width, S32 height, C4JRender::eViewportType viewport)
 	{
 		if(minecraft == NULL || minecraft->textures == NULL || minecraft->font == NULL) return;
-		if(!g_changeNameButtonInitialized)
+		static S32 s_lastBtnW = -1;
+		static S32 s_lastBtnH = -1;
+		if(!g_changeNameButtonInitialized || s_lastBtnW != width || s_lastBtnH != height)
 		{
+			s_lastBtnW = width;
+			s_lastBtnH = height;
+			const float sx = (width > 0) ? ((float)width / 1280.0f) : 1.0f;
+			const float sy = (height > 0) ? ((float)height / 720.0f) : 1.0f;
+			const float scale = (sx < sy) ? sx : sy;
 			g_mainMenuChangeNameButton.Setup(NULL, NULL,
-				kMainMenuChangeNameButtonX, kMainMenuChangeNameButtonY,
-				200.0f, 40.0f);
+				kMainMenuChangeNameButtonX * sx, kMainMenuChangeNameButtonY * sy,
+				200.0f * scale, 40.0f * scale);
 			g_changeNameButtonInitialized = true;
 		}
 		g_mainMenuChangeNameButton.Render(minecraft, minecraft->font, GetMainMenuChangeNameButtonLabel(), (int)viewport);
@@ -396,16 +509,23 @@ namespace
 		preview->SetTexture(safeSkinPath.empty() ? L"default" : safeSkinPath, backupTexture);
 		preview->SetCapeTexture(capePath);
 		preview->SetStandingPose(true);
-		const float previewX = kMainMenuPreviewX;
-		const float previewY = kMainMenuPreviewY;
-		const float previewWidth = min((float)width * 0.18f, 240.0f);
-		const float previewHeight = min((float)height * 0.58f, 420.0f);
+		const float sx = (width > 0) ? ((float)width / 1280.0f) : 1.0f;
+		const float sy = (height > 0) ? ((float)height / 720.0f) : 1.0f;
+		const float previewX = kMainMenuPreviewX * sx;
+		const float previewY = kMainMenuPreviewY * sy;
+		const float previewWidth = (float)width * 0.18f;
+		const float previewHeight = (float)height * 0.58f;
 
 		const float centerX = previewX + (previewWidth * 0.5f);
 		const float centerY = previewY + (previewHeight * 0.36f);
 
-		float normX = (centerX - (float)Mouse::getX()) / (previewWidth * 0.65f);
-		float normY = (centerY - (float)Mouse::getY()) / (previewHeight * 0.55f);
+		const float screenW = ui.getScreenWidth();
+		const float screenH = ui.getScreenHeight();
+		const float scaledMouseX = (screenW > 0.0f) ? (((float)Mouse::getX() * (float)width) / screenW) : (float)Mouse::getX();
+		const float scaledMouseY = (screenH > 0.0f) ? (((float)Mouse::getY() * (float)height) / screenH) : (float)Mouse::getY();
+
+		float normX = (centerX - scaledMouseX) / (previewWidth * 0.65f);
+		float normY = (centerY - scaledMouseY) / (previewHeight * 0.55f);
 
 		if(normX > 1.0f) normX = 1.0f;
 		else if(normX < -1.0f) normX = -1.0f;
@@ -434,7 +554,9 @@ namespace
 		glMatrixMode(GL_PROJECTION);
 		glPushMatrix();
 		glLoadIdentity();
-		glOrtho(0.0, (double)width, (double)height, 0.0, -200.0, 200.0);
+		const double maxDim = (width > height) ? (double)width : (double)height;
+		const double zExtent = (maxDim > 2000.0) ? maxDim : 2000.0;
+		glOrtho(0.0, (double)width, (double)height, 0.0, -zExtent, zExtent);
 		glMatrixMode(GL_MODELVIEW);
 		glPushMatrix();
 		glLoadIdentity();
@@ -462,9 +584,7 @@ UIScene_MainMenu::UIScene_MainMenu(int iPad, void *initData, UILayer *parentLaye
 	initialiseMovie();
 
 	parentLayer->addComponent(iPad,eUIComponent_Panorama);
-#if !defined(_WINDOWS64)
 	parentLayer->addComponent(iPad,eUIComponent_Logo);
-#endif
 
 	m_eAction=eAction_None;
 	m_bIgnorePress=false;
@@ -571,15 +691,15 @@ UIScene_MainMenu::~UIScene_MainMenu()
 	// FIX: eUIComponent_Logo is only added to the layer on non-Windows64 builds.
 	// Attempting to remove it on Windows64 (where it was never added) causes a
 	// crash or silent corruption depending on removeComponent's implementation.
-#if !defined(_WINDOWS64)
 	m_parentLayer->removeComponent(eUIComponent_Logo);
-#endif
 
 	// FIX: Reset the logo texture state so it is reloaded correctly if the main
 	// menu scene is destroyed and recreated (e.g. returning from a game session).
 	// Without this, g_mainMenuLogoChecked stays true and EnsureMainMenuLogoTexture
 	// returns immediately on the next visit, leaving a stale/invalid texture ID.
 #if defined(_WINDOWS64)
+	CustomTextInputModal::ForceCloseForParam(this);
+	g_nameEditWasBadgePressed = false;
 	g_mainMenuLogoChecked   = false;
 	g_mainMenuLogoReady     = false;
 	g_mainMenuLogoTextureId = -1;
@@ -604,7 +724,9 @@ void UIScene_MainMenu::updateTooltips()
 void UIScene_MainMenu::updateComponents()
 {
 	m_parentLayer->showComponent(m_iPad,eUIComponent_Panorama,true);
-#if !defined(_WINDOWS64)
+#if defined(_WINDOWS64)
+	m_parentLayer->showComponent(m_iPad,eUIComponent_Logo,false);
+#else
 	m_parentLayer->showComponent(m_iPad,eUIComponent_Logo,true);
 #endif
 }
@@ -685,7 +807,13 @@ wstring UIScene_MainMenu::getMoviePath()
 void UIScene_MainMenu::handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled)
 {
 	//app.DebugPrintf("UIScene_DebugOverlay handling input for pad %d, key %d, down- %s, pressed- %s, released- %s\n", iPad, key, down?"TRUE":"FALSE", pressed?"TRUE":"FALSE", released?"TRUE":"FALSE");
-	
+#if defined(_WINDOWS64)
+	if(CustomTextInputModal::IsSuppressingMenuInput())
+	{
+		handled = true;
+		return;
+	}
+#endif
 	if(m_bIgnorePress) return;
 
 
@@ -963,29 +1091,7 @@ void UIScene_MainMenu::customDrawSplash(IggyCustomDrawCallbackRegion *region)
 #if defined(_WINDOWS64)
 	{
 		// Draw player name above the preview, always fixed for this menu.
-		wstring overlayPlayerName = UserData_Info::GetPlayerName();
-		if(overlayPlayerName.empty())
-		{
-			overlayPlayerName = L"Steve";
-		}
-
-		const float overlayScale = 2.0f;
-		const float overlayX = 115.0f;
-		const float overlayY = 170.0f;
-		const float overlayNameWidth = (float)font->width(overlayPlayerName) * overlayScale;
-		const float overlayPadX = 14.0f;
-		const float overlayPadY = 8.0f;
-		const float overlayExtraWidth = 28.0f;
-		const float overlayTextHeight = 8.0f * overlayScale;
-		const float overlayBaseHeight = 18.0f * overlayScale;
-		const float overlayBgWidth = overlayNameWidth + overlayPadX * 2.0f + overlayExtraWidth;
-		const float overlayBgHeight = (overlayBaseHeight + overlayPadY * 2.0f) * 0.75f;
-		const float overlayBgX0 = overlayX;
-		const float overlayBgX1 = overlayX + overlayBgWidth;
-		const float overlayBgY0 = overlayY;
-		const float overlayBgY1 = overlayY + overlayBgHeight;
-		const float overlayTextX = overlayBgX0 + ((overlayBgWidth - overlayNameWidth) * 0.5f);
-		const float overlayTextY = overlayBgY0 + ((overlayBgHeight - overlayTextHeight) * 0.5f);
+		const NameBadgeLayout badge = ComputeMainMenuNameBadgeLayout(font, pMinecraft->width_phys, pMinecraft->height_phys);
 
 		ui.setupRenderPosition(m_parentLayer->getViewport());
 
@@ -1003,21 +1109,14 @@ void UIScene_MainMenu::customDrawSplash(IggyCustomDrawCallbackRegion *region)
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
-		Tesselator *overlayBg = Tesselator::getInstance();
-		overlayBg->begin();
-		overlayBg->color(0, 0, 0, 160);
-		overlayBg->vertex(overlayBgX0, overlayBgY0, 0.0f);
-		overlayBg->vertex(overlayBgX1, overlayBgY0, 0.0f);
-		overlayBg->vertex(overlayBgX1, overlayBgY1, 0.0f);
-		overlayBg->vertex(overlayBgX0, overlayBgY1, 0.0f);
-		overlayBg->end();
+		FillSolidRect(badge.x0, badge.y0, badge.x1, badge.y1, 0, 0, 0, 160);
 
 		glEnable(GL_TEXTURE_2D);
 		glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 		glPushMatrix();
-		glTranslatef(overlayTextX, overlayTextY, 0.0f);
-		glScalef(overlayScale, overlayScale, 1.0f);
-		font->draw(overlayPlayerName, 0, 0, 0xffffffff);
+		glTranslatef(badge.textX, badge.textY, 0.0f);
+		glScalef(badge.scale, badge.scale, 1.0f);
+		font->draw(badge.name, 0, 0, 0xffffffff);
 		glPopMatrix();
 
 		glPopMatrix();
@@ -1657,16 +1756,43 @@ void UIScene_MainMenu::tick()
 	// The custom buttons should only be interactive if this specific scene has focus.
 	// This prevents clicks from "passing through" from submenus (like Play Game or MessageBox).
 	Minecraft *minecraft = Minecraft::GetInstance();
-	const bool nameInputOpen = (ui.FindScene(eUIScene_NameInput) != NULL);
-	if(minecraft != NULL && hasFocus(ProfileManager.GetPrimaryPad()) && !nameInputOpen)
+	if(minecraft != NULL && hasFocus(ProfileManager.GetPrimaryPad()))
 	{
-		if(g_mainMenuChangeNameButton.Update(minecraft))
+		if(CustomTextInputModal::IsSuppressingMenuInput())
 		{
-			OpenMainMenuNameInput(ProfileManager.GetPrimaryPad());
+			return;
+		}
+
+		bool openNameEdit = g_mainMenuChangeNameButton.Update(minecraft);
+		if(!openNameEdit && minecraft->font != NULL)
+		{
+			const NameBadgeLayout badge = ComputeMainMenuNameBadgeLayout(minecraft->font, minecraft->width_phys, minecraft->height_phys);
+			const float screenW = ui.getScreenWidth();
+			const float screenH = ui.getScreenHeight();
+			const float mouseX = (screenW > 0.0f && minecraft->width_phys > 0)
+				? (((float)Mouse::getX() * (float)minecraft->width_phys) / screenW)
+				: (float)Mouse::getX();
+			const float mouseY = (screenH > 0.0f && minecraft->height_phys > 0)
+				? (((float)Mouse::getY() * (float)minecraft->height_phys) / screenH)
+				: (float)Mouse::getY();
+			const bool isPressed = Mouse::isButtonPressed(0);
+			const bool overBadge = (mouseX >= badge.x0 && mouseX <= badge.x1 && mouseY >= badge.y0 && mouseY <= badge.y1);
+			if(overBadge && isPressed && !g_nameEditWasBadgePressed)
+			{
+				ui.PlayUISFX(eSFX_Press);
+				openNameEdit = true;
+			}
+			g_nameEditWasBadgePressed = isPressed;
+		}
+
+		if(openNameEdit)
+		{
+			OpenMainMenuNameEdit(this);
+			return;
 		}
 
 		// ── 6 Custom Menu Buttons ──
-		SetupCustomMenuButtons();
+		SetupCustomMenuButtons(minecraft->width_phys, minecraft->height_phys);
 		int primaryPad = ProfileManager.GetPrimaryPad();
 
 		if(g_customMenuButtons[eCMB_PlayGame].Update(minecraft))

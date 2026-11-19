@@ -27,6 +27,7 @@
 #include "..\Minecraft.World\net.minecraft.world.h"
 #include "..\Minecraft.World\LevelChunk.h"
 #include "..\Minecraft.World\Biome.h"
+#include "DebugOverlay.h"
 
 #define RENDER_HUD 0
 //#ifndef _XBOX
@@ -856,6 +857,11 @@ void Gui::render(float a, bool mouseFree, int xMouse, int yMouse)
     }
 	MemSect(0);
 #endif
+
+	if (bDisplayGui && minecraft->player->GetXboxPad() == ProfileManager.GetPrimaryPad())
+	{
+		DebugOverlay::Render(minecraft, font, screenWidth, screenHeight, iSafezoneXHalf, iSafezoneYHalf);
+	}
 
 	lastTickA = a;
 	// 4J Stu - This is now displayed in a xui scene

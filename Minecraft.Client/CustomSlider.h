@@ -54,4 +54,5 @@ private:
     bool m_hovered;
     bool m_wasHovered;
     bool m_dragging;
+    bool m_wasPressed;
 };

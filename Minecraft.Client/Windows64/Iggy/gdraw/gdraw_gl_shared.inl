@@ -854,6 +854,16 @@ static void set_common_renderstate(void)
    glActiveTexture(GL_TEXTURE0);
 }
 
+void gdraw_GLx_(SetRendertargetSize)(S32 w, S32 h)
+{
+   if (gdraw && (w != gdraw->frametex_width || h != gdraw->frametex_height)) {
+      GDrawStats stats = { 0 };
+      gdraw->frametex_width = w;
+      gdraw->frametex_height = h;
+      flush_rendertargets(&stats);
+   }
+}
+
 void gdraw_GLx_(SetTileOrigin)(S32 x, S32 y, U32 framebuffer)
 {
    gdraw->vx = x;
@@ -1636,9 +1646,9 @@ static void do_screen_quad(gswf_recti *s, F32 *tc, const int *vvars, GDrawStats 
    set_world_projection(vvars, world);
    opengl_check();
 
-   set_vertex_format(GDRAW_vformat_v2tc2, vert[0]);
    glBindBuffer(GL_ARRAY_BUFFER, 0);
    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+   set_vertex_format(GDRAW_vformat_v2tc2, vert[0]);
    opengl_check();
    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
    reset_vertex_format(GDRAW_vformat_v2tc2);
@@ -1883,6 +1893,23 @@ void gdraw_GLx_(BeginCustomDraw)(IggyCustomDrawCallbackRegion *region, F32 *matr
 {
    clear_renderstate();
    gdraw_GetObjectSpaceMatrix(matrix, region->o2w, gdraw->projection, depth_from_id(0), 1);
+}
+
+void RADLINK gdraw_GLx_(BeginCustomDraw_4J)(IggyCustomDrawCallbackRegion *region, F32 mat[16])
+{
+   clear_renderstate();
+   gdraw_GetObjectSpaceMatrix(mat, region->o2w, gdraw->projection, depth_from_id(0), 0);
+}
+
+void RADLINK gdraw_GLx_(CalculateCustomDraw_4J)(IggyCustomDrawCallbackRegion *region, F32 mat[16])
+{
+   gdraw_GetObjectSpaceMatrix(mat, region->o2w, gdraw->projection, depth_from_id(0), 0);
+}
+
+void RADLINK gdraw_GLx_(setViewport_4J)(void)
+{
+   if (gdraw)
+      set_viewport();
 }
 
 void gdraw_GLx_(EndCustomDraw)(IggyCustomDrawCallbackRegion *region)

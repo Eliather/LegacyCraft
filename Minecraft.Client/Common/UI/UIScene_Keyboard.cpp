@@ -179,3 +179,7 @@ void UIScene_Keyboard::KeyboardDonePressed()
 	// ToDo: Keyboard can now pass on its final string value and close itself down
 	navigateBack();
 }
+void UIScene_Keyboard::tick()
+{
+	UIScene::tick();
+}

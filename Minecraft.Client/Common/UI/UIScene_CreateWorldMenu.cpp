@@ -16,6 +16,7 @@
 
 #ifdef  _WINDOWS64
 #include <windows.h>
+#include "..\..\CustomTextInputModal.h"
 #endif
 
 #ifdef _XBOX
@@ -35,8 +36,59 @@ namespace
 
 	bool IsAcceptedWorldNameCharacter(wchar_t ch)
 	{
+#ifdef _WINDOWS64
+		return CustomTextInputModal::IsAcceptedWorldNameChar(ch);
+#else
 		return ch == L' ' || iswalpha(ch) != 0 || (ch >= L'0' && ch <= L'9');
+#endif
 	}
+
+#ifdef _WINDOWS64
+	bool IsAcceptedSeedCharacter(wchar_t ch)
+	{
+		return (ch >= 32 && ch <= 126);
+	}
+
+	const wchar_t *GetWorldNameHintText()
+	{
+		switch(XGetLanguage())
+		{
+		case XC_LANGUAGE_SPANISH:
+			return L"1 a 25 caracteres";
+		case XC_LANGUAGE_FRENCH:
+			return L"1 a 25 caracteres";
+		case XC_LANGUAGE_GERMAN:
+			return L"1-25 Zeichen";
+		case XC_LANGUAGE_ITALIAN:
+			return L"1-25 caratteri";
+		case XC_LANGUAGE_PORTUGUESE:
+		case MINECRAFT_LANGUAGE_BRAZILIAN:
+			return L"1 a 25 caracteres";
+		default:
+			return L"1-25 characters";
+		}
+	}
+
+	const wchar_t *GetSeedHintText()
+	{
+		switch(XGetLanguage())
+		{
+		case XC_LANGUAGE_SPANISH:
+			return L"Opcional (dejar vacio para aleatoria)";
+		case XC_LANGUAGE_FRENCH:
+			return L"Optionnel (vide = aleatoire)";
+		case XC_LANGUAGE_GERMAN:
+			return L"Optional (leer = zufallig)";
+		case XC_LANGUAGE_ITALIAN:
+			return L"Opzionale (vuoto = casuale)";
+		case XC_LANGUAGE_PORTUGUESE:
+		case MINECRAFT_LANGUAGE_BRAZILIAN:
+			return L"Opcional (vazio = aleatoria)";
+		default:
+			return L"Optional (leave empty for random)";
+		}
+	}
+#endif
 
 	wstring SanitizeWorldName(const wstring &value)
 	{
@@ -317,6 +369,9 @@ UIControl* UIScene_CreateWorldMenu::GetMainPanel()
 
 void UIScene_CreateWorldMenu::handleDestroy()
 {
+#ifdef _WINDOWS64
+	CustomTextInputModal::ForceCloseForParam(this);
+#endif
 	// shut down the keyboard if it is displayed
 #ifdef _DURANGO
 	InputManager.DestroyKeyboard();
@@ -335,7 +390,7 @@ void UIScene_CreateWorldMenu::tick()
 		m_bWorldNameFocusedLastTick = worldNameFocused;
 	}
 
-	if(!m_bIgnoreInput && hasFocus(m_iPad))
+	if(!m_bIgnoreInput && hasFocus(m_iPad) && !CustomTextInputModal::IsSuppressingMenuInput())
 	{
 		processDirectWorldNameTyping();
 		updateHeldWorldNameDelete();
@@ -360,6 +415,15 @@ void UIScene_CreateWorldMenu::tick()
 void UIScene_CreateWorldMenu::handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled)
 {
 	if(m_bIgnoreInput) return;
+
+#ifdef _WINDOWS64
+	if(key == ACTION_MENU_CANCEL && pressed && controlHasFocus(m_editWorldName.getId()) && Keyboard::isKeyDown(VK_DELETE))
+	{
+		deleteWorldNameCharacterForward();
+		handled = true;
+		return;
+	}
+#endif
 
 	ui.AnimateKeyPress(m_iPad, key, repeat, pressed, released);
 
@@ -425,9 +489,20 @@ void UIScene_CreateWorldMenu::handlePress(F64 controlId, F64 childId)
 	case eControl_EditWorldName:
 		{
 #ifdef _WINDOWS64
-			SetFocusToElement(m_editWorldName.getId());
-			m_worldNameCursorIndex = m_worldName.length();
-			refreshWorldNameTextInputDisplay();
+			CustomTextInputModal::Params modalParams;
+			const wchar_t *titleStr = app.GetString(IDS_WORLD_NAME);
+			modalParams.title = (titleStr != NULL && titleStr[0] != 0) ? titleStr : app.GetString(IDS_CREATE_NEW_WORLD);
+			modalParams.initialText = m_worldName;
+			modalParams.hintText = GetWorldNameHintText();
+			modalParams.minLength = 1;
+			modalParams.maxLength = (int)WORLD_NAME_CHAR_LIMIT;
+			modalParams.charFilter = &CustomTextInputModal::IsAcceptedWorldNameChar;
+			modalParams.validateFunc = &CustomTextInputModal::ValidateWorldNameNotEmpty;
+			modalParams.completeFunc = &UIScene_CreateWorldMenu::ModalCompleteWorldNameCallback;
+			modalParams.completeParam = this;
+
+			m_bIgnoreInput = true;
+			CustomTextInputModal::Open(modalParams);
 #else
 			m_bIgnoreInput=true;
 			InputManager.RequestKeyboard(app.GetString(IDS_CREATE_NEW_WORLD),m_editWorldName.getLabel(),(DWORD)0,25,&UIScene_CreateWorldMenu::KeyboardCompleteWorldNameCallback,this,C_4JInput::EKeyboardMode_Default);
@@ -438,9 +513,23 @@ void UIScene_CreateWorldMenu::handlePress(F64 controlId, F64 childId)
 		{
 #ifdef _WINDOWS64
 			SetFocusToElement(m_editSeed.getId());
-#endif
+			CustomTextInputModal::Params modalParams;
+			const wchar_t *seedTitle = app.GetString(IDS_CREATE_NEW_WORLD_SEED);
+			modalParams.title = (seedTitle != NULL && seedTitle[0] != 0) ? seedTitle : L"Seed";
+			modalParams.initialText = m_MoreOptionsParams.seed;
+			modalParams.hintText = GetSeedHintText();
+			modalParams.minLength = 0;
+			modalParams.maxLength = 60;
+			modalParams.charFilter = &IsAcceptedSeedCharacter;
+			modalParams.completeFunc = &UIScene_CreateWorldMenu::ModalCompleteSeedCallback;
+			modalParams.completeParam = this;
+
+			m_bIgnoreInput = true;
+			CustomTextInputModal::Open(modalParams);
+#else
 			m_bIgnoreInput=true;
 			InputManager.RequestKeyboard(app.GetString(IDS_CREATE_NEW_WORLD_SEED),m_editSeed.getLabel(),(DWORD)0,60,&UIScene_CreateWorldMenu::KeyboardCompleteSeedCallback,this,C_4JInput::EKeyboardMode_Default);
+#endif
 		}
 		break;
 	case eControl_GameModeToggle:
@@ -783,6 +872,26 @@ int UIScene_CreateWorldMenu::KeyboardCompleteWorldNameCallback(LPVOID lpParam,bo
 	return 0;
 }
 
+#ifdef _WINDOWS64
+int UIScene_CreateWorldMenu::NameInputCompleteWorldNameCallback(LPVOID lpParam, bool bAccepted, const wchar_t *pwchText)
+{
+	UIScene_CreateWorldMenu *pClass = (UIScene_CreateWorldMenu *)lpParam;
+	if(pClass == NULL)
+	{
+		return 0;
+	}
+
+	pClass->m_bIgnoreInput = false;
+	if(bAccepted)
+	{
+		pClass->setWorldNameValue(pwchText != NULL ? wstring(pwchText) : L"");
+		pClass->m_worldNameCursorIndex = pClass->m_worldName.length();
+		pClass->refreshWorldNameTextInputDisplay();
+	}
+	return 0;
+}
+#endif
+
 void UIScene_CreateWorldMenu::setWorldNameValue(const wstring &worldName)
 {
 	m_worldName = SanitizeWorldName(worldName);
@@ -924,6 +1033,12 @@ void UIScene_CreateWorldMenu::processDirectWorldNameTyping()
 
 		switch(eventKey)
 		{
+		case Keyboard::KEY_ESCAPE:
+			if(Keyboard::isKeyDown(VK_DELETE))
+			{
+				deleteWorldNameCharacterForward();
+			}
+			continue;
 		case Keyboard::KEY_LEFT:
 			if(m_worldNameCursorIndex > 0)
 			{
@@ -998,6 +1113,28 @@ int UIScene_CreateWorldMenu::KeyboardCompleteSeedCallback(LPVOID lpParam,bool bR
 	}
 	return 0;
 }
+
+#ifdef _WINDOWS64
+void UIScene_CreateWorldMenu::ModalCompleteWorldNameCallback(LPVOID lpParam, bool bAccepted, const std::wstring &text)
+{
+	NameInputCompleteWorldNameCallback(lpParam, bAccepted, text.c_str());
+}
+
+void UIScene_CreateWorldMenu::ModalCompleteSeedCallback(LPVOID lpParam, bool bAccepted, const std::wstring &text)
+{
+	UIScene_CreateWorldMenu *pClass = (UIScene_CreateWorldMenu *)lpParam;
+	if(pClass == NULL)
+	{
+		return;
+	}
+	pClass->m_bIgnoreInput = false;
+	if(bAccepted)
+	{
+		pClass->m_editSeed.setLabel(text);
+		pClass->m_MoreOptionsParams.seed = text;
+	}
+}
+#endif
 
 void UIScene_CreateWorldMenu::checkStateAndStartGame()
 {

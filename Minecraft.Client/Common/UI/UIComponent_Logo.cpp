@@ -7,7 +7,7 @@
 
 namespace
 {
-	const wchar_t *g_menuTitleResource = L"/title/mclogo.png";
+	const wchar_t *g_menuTitleResource = L"/Graphics/MenuTitle.png";
 	int g_menuTitleTextureLoaded = 0;
 	int g_menuTitleTextureWidth = 0;
 	int g_menuTitleTextureHeight = 0;
@@ -107,6 +107,8 @@ wstring UIComponent_Logo::getMoviePath()
 void UIComponent_Logo::render(S32 width, S32 height, C4JRender::eViewportType viewport)
 {
 #if defined(_WINDOWS64)
+	if (app.GetGameStarted() && !ui.GetMenuDisplayed(m_iPad))
+		return;
 	EnsureMenuTitleTextureLoaded();
 
 	if(g_menuTitleTextureLoaded == 0 || g_menuTitleTextureWidth <= 0 || g_menuTitleTextureHeight <= 0)

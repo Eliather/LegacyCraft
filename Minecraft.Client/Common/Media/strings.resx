@@ -6584,19 +6584,4 @@ All Ender Chests in a world are linked. Items placed into an Ender Chest are acc
 
 ﻿
 
-  <data name="IDS_CHANGE_NAME_BUTTON">
-    <value>Change Name</value>
-  </data>
-  <data name="IDS_SLIM_SKIN">
-    <value>Slim Skin</value>
-  </data>
-  <data name="IDS_INTERFACE">
-    <value>Interface</value>
-  </data>
-  <data name="IDS_BRIGHTNESS">
-    <value>Brightness</value>
-  </data>
-  <data name="IDS_RENDER_DISTANCE">
-    <value>Render Distance</value>
-  </data>
 </root>

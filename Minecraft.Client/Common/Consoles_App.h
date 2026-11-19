@@ -410,6 +410,7 @@ public:
 	LPCWSTR GetPreparedSaveTitle(void) const;
 	void SetPreparedSaveIdentity(LPCWSTR pwchSaveTitle, LPCSTR pszPreferredSaveId = NULL);
 	void PrepareNewSaveData(LPCWSTR pwchDefaultSaveName);
+	const char *GetPreparedSaveId(void) const;
 	void SetUniqueMapName(char *pszUniqueMapName);
 	char *GetUniqueMapName(void);
 #ifdef _XBOX_ONE
@@ -686,6 +687,7 @@ private:
 
 	bool m_bRead_BannedListA[XUSER_MAX_COUNT];
 	wstring m_wsPreparedSaveTitle;
+	char m_szPreparedSaveId[MAX_SAVEFILENAME_LENGTH];
 	char m_pszUniqueMapName[15];
 	bool m_BanListCheck[XUSER_MAX_COUNT];
 

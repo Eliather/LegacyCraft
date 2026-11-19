@@ -41,6 +41,10 @@ UIControl_PlayerSkinPreview::UIControl_PlayerSkinPreview()
 	m_walkAnimSpeedO = 0.0f;
 	m_walkAnimSpeed = 0.0f;
 	m_walkAnimPos = 0.0f;
+	m_lastRenderQpc = 0;
+	LARGE_INTEGER qpf = {};
+	QueryPerformanceFrequency(&qpf);
+	m_renderQpcFreq = qpf.QuadPart;
 
 	m_bAutoRotate = false;
 	m_bRotatingLeft = false;
@@ -365,6 +369,21 @@ void UIControl_PlayerSkinPreview::render(EntityRenderer *renderer, double x, dou
 
 	model->m_uiAnimOverrideBitmask = m_uiAnimOverrideBitmask;
 
+	float step60 = 1.0f;
+	{
+		LARGE_INTEGER nowQpc = {};
+		QueryPerformanceCounter(&nowQpc);
+		if(m_lastRenderQpc > 0 && m_renderQpcFreq > 0)
+		{
+			double dtSec = (double)(nowQpc.QuadPart - m_lastRenderQpc) / (double)m_renderQpcFreq;
+			if(dtSec > 0.25) dtSec = 1.0 / 60.0;
+			step60 = (float)(dtSec * 60.0);
+			if(step60 < 0.0f) step60 = 0.0f;
+			else if(step60 > 3.0f) step60 = 3.0f;
+		}
+		m_lastRenderQpc = nowQpc.QuadPart;
+	}
+
 	if( !m_bAnimatingToFacing )
 	{
 		switch( m_currentAnimation )
@@ -374,7 +393,7 @@ void UIControl_PlayerSkinPreview::render(EntityRenderer *renderer, double x, dou
 			break;
 		case e_SkinPreviewAnimation_Attacking:
 			model->holdingRightHand = true;
-			m_swingTime++;
+			m_swingTime += step60;
 			if (m_swingTime >= (Player::SWING_DURATION * 3) )
 			{
 				m_swingTime = 0;
@@ -426,8 +445,9 @@ void UIControl_PlayerSkinPreview::render(EntityRenderer *renderer, double x, dou
 	if(m_currentAnimation == e_SkinPreviewAnimation_Walking && !m_bAnimatingToFacing)
 	{
 		m_walkAnimSpeedO = m_walkAnimSpeed;
-		m_walkAnimSpeed += (0.1f - m_walkAnimSpeed) * 0.4f;
-		m_walkAnimPos += m_walkAnimSpeed;
+		float alphaSpeed = (step60 > 0.0f) ? (1.0f - powf(0.6f, step60)) : 0.0f;
+		m_walkAnimSpeed += (0.1f - m_walkAnimSpeed) * alphaSpeed;
+		m_walkAnimPos += m_walkAnimSpeed * step60;
 		ws = m_walkAnimSpeedO + (m_walkAnimSpeed - m_walkAnimSpeedO) * a;
 		wp = m_walkAnimPos - m_walkAnimSpeed * (1 - a);
 	}

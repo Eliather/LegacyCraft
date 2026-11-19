@@ -580,8 +580,8 @@ void PlayerChunkMap::add(shared_ptr<ServerPlayer> player)
 {
 	static int direction[4][2] = { { 1, 0 }, { 0, 1 }, { -1, 0 }, {0, -1} };
 
-	int xc = (int) player->x >> 4;
-	int zc = (int) player->z >> 4;
+	int xc = Mth::floor(player->x) >> 4;
+	int zc = Mth::floor(player->z) >> 4;
 
     player->lastMoveX = player->x;
     player->lastMoveZ = player->z;
@@ -661,8 +661,8 @@ void PlayerChunkMap::add(shared_ptr<ServerPlayer> player)
 
 void PlayerChunkMap::remove(shared_ptr<ServerPlayer> player)
 {
-    int xc = ((int) player->lastMoveX) >> 4;
-    int zc = ((int) player->lastMoveZ) >> 4;
+    int xc = Mth::floor(player->lastMoveX) >> 4;
+    int zc = Mth::floor(player->lastMoveZ) >> 4;
 
     for (int x = xc - radius; x <= xc + radius; x++)
         for (int z = zc - radius; z <= zc + radius; z++)
@@ -704,16 +704,16 @@ bool PlayerChunkMap::chunkInRange(int x, int z, int xc, int zc)
 // need to be created, so that we aren't creating potentially 20 chunks per player per tick
 void PlayerChunkMap::move(shared_ptr<ServerPlayer> player)
 {
-    int xc = ((int) player->x) >> 4;
-    int zc = ((int) player->z) >> 4;
+    int xc = Mth::floor(player->x) >> 4;
+    int zc = Mth::floor(player->z) >> 4;
 
     double _xd = player->lastMoveX - player->x;
     double _zd = player->lastMoveZ - player->z;
     double dist = _xd * _xd + _zd * _zd;
     if (dist < 8 * 8) return;
 
-    int last_xc = ((int) player->lastMoveX) >> 4;
-    int last_zc = ((int) player->lastMoveZ) >> 4;
+    int last_xc = Mth::floor(player->lastMoveX) >> 4;
+    int last_zc = Mth::floor(player->lastMoveZ) >> 4;
 
     int xd = xc - last_xc;
     int zd = zc - last_zc;
@@ -794,8 +794,8 @@ void PlayerChunkMap::setRadius(int newRadius)
 			continue;
 		}
 
-		int xc = ((int) player->x) >> 4;
-		int zc = ((int) player->z) >> 4;
+		int xc = Mth::floor(player->x) >> 4;
+		int zc = Mth::floor(player->z) >> 4;
 
 		if(newRadius > oldRadius)
 		{
@@ -836,8 +836,8 @@ void PlayerChunkMap::setRadius(int newRadius)
 			continue;
 		}
 
-		const int xc = ((int)player->x) >> 4;
-		const int zc = ((int)player->z) >> 4;
+		const int xc = Mth::floor(player->x) >> 4;
+		const int zc = Mth::floor(player->z) >> 4;
 		const int xd = it->x - xc;
 		const int zd = it->z - zc;
 		if(xd < -newRadius || xd > newRadius || zd < -newRadius || zd > newRadius)

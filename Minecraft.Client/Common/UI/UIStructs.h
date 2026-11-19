@@ -286,17 +286,26 @@ typedef struct _LaunchMoreOptionsMenuInitData
 	bool bDisableSaving;
 
 	_LaunchMoreOptionsMenuInitData()
+		: bOnlineGame(TRUE)
+		, bInviteOnly(FALSE)
+		, bAllowFriendsOfFriends(TRUE)
+		, bGenerateOptions(FALSE)
+		, bStructures(FALSE)
+		, bFlatWorld(FALSE)
+		, bBonusChest(FALSE)
+		, bPVP(TRUE)
+		, bTrust(TRUE)
+		, bFireSpreads(TRUE)
+		, bTNT(TRUE)
+		, bHostPrivileges(FALSE)
+		, bResetNether(FALSE)
+		, bOnlineSettingChangedBySystem(FALSE)
+		, iPad(-1)
+		, dwTexturePack(0)
+		, seed(L"")
+		, worldSize(3)
+		, bDisableSaving(false)
 	{
-		memset(this,0,sizeof(_LaunchMoreOptionsMenuInitData));
-		bOnlineGame = TRUE;
-		bAllowFriendsOfFriends = TRUE;
-		bPVP = TRUE;
-		bFireSpreads = TRUE;
-		bTNT = TRUE;
-		iPad = -1;
-		worldSize = 3;
-		seed = L"";
-		bDisableSaving = false;
 	}
 } 
 LaunchMoreOptionsMenuInitData;

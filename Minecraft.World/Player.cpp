@@ -2561,7 +2561,11 @@ int Player::hash_fnct(const shared_ptr<Player> k)
 #ifdef __PS3__
 	return (int)boost::hash_value( k->name ); // 4J Stu - Names are completely unique?
 #else
+#if defined(_MSC_VER)
 	return (int)std::hash_value( k->name ); // 4J Stu - Names are completely unique?
+#else
+	return (int)std::hash<std::wstring>()( k->name );
+#endif
 #endif //__PS3__
 }
 

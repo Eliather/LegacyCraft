@@ -137,7 +137,11 @@ private:
 	bool m_navigateToHomeOnReload;
 	int m_accumulatedTicks;
 
+#ifdef _WINDOWS64
+	RECT m_customRenderingClearRect;
+#else
 	D3D11_RECT m_customRenderingClearRect;
+#endif
 
 	unordered_map<size_t, UIScene *> m_registeredCallbackScenes; // A collection of scenes and unique id's that are used in async callbacks so we can safely handle when they get destroyed
 	CRITICAL_SECTION m_registeredCallbackScenesCS;;
@@ -216,6 +220,12 @@ public:
 	// RENDERING
 	float getScreenWidth() { return m_fScreenWidth; }
 	float getScreenHeight() { return m_fScreenHeight; }
+	void SetScreenDimensions(S32 width, S32 height) { m_fScreenWidth = (float)width; m_fScreenHeight = (float)height; }
+#ifdef _WINDOWS64
+	virtual void updateRenderTargets(S32 w, S32 h) {}
+#else
+	virtual void updateRenderTargets(ID3D11RenderTargetView* pRenderTargetView, ID3D11DepthStencilView* pDepthStencilView, S32 w, S32 h) {}
+#endif
 
 	virtual void render() = 0;
 	void getRenderDimensions(C4JRender::eViewportType viewport, S32 &width, S32 &height);

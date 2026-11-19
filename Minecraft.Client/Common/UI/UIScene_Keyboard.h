@@ -6,6 +6,7 @@ class UIScene_Keyboard : public UIScene
 {
 private:
 	bool m_bKeyboardDonePressed;
+	bool m_bHandlePressCalledThisTick;
 
 protected:
 	UIControl_Label m_EnterTextLabel;
@@ -59,10 +60,13 @@ protected:
 	virtual wstring getMoviePath();
 
 private:
+	void dispatchMouseInputToMovie();
 	void KeyboardDonePressed();
 
 public:
 	virtual EUIScene getSceneType() { return eUIScene_Keyboard;}
+
+	virtual void tick();
 
 	// Returns true if this scene handles input
 	//virtual bool stealsFocus() { return false; }

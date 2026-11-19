@@ -23,6 +23,7 @@
 #include "MultiPlayerLocalPlayer.h"
 #include "DemoUser.h"
 #include "GuiParticles.h"
+#include "DebugOverlay.h"
 #include "Screen.h"
 #include "DeathScreen.h"
 #include "ErrorScreen.h"
@@ -572,6 +573,7 @@ void Minecraft::setScreen(Screen *screen)
 	if (dynamic_cast<TitleScreen *>(screen)!=NULL)
 	{
 		options->renderDebug = false;
+		DebugOverlay::Reset();
 		gui->clearMessages();
 	}
 
@@ -1470,8 +1472,12 @@ void Minecraft::run_middle()
 					{
 						if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_SNEAK_TOGGLE) || keyboardSneakPressed)		localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_SNEAK_TOGGLE;
 					}
-					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_RENDER_THIRD_PERSON))		localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_RENDER_THIRD_PERSON;
+					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_RENDER_THIRD_PERSON) || (keyboardMousePrimary && Keyboard::isKeyPressed(Keyboard::KEY_F5)))		localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_RENDER_THIRD_PERSON;
 					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_GAME_INFO))				localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_GAME_INFO;
+					if (i == ProfileManager.GetPrimaryPad())
+					{
+						DebugOverlay::HandleInput(this);
+					}
 
 #ifndef _FINAL_BUILD
 					if( app.DebugSettingsOn() && app.GetUseDPadForDebug() )
@@ -1960,6 +1966,7 @@ void Minecraft::run_middle()
 			checkGlError(L"Post render");
 			MemSect(0);
 			frames++;
+			DebugOverlay::NotifyFrameRendered();
 			//pause = !isClientSide() && screen != NULL && screen->isPauseScreen();
 			//pause = g_NetworkManager.IsLocalGame() && g_NetworkManager.GetPlayerCount() == 1 && app.IsPauseMenuDisplayed(ProfileManager.GetPrimaryPad());
 			pause = app.IsAppPaused();
@@ -2111,9 +2118,14 @@ void Minecraft::stop()
 
 void Minecraft::pauseGame()
 {
-	if (screen != NULL) return;
+	if (screen != NULL || level == NULL || !app.GetGameStarted()) return;
 
-	//    setScreen(new PauseScreen());	// 4J - TODO put back in
+	int iPad = ProfileManager.GetPrimaryPad();
+	if (!ui.GetMenuDisplayed(iPad))
+	{
+		ui.NavigateToScene(iPad, eUIScene_PauseMenu, NULL, eUILayer_Scene);
+		Mouse::resetDeltas();
+	}
 }
 
 void Minecraft::resize(int width, int height)

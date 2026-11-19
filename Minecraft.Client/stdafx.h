@@ -10,7 +10,7 @@
 
 #define __STR2__(x) #x
 #define __STR1__(x) __STR2__(x)
-#define __LOC__ __FILE__ "("__STR1__(__LINE__)") : 4J Warning Msg: "
+#define __LOC__ __FILE__ "(" __STR1__(__LINE__) ") : 4J Warning Msg: "
 
 // use  - #pragma message(__LOC__"Need to do something here")
 
@@ -30,6 +30,10 @@
 #define AUTO_VAR(_var, _val) auto _var = _val
 #include <stdio.h>
 #include <stdlib.h>
+#include <float.h>
+#include <cfloat>
+#include <math.h>
+#include <cmath>
 #include <scebase.h>
 #include <kernel.h>
 #include <unordered_map>
@@ -45,6 +49,10 @@
 #elif defined __PSVITA__
 #include <stdio.h>
 #include <stdlib.h>
+#include <float.h>
+#include <cfloat>
+#include <math.h>
+#include <cmath>
 #include <scebase.h>
 #include <kernel.h>
 #include <unordered_map>
@@ -59,7 +67,13 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <stdint.h>
+#include <cstdint>
+#if defined(_MSC_VER)
 typedef unsigned __int64 __uint64;
+#else
+typedef unsigned long long __uint64;
+#endif
 #endif
 
 #ifdef  _WINDOWS64
@@ -128,6 +142,10 @@ typedef XUID GameSessionUID;
 
 // C RunTime Header Files
 #include <stdlib.h>
+#include <float.h>
+#include <cfloat>
+#include <math.h>
+#include <cmath>
 
 #include <memory>
 
@@ -136,6 +154,7 @@ typedef XUID GameSessionUID;
 #include <set>
 #include <deque>
 #include <algorithm>
+#include <iterator>
 #include <string>
 #include <sstream>
 #include <iostream>
@@ -277,7 +296,7 @@ typedef XUID GameSessionUID;
 	#include "Windows64\Social\SocialManager.h"
 	#include "Common\Audio\SoundEngine.h"
 	#include "Windows64\Iggy\include\iggy.h"
-	#include "Windows64\Iggy\gdraw\gdraw_d3d11.h"
+	#include "Windows64\Iggy\include\gdraw.h"
 	#include "Windows64\Windows64_UIController.h"
 #elif defined __PSVITA__
 	#include "PSVita\PSVita_App.h"

@@ -83,7 +83,7 @@ namespace
 		case eHAO_HowToPlay: return app.GetString(IDS_HOW_TO_PLAY);
 		case eHAO_Controls:  return app.GetString(IDS_CONTROLS);
 		case eHAO_Settings:  return app.GetString(IDS_SETTINGS);
-		case eHAO_Credits:   return app.GetString(IDS_INTERFACE);
+		case eHAO_Credits:   return app.GetString(IDS_CREDITS);
 		case eHAO_Debug:     return app.GetString(IDS_DEBUG_SETTINGS);
 		default:             return L"";
 		}
@@ -155,38 +155,55 @@ namespace
 
 	void SetupHAOCustomControls(bool creditsVisible, bool debugVisible)
 	{
-		if(!g_haoLanguageSliderInitialised)
-		{
-			g_haoLanguageSlider.Setup(kHAOControlX, kHAOControlStartY, kHAOControlWidth, kHAOControlHeight, kHAOLanguageCount - 1);
-			g_haoLanguageSliderInitialised = true;
-		}
-
-		if(g_haoButtonsInitialised && g_bHAOCreditsVisible == creditsVisible && g_bHAODebugVisible == debugVisible)
+		static S32 s_lastW = -1;
+		static S32 s_lastH = -1;
+		Minecraft *mc = Minecraft::GetInstance();
+		const S32 curW = (mc && mc->width_phys > 0) ? mc->width_phys : 1280;
+		const S32 curH = (mc && mc->height_phys > 0) ? mc->height_phys : 720;
+		const bool sizeChanged = (s_lastW != curW || s_lastH != curH);
+		if(!sizeChanged && g_haoLanguageSliderInitialised && g_haoButtonsInitialised &&
+		   g_bHAOCreditsVisible == creditsVisible && g_bHAODebugVisible == debugVisible)
 		{
 			return;
 		}
+		s_lastW = curW;
+		s_lastH = curH;
+
+		const float sx = (float)curW / 1280.0f;
+		const float sy = (float)curH / 720.0f;
+		const float scale = (sx < sy) ? sx : sy;
+		const float ctrlW = kHAOControlWidth * scale;
+		const float ctrlH = kHAOControlHeight * scale;
+		const float gap = kHAOControlGap * scale;
+		const float ctrlX = ((float)curW - ctrlW) * 0.5f;
+		const float startY = kHAOControlStartY * sy;
+
+		const int prevLangVal = g_haoLanguageSliderInitialised ? g_haoLanguageSlider.GetValue() : 0;
+		g_haoLanguageSlider.Setup(ctrlX, startY, ctrlW, ctrlH, kHAOLanguageCount - 1);
+		if(g_haoLanguageSliderInitialised) g_haoLanguageSlider.SetValue(prevLangVal);
+		g_haoLanguageSliderInitialised = true;
 
 		g_haoButtonsInitialised = true;
 		g_bHAOCreditsVisible = creditsVisible;
 		g_bHAODebugVisible = debugVisible;
 
-		float y = kHAOControlStartY + kHAOControlHeight + kHAOControlGap;
-		g_haoButtons[eHAO_HowToPlay].SetupMenuButton(kHAOControlX, y);
-		y += kHAOControlHeight + kHAOControlGap;
-		g_haoButtons[eHAO_Controls].SetupMenuButton(kHAOControlX, y);
-		y += kHAOControlHeight + kHAOControlGap;
-		g_haoButtons[eHAO_Settings].SetupMenuButton(kHAOControlX, y);
-		y += kHAOControlHeight + kHAOControlGap;
+		float y = startY + ctrlH + gap;
+		g_haoButtons[eHAO_HowToPlay].Setup(NULL, NULL, ctrlX, y, ctrlW, ctrlH);
+		y += ctrlH + gap;
+		g_haoButtons[eHAO_Controls].Setup(NULL, NULL, ctrlX, y, ctrlW, ctrlH);
+		y += ctrlH + gap;
+		g_haoButtons[eHAO_Settings].Setup(NULL, NULL, ctrlX, y, ctrlW, ctrlH);
+		y += ctrlH + gap;
 
 		if(creditsVisible)
 		{
-			g_haoButtons[eHAO_Credits].SetupMenuButton(kHAOControlX, y);
-			y += kHAOControlHeight + kHAOControlGap;
+			g_haoButtons[eHAO_Credits].Setup(NULL, NULL, ctrlX, y, ctrlW, ctrlH);
+			y += ctrlH + gap;
 		}
 
 		if(debugVisible)
 		{
-			g_haoButtons[eHAO_Debug].SetupMenuButton(kHAOControlX, y);
+			g_haoButtons[eHAO_Debug].Setup(NULL, NULL, ctrlX, y, ctrlW, ctrlH);
 		}
 	}
 

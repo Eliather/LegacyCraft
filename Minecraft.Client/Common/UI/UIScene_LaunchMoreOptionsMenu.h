@@ -30,7 +30,8 @@ private:
 
 	UIControl m_gameOptions, m_worldOptions;
 	UIControl_CheckBox m_checkboxes[eLaunchCheckboxes_Count];
-	UIControl_Label m_labelWorldOptions, m_labelGameOptions, m_labelDescription;
+	UIControl_Label m_labelWorldOptions, m_labelGameOptions;
+	UIControl_HTMLLabel m_labelDescription;
 	UIControl_Label m_labelSeed, m_labelRandomSeed, m_labelWorldSize;
 	UIControl_TextInput m_editSeed;
 	UIControl_Slider m_sliderWorldSize;

@@ -7,10 +7,18 @@
 #ifdef __PS3__
 #else
 #define AUTO_VAR(_var, _val) auto _var = _val
+#include <stdint.h>
+#include <cstdint>
+#include <float.h>
+#include <cfloat>
 #endif
 
 #if ( defined _XBOX || defined _WINDOWS64  || defined _DURANGO )
+#if defined(_MSC_VER)
 typedef unsigned __int64 __uint64;
+#else
+typedef unsigned long long __uint64;
+#endif
 #endif
 
 #ifdef _WINDOWS64
@@ -105,6 +113,7 @@ typedef XUID GameSessionUID;
 #include <queue>
 #include <deque>
 #include <algorithm>
+#include <iterator>
 #include <math.h>
 #include <limits>
 #include <string>
