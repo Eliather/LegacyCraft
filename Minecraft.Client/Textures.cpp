@@ -1273,24 +1273,6 @@ BufferedImage *Textures::readImage(TEXTURE_NAME texId, const wstring& name)	// 4
 	else
 	{
 		const char *pchName=wstringtofilename(name);
-#ifdef __PS3__
-		if(app.GetBootedFromDiscPatch() && app.IsFileInPatchList(pchName))
-		{
-			char *pchUsrDir = app.GetBDUsrDirPath(pchName);
-			wstring wstr (pchUsrDir, pchUsrDir+strlen(pchUsrDir));
-
-			if(isTu)
-			{
-				drive= wstr + L"\\Common\\res\\TitleUpdate\\";
-
-			}
-			else
-			{
-				drive= wstr + L"\\Common\\";
-			}
-		}
-		else
-#endif
 		{
 			drive = skins->getDefault()->getPath(isTu);
 		}

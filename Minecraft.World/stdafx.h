@@ -4,14 +4,11 @@
 //
 #pragma once
 
-#ifdef __PS3__
-#else
 #define AUTO_VAR(_var, _val) auto _var = _val
 #include <stdint.h>
 #include <cstdint>
 #include <float.h>
 #include <cfloat>
-#endif
 
 #if ( defined _XBOX || defined _WINDOWS64  || defined _DURANGO )
 #if defined(_MSC_VER)
@@ -41,20 +38,11 @@ using namespace DirectX;
 #include "..\Minecraft.Client\Durango\DurangoExtras\DurangoStubs.h"
 #endif
 
-#if (defined __PS3__ || defined _XBOX )
+#if defined(_XBOX)
 // C RunTime Header Files
 #include <stdlib.h>
 #endif
 
-#ifdef __ORBIS__
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <scebase.h>
-#include <kernel.h>
-#include <fios2.h>
-#include <message_dialog.h>
-#endif
 
 #ifdef _XBOX
 #include <xtl.h>
@@ -67,30 +55,7 @@ typedef XNKID SessionID;
 typedef XUID GameSessionUID;
 #endif
 
-#ifdef __PS3__
-#include <cell/l10n.h>
-#include <cell/pad.h>
-#include <cell/cell_fs.h>
-#include <sys/process.h>
-#include <sys/ppu_thread.h>
-#include <cell/sysmodule.h>
-#include <sysutil/sysutil_common.h>
-#include <sysutil/sysutil_savedata.h>
-#include <sysutil/sysutil_sysparam.h>
-
-
-#include "Ps3Types.h"
-#include "Ps3Stubs.h"
-#include "PS3Maths.h"
-
-#elif defined __ORBIS__
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
-#include "OrbisTypes.h"
-#include "OrbisStubs.h"
-#include "OrbisMaths.h"
-#elif defined __PSVITA__
+#if defined __PSVITA__
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -121,9 +86,7 @@ typedef XUID GameSessionUID;
 #include <iostream>
 #include <exception>
 
-#ifndef __PS3__			// the PS3 lib assert is rubbish, and aborts the code, we define our own in PS3Types.h
 #include <assert.h>
-#endif
 
 #ifndef _XBOX
 #include "extraX64.h"
@@ -162,11 +125,6 @@ void MemSect(int sect);
 #include "..\Minecraft.Client\xbox\4JLibs\inc\4J_XTMS.h"
 #include "..\Minecraft.Client\xbox\4JLibs\inc\4J_Storage.h"
 #include "..\Minecraft.Client\xbox\4JLibs\inc\4J_Input.h"
-#elif defined (__PS3__)
-#include "..\Minecraft.Client\PS3\4JLibs\inc\4J_Profile.h"
-#include "..\Minecraft.Client\PS3\4JLibs\inc\4J_Render.h"
-#include "..\Minecraft.Client\PS3\4JLibs\inc\4J_Storage.h"
-#include "..\Minecraft.Client\PS3\4JLibs\inc\4J_Input.h"
 #elif defined _DURANGO
 #include "..\Minecraft.Client\Durango\4JLibs\inc\4J_Profile.h"
 #include "..\Minecraft.Client\Durango\4JLibs\inc\4J_Render.h"
@@ -214,12 +172,6 @@ void MemSect(int sect);
 #include "..\Minecraft.Client\XboxMedia\strings.h"
 #include "..\Minecraft.Client\Xbox\Sentient\SentientTelemetryCommon.h"
 #include "..\Minecraft.Client\Xbox\Sentient\MinecraftTelemetry.h"
-
-#elif defined (__PS3__)
-#include "..\Minecraft.Client\PS3\PS3_App.h"
-#include "..\Minecraft.Client\PS3Media\strings.h"
-#include "..\Minecraft.Client\PS3\Sentient\SentientTelemetryCommon.h"
-#include "..\Minecraft.Client\PS3\Sentient\MinecraftTelemetry.h"
 
 #elif defined _DURANGO
 #include "..\Minecraft.Client\Durango\Durango_App.h"

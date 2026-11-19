@@ -54,7 +54,7 @@ void IUIScene_StartGame::HandleDLCMountingComplete()
 	for(unsigned int i = 0; i < app.GetDLCInfoTexturesOffersCount(); ++i)
 	{
 		bTexturePackAlreadyListed=false;
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 		char *pchName=app.GetDLCInfoTextures(i);
 		pDLCInfo=app.GetDLCInfo(pchName);
 #elif defined _XBOX_ONE

@@ -735,9 +735,6 @@ ConsoleSaveFileOriginal::ConsoleSaveFileOriginal(const wstring &fileName, LPVOID
 #else
 			StorageManager.GetSaveData( pvSaveMem, &storageLength );
 #endif
-#ifdef __PS3__
-			StorageManager.FreeSaveData();
-#endif
 			app.DebugPrintf("Filesize - %d, Adjusted size - %d\n",fileSize,storageLength);
 			fileSize = storageLength;
 		} 
@@ -839,8 +836,6 @@ ConsoleSaveFileOriginal::~ConsoleSaveFileOriginal()
 	// Make sure we don't have any thumbnail data still waiting round - we can't need it now we've destroyed the save file anyway
 #if defined _XBOX || defined _WINDOWS64
 	app.GetSaveThumbnail(NULL,NULL);
-#elif defined __PS3__
-	app.GetSaveThumbnail(NULL,NULL, NULL,NULL);
 #endif
 
 	DeleteCriticalSection(&m_lock);
@@ -1278,12 +1273,6 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 
 	// 4J Stu - Added TU-1 interim
 
-#ifdef __PS3__
-	// On PS3, don't compress the data as we can't really afford the extra memory this requires for the output buffer. Instead we'll be writing
-	// directly from the save data.
-	StorageManager.SetSaveData(pvSaveMem,fileSize);
-	byte *compData = (byte *)pvSaveMem;
-#else
 	// Attempt to allocate the required memory
 	// We do not own this, it belongs to the StorageManager
 	byte *compData = (byte *)StorageManager.AllocateSaveData( compLength );
@@ -1326,12 +1315,10 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 		// Attempt to allocate the required memory
 		compData = (byte *)StorageManager.AllocateSaveData( compLength );
 	}
-#endif
 
 	if(compData != NULL)
 	{
 		// No compression on PS3 - see comment above
-#ifndef __PS3__
 		// Re-compress all save data before we save it to disk
 		PIXBeginNamedEvent(0,"Actual save compression");
 		// Save the start time
@@ -1356,7 +1343,6 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 		memcpy( compData+4, &fileSize, sizeof(int) );
 
 		app.DebugPrintf("Save data compressed from %d to %d\n", fileSize, compLength);
-#endif
 
 		PBYTE pbThumbnailData=NULL;
 		DWORD dwThumbnailDataSize=0;
@@ -1366,7 +1352,7 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 
 #if ( defined _XBOX || defined _DURANGO || defined _WINDOWS64 )
 		app.GetSaveThumbnail(&pbThumbnailData,&dwThumbnailDataSize);
-#elif ( defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ )
+#elif defined(__PSVITA__)
 		app.GetSaveThumbnail(&pbThumbnailData,&dwThumbnailDataSize,&pbDataSaveImage,&dwDataSizeSaveImage);
 #endif
 
@@ -1406,7 +1392,7 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 	}
 
 	ReleaseSaveAccess();
-#elif (defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ || defined _DURANGO || defined _WINDOWS64)
+#elif defined(__PSVITA__) || defined(_DURANGO) || defined(_WINDOWS64)
 #ifdef _WINDOWS64
 		RefreshStorageSaveTitleFromActiveLevel();
 #endif
@@ -1433,7 +1419,7 @@ void ConsoleSaveFileOriginal::Flush(bool autosave, bool updateThumbnail )
 #endif
 }
 
-#if (defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ || defined _DURANGO || defined _WINDOWS64)
+#if defined(__PSVITA__) || defined(_DURANGO) || defined(_WINDOWS64)
 
 int ConsoleSaveFileOriginal::SaveSaveDataCallback(LPVOID lpParam,bool bRes)
 {
@@ -1546,7 +1532,7 @@ vector<FileEntry *> *ConsoleSaveFileOriginal::getRegionFilesByDimension(unsigned
 	return NULL;
 }
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 wstring ConsoleSaveFileOriginal::getPlayerDataFilenameForLoad(const PlayerUID& pUID)
 {
 	return header.getPlayerDataFilenameForLoad( pUID );

@@ -1025,7 +1025,7 @@ Tutorial::~Tutorial()
 
 void Tutorial::debugResetPlayerSavedProgress(int iPad)
 {
-#if ( defined  __PS3__ || defined __ORBIS__ || defined _DURANGO || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 	GAME_SETTINGS *pGameSettings = (GAME_SETTINGS *)StorageManager.GetGameDefinedProfileData(iPad);
 #else
 	GAME_SETTINGS *pGameSettings = (GAME_SETTINGS *)ProfileManager.GetGameDefinedProfileData(iPad);
@@ -1054,7 +1054,7 @@ void Tutorial::setCompleted( int completableId )
 	if( completableIndex >= 0 && completableIndex < TUTORIAL_PROFILE_STORAGE_BITS )
 	{
 		// Set the bit for this position
-#if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 		GAME_SETTINGS *pGameSettings = (GAME_SETTINGS *)StorageManager.GetGameDefinedProfileData(m_iPad);
 #else
 		GAME_SETTINGS *pGameSettings = (GAME_SETTINGS *)ProfileManager.GetGameDefinedProfileData(m_iPad);
@@ -1087,7 +1087,7 @@ bool Tutorial::getCompleted( int completableId )
 	{
 		// Read the bit for this position
 		//Retrieve the data pointer from the profile
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 		GAME_SETTINGS *pGameSettings = (GAME_SETTINGS *)StorageManager.GetGameDefinedProfileData(m_iPad);
 #else
 		GAME_SETTINGS *pGameSettings = (GAME_SETTINGS *)ProfileManager.GetGameDefinedProfileData(m_iPad);

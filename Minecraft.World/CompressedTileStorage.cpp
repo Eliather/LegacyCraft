@@ -5,13 +5,6 @@
 #define PSVITA_PRECOMPUTED_TABLE
 #endif
 
-#ifdef __PS3__
-#include "..\SPU_Tasks\CompressedTileStorage_compress\CompressedTileStorage_compress.h"
-#include "C4JSpursJob.h"
-static const int sc_maxCompressTiles = 64;
-static CompressedTileStorage_compress_dataIn g_compressTileDataIn[sc_maxCompressTiles] __attribute__((__aligned__(16)));
-static int g_currentCompressTiles = 0;
-#endif //__PS3__
 
 // Note: See header for an overview of this class
 
@@ -120,12 +113,7 @@ CompressedTileStorage::CompressedTileStorage(bool isEmpty)
 	allocatedSize = 0;
 
 	// Empty and already compressed, so we only need 1K. Rounding up to nearest 4096 bytes for allocation
-#ifdef __PS3__
-	// XPhysicalAlloc just maps to malloc on PS3, so allocate the smallest amount
-	indicesAndData = (unsigned char *)XPhysicalAlloc(1024, MAXULONG_PTR, 4096, PAGE_READWRITE);
-#else
 	indicesAndData = (unsigned char *)XPhysicalAlloc(4096, MAXULONG_PTR, 4096, PAGE_READWRITE);
-#endif //__PS3__
 	unsigned short *indices = (unsigned short *)indicesAndData;
 	//unsigned char *data = indicesAndData + 1024;
 
@@ -828,45 +816,12 @@ void CompressedTileStorage::tick()
 	deleteQueueIndex = ( deleteQueueIndex + 1 ) % 3;
 }
 
-#ifdef __PS3__
-void  CompressedTileStorage::compress_SPU(int upgradeBlock/*=-1*/)
-{
-	EnterCriticalSection(&cs_write);
-	static unsigned char compBuffer[32768+4096]  __attribute__((__aligned__(16)));
-	CompressedTileStorage_compress_dataIn& dataIn = g_compressTileDataIn[0];
-	dataIn.allocatedSize = allocatedSize;
-	dataIn.indicesAndData = indicesAndData;
-	dataIn.newIndicesAndData = compBuffer;
-	dataIn.upgradeBlock = upgradeBlock;
-
-	static C4JSpursJobQueue::Port p("CompressedTileStorage::compress_SPU");
-	C4JSpursJob_CompressedTileStorage_compress compressJob(&dataIn);
-	p.submitJob(&compressJob);
-	p.waitForCompletion();
-
-	if(dataIn.neededCompressed)
-	{
-		unsigned char *newIndicesAndData = (unsigned char *)XPhysicalAlloc(dataIn.newAllocatedSize, MAXULONG_PTR, 4096, PAGE_READWRITE);//(unsigned char *)malloc( memToAlloc );
-		memcpy(newIndicesAndData, compBuffer, dataIn.newAllocatedSize);
-		queueForDelete( indicesAndData );
-		indicesAndData = newIndicesAndData;
-		allocatedSize = dataIn.newAllocatedSize;
-	}
-
-	LeaveCriticalSection(&cs_write);
-
-}
-#endif
 
 // Compresses the data currently stored in one of two ways:
 // (1) Attempt to compresses every block as much as possible (if upgradeBlock is -1)
 // (2) Copy all blocks as-is apart from the block specified by upgradeBlock ( if > -1 ), which is changed to be the next-most-accomodating storage from its current state
 void  CompressedTileStorage::compress(int upgradeBlock/*=-1*/)
 {
-#if defined __PS3__ && !defined DISABLE_SPU_CODE
-	compress_SPU(upgradeBlock);
-		return;
-#endif
 
 	unsigned char tempdata[64];
 	unsigned short _blockIndices[512];

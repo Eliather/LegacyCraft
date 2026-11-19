@@ -6,7 +6,7 @@
 #include <dxgi1_6.h>
 #include <d3dcompiler.h>
 
-#define C4J_DX12_FRAMES_IN_FLIGHT 2
+#define C4J_DX12_FRAMES_IN_FLIGHT 3
 #define C4J_DX12_FRAME_SRV_CAPACITY 32768
 
 struct DX12BackendGDrawHost

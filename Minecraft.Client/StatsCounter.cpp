@@ -214,7 +214,7 @@ void StatsCounter::save(int player, bool force)
 	assert( uiTotalStatsSize <= (CConsoleMinecraftApp::GAME_DEFINED_PROFILE_DATA_BYTES-sizeof(GAME_SETTINGS)) );
 
 	//Retrieve the data pointer from the profile
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO || defined __PSVITA__ )
+#if defined(_DURANGO) || defined(__PSVITA__)
 	PBYTE pbData = (PBYTE)StorageManager.GetGameDefinedProfileData(player);
 #else
 	PBYTE pbData = (PBYTE)ProfileManager.GetGameDefinedProfileData(player);
@@ -272,7 +272,7 @@ void StatsCounter::save(int player, bool force)
 		}
 	}
 
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO || defined __PSVITA__ )
+#if defined(_DURANGO) || defined(__PSVITA__)
 	StorageManager.WriteToProfile(player, true, force);
 #else
 	ProfileManager.WriteToProfile(player, true, force);
@@ -358,7 +358,7 @@ void StatsCounter::writeStats()
 	int viewCount = 0;
 	int iPad = ProfileManager.GetLockedProfile();
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 	LeaderboardManager::RegisterScore *scores = new LeaderboardManager::RegisterScore[24];
 
 	if( modifiedBoards & LEADERBOARD_KILLS_EASY )

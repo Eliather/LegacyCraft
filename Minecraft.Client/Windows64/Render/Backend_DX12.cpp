@@ -133,6 +133,23 @@ namespace
 	static UINT s_srvDescSize = 0;
 	static uint32_t s_srvCursor = 0;
 
+	struct DX12SRVPairKey
+	{
+		ID3D12Resource *r0;
+		ID3D12Resource *r1;
+		bool operator==(const DX12SRVPairKey &o) const { return r0 == o.r0 && r1 == o.r1; }
+	};
+	struct DX12SRVPairHash
+	{
+		size_t operator()(const DX12SRVPairKey &k) const
+		{
+			size_t h = (size_t)(uintptr_t)k.r0 * 0x9E3779B97F4A7C15ULL;
+			h ^= ((size_t)(uintptr_t)k.r1 + 0x517cc1b727220a95ULL + (h << 6) + (h >> 2));
+			return h;
+		}
+	};
+	static std::unordered_map<DX12SRVPairKey, D3D12_GPU_DESCRIPTOR_HANDLE, DX12SRVPairHash> s_frameSRVPairCache;
+
 	/* One-shot upload helper (for texture uploads before/outside frame recording) */
 	static ID3D12CommandAllocator *s_uploadAlloc = NULL;
 	static ID3D12GraphicsCommandList *s_uploadCmd = NULL;
@@ -146,7 +163,19 @@ namespace
 	static ID3D12RootSignature *s_worldRootSig = NULL;
 	static ID3DBlob *s_vsStd = NULL;
 	static ID3DBlob *s_vsComp = NULL;
+	static ID3DBlob *s_psVanilla = NULL;
+	static ID3DBlob *s_psOpaque = NULL;
 	static ID3DBlob *s_psWorld = NULL;
+	static ID3DBlob *s_customVsStd = NULL;
+	static ID3DBlob *s_customVsComp = NULL;
+	static ID3DBlob *s_customPsWorld = NULL;
+	static uint32_t s_customShaderGen = 0;
+	static int s_shaderMode = C4J_SHADER_MODE_DEFAULT;
+	static C4JShaderFrameParams s_shaderFrameParams = {};
+	static C4JShaderFrameParams s_lastShaderParams = {};
+	static D3D12_GPU_VIRTUAL_ADDRESS s_lastShaderGpuVA = 0;
+	static bool s_lastShaderParamsValid = false;
+	static D3D12_GPU_VIRTUAL_ADDRESS s_cachedBoundShaderGpu = 0;
 	static std::unordered_map<uint64_t, ID3D12PipelineState*> s_worldPSOCache;
 	static ID3D12PipelineState *s_cachedWorldPSO = NULL;
 	static uint64_t s_cachedWorldPSOKey = ~0ULL;
@@ -213,7 +242,7 @@ namespace
 	static thread_local ThreadRenderState s_tls;
 	static DX12BackendGDrawHost s_gdrawHost = {};
 
-	/* Exact same HLSL shaders as DX11, split across b0 (VSParams) and b1 (PSParams) */
+	/* Exact same HLSL shaders as DX11: b0 = VSParams (VS) / PSParams (PS), b1 = ShaderFrameParams (VS+PS) */
 	static const char *s_hlslVS =
 		"cbuffer VSParams : register(b0)\n"
 		"{\n"
@@ -243,11 +272,13 @@ namespace
 		"};\n"
 		"struct PS_IN\n"
 		"{\n"
-		"    float4 pos     : SV_POSITION;\n"
-		"    float4 uv      : TEXCOORD0;\n"
-		"    float2 lightUV : TEXCOORD1;\n"
-		"    float  fogDist : TEXCOORD2;\n"
-		"    float4 col     : COLOR0;\n"
+		"    float4 pos      : SV_POSITION;\n"
+		"    float4 uv       : TEXCOORD0;\n"
+		"    float2 lightUV  : TEXCOORD1;\n"
+		"    float  fogDist  : TEXCOORD2;\n"
+		"    float3 viewPos  : TEXCOORD3;\n"
+		"    float3 worldPos : TEXCOORD4;\n"
+		"    float4 col      : COLOR0;\n"
 		"};\n"
 		"float3 ApplyLighting(float3 viewNormal)\n"
 		"{\n"
@@ -270,6 +301,8 @@ namespace
 		"    output.pos = mul(u_WVP, pos4);\n"
 		"    output.pos.z = output.pos.z * 0.5f + output.pos.w * 0.5f;\n"
 		"    float4 viewPos = mul(u_MV, pos4);\n"
+		"    output.viewPos = viewPos.xyz;\n"
+		"    output.worldPos = pos4.xyz;\n"
 		"    output.fogDist = length(viewPos.xyz);\n"
 		"    if (u_UseTexGen != 0)\n"
 		"    {\n"
@@ -327,6 +360,8 @@ namespace
 		"    output.pos = mul(u_WVP, pos4);\n"
 		"    output.pos.z = output.pos.z * 0.5f + output.pos.w * 0.5f;\n"
 		"    float4 viewPos = mul(u_MV, pos4);\n"
+		"    output.viewPos = viewPos.xyz;\n"
+		"    output.worldPos = pos4.xyz;\n"
 		"    output.fogDist = length(viewPos.xyz);\n"
 		"    float2 uv = float2(input.b.xy) / 8192.0f;\n"
 		"    if (uv.x > 1.0f && uv.x <= 2.0f) uv.x -= 1.0f;\n"
@@ -341,12 +376,12 @@ namespace
 		"    return output;\n"
 		"}\n";
 
-	static const char *s_hlslPS =
+	static const char *s_hlslPSVanilla =
 		"Texture2D g_Texture  : register(t0);\n"
 		"Texture2D g_Lightmap : register(t1);\n"
 		"SamplerState g_Sampler      : register(s0);\n"
 		"SamplerState g_LightSampler : register(s1);\n"
-		"cbuffer PSParams : register(b1)\n"
+		"cbuffer PSParams : register(b0)\n"
 		"{\n"
 		"    float4 u_StateColor;\n"
 		"    int    u_HasTexture;\n"
@@ -363,11 +398,13 @@ namespace
 		"};\n"
 		"struct PS_IN\n"
 		"{\n"
-		"    float4 pos     : SV_POSITION;\n"
-		"    float4 uv      : TEXCOORD0;\n"
-		"    float2 lightUV : TEXCOORD1;\n"
-		"    float  fogDist : TEXCOORD2;\n"
-		"    float4 col     : COLOR0;\n"
+		"    float4 pos      : SV_POSITION;\n"
+		"    float4 uv       : TEXCOORD0;\n"
+		"    float2 lightUV  : TEXCOORD1;\n"
+		"    float  fogDist  : TEXCOORD2;\n"
+		"    float3 viewPos  : TEXCOORD3;\n"
+		"    float3 worldPos : TEXCOORD4;\n"
+		"    float4 col      : COLOR0;\n"
 		"};\n"
 		"bool PassAlphaTest(float a)\n"
 		"{\n"
@@ -386,6 +423,85 @@ namespace
 		"    if (u_HasTexture != 0)\n"
 		"    {\n"
 		"        float2 texUV = (u_UseProjection != 0 && abs(input.uv.w) > 1e-5f) ? (input.uv.xy / input.uv.w) : input.uv.xy;\n"
+		"        finalCol *= g_Texture.Sample(g_Sampler, texUV);\n"
+		"    }\n"
+		"    if (u_HasLightmap != 0)\n"
+		"    {\n"
+		"        finalCol.rgb *= g_Lightmap.Sample(g_LightSampler, input.lightUV).rgb;\n"
+		"    }\n"
+		"    if (u_AlphaFunc != 8 && !PassAlphaTest(finalCol.a)) discard;\n"
+		"    if (u_FogColor.w > 0.5f)\n"
+		"    {\n"
+		"        float fogFactor = (u_FogMode == 2)\n"
+		"            ? exp(-u_FogDensity * input.fogDist)\n"
+		"            : (u_FogFar - input.fogDist) / max(u_FogFar - u_FogNear, 0.0001f);\n"
+		"        finalCol.rgb = lerp(u_FogColor.rgb, finalCol.rgb, saturate(fogFactor));\n"
+		"    }\n"
+		"    return finalCol;\n"
+		"}\n";
+
+	static const char *s_hlslPS =
+		"Texture2D g_Texture  : register(t0);\n"
+		"Texture2D g_Lightmap : register(t1);\n"
+		"SamplerState g_Sampler      : register(s0);\n"
+		"SamplerState g_LightSampler : register(s1);\n"
+		"cbuffer PSParams : register(b0)\n"
+		"{\n"
+		"    float4 u_StateColor;\n"
+		"    int    u_HasTexture;\n"
+		"    int    u_HasLightmap;\n"
+		"    int    u_AlphaFunc;\n"
+		"    float  u_AlphaCutoff;\n"
+		"    float4 u_FogColor;\n"
+		"    int    u_FogMode;\n"
+		"    float  u_FogNear;\n"
+		"    float  u_FogFar;\n"
+		"    float  u_FogDensity;\n"
+		"    int    u_UseProjection;\n"
+		"    float3 u_Pad;\n"
+		"};\n"
+		"cbuffer ShaderFrameParams : register(b1)\n"
+		"{\n"
+		"    float4 u_SunDir;\n"
+		"    float4 u_CameraPos;\n"
+		"    float4 u_SkyColor;\n"
+		"    float4 u_ShaderFogColor;\n"
+		"    float4 u_WorldMeta;\n"
+		"    float4 u_WaterTint;\n"
+		"    float4 u_TorchTint;\n"
+		"};\n"
+		"struct PS_IN\n"
+		"{\n"
+		"    float4 pos      : SV_POSITION;\n"
+		"    float4 uv       : TEXCOORD0;\n"
+		"    float2 lightUV  : TEXCOORD1;\n"
+		"    float  fogDist  : TEXCOORD2;\n"
+		"    float3 viewPos  : TEXCOORD3;\n"
+		"    float3 worldPos : TEXCOORD4;\n"
+		"    float4 col      : COLOR0;\n"
+		"};\n"
+		"bool PassAlphaTest(float a)\n"
+		"{\n"
+		"    if (u_AlphaFunc == 5) return a >  u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 7) return a >= u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 2) return a <  u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 4) return a <= u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 3) return abs(a - u_AlphaCutoff) < 0.001f;\n"
+		"    if (u_AlphaFunc == 6) return abs(a - u_AlphaCutoff) >= 0.001f;\n"
+		"    if (u_AlphaFunc == 1) return false;\n"
+		"    return true;\n"
+		"}\n"
+		"float3 ToneMapFast(float3 c)\n"
+		"{\n"
+		"    float lum = dot(c, float3(0.299f, 0.587f, 0.114f));\n"
+		"    return saturate(c * (1.07f / (1.0f + 0.16f * lum)));\n"
+		"}\n"
+		"float4 PSMain(PS_IN input) : SV_TARGET\n"
+		"{\n"
+		"    float4 finalCol = input.col * u_StateColor;\n"
+		"    if (u_HasTexture != 0)\n"
+		"    {\n"
+		"        float2 texUV = (u_UseProjection != 0 && abs(input.uv.w) > 1e-5f) ? (input.uv.xy / input.uv.w) : input.uv.xy;\n"
 		"        float4 texCol = g_Texture.Sample(g_Sampler, texUV);\n"
 		"        finalCol *= texCol;\n"
 		"    }\n"
@@ -397,6 +513,43 @@ namespace
 		"    if (u_AlphaFunc != 8 && !PassAlphaTest(finalCol.a))\n"
 		"    {\n"
 		"        discard;\n"
+		"    }\n"
+		"    if (u_HasLightmap != 0)\n"
+		"    {\n"
+		"        float lmBlock = saturate((input.lightUV.x - 0.03125f) * 1.07f);\n"
+		"        float lmSky   = saturate((input.lightUV.y - 0.03125f) * 1.07f);\n"
+		"        float dayFac  = saturate(u_SunDir.w);\n"
+		"        float rainFac = saturate(u_SkyColor.w);\n"
+		"        float3 surfN = cross(ddx(input.worldPos), ddy(input.worldPos));\n"
+		"        surfN *= rsqrt(max(dot(surfN, surfN), 1e-10f));\n"
+		"        float3 lightDirW = u_SunDir.xyz;\n"
+		"        float ndl = abs(dot(surfN, lightDirW)) * 0.65f + 0.35f;\n"
+		"        float sunBounce = (0.88f + 0.22f * ndl) * (1.0f - 0.40f * rainFac);\n"
+		"        float3 sunTint = lerp(float3(0.76f, 0.84f, 1.04f), float3(1.06f, 1.01f, 0.94f), dayFac);\n"
+		"        float3 skyAmb = lerp(float3(1.0f, 1.0f, 1.0f), sunTint * sunBounce, lmSky * lmSky);\n"
+		"        finalCol.rgb *= skyAmb;\n"
+		"        float torchPow = (lmBlock * lmBlock) * u_TorchTint.w;\n"
+		"        finalCol.rgb += finalCol.rgb * u_TorchTint.rgb * torchPow;\n"
+		"#ifndef C4J_OPAQUE_ONLY\n"
+		"        [branch]\n"
+		"        if (finalCol.a > 0.15f && finalCol.a < 0.92f && u_HasTexture != 0)\n"
+		"        {\n"
+		"            float3 viewN = cross(ddx(input.viewPos), ddy(input.viewPos));\n"
+		"            viewN *= rsqrt(max(dot(viewN, viewN), 1e-10f));\n"
+		"            if (viewN.z < 0.0f) viewN = -viewN;\n"
+		"            float3 viewDir = normalize(-input.viewPos);\n"
+		"            float om = 1.0f - saturate(dot(viewN, viewDir));\n"
+		"            float fresnel = om * om * om;\n"
+		"            float timeSec = u_CameraPos.w;\n"
+		"            float wave = 0.5f + 0.5f * sin(timeSec * 2.4f + input.worldPos.x * 1.9f + input.worldPos.z * 1.5f);\n"
+		"            float3 reflCol = lerp(u_WaterTint.rgb, u_SkyColor.rgb, 0.65f);\n"
+		"            finalCol.rgb = lerp(finalCol.rgb, reflCol, fresnel * 0.48f * lmSky);\n"
+		"            float s = saturate(dot(reflect(-float3(0.2f, 0.85f, 0.48f), viewN), viewDir));\n"
+		"            float s2 = s * s; float s4 = s2 * s2; float s8 = s4 * s4; float s16 = s8 * s8;\n"
+		"            finalCol.rgb += sunTint * (s16 * (0.4f + 0.6f * wave) * 0.45f * lmSky * (1.0f - rainFac));\n"
+		"        }\n"
+		"#endif\n"
+		"        finalCol.rgb = ToneMapFast(finalCol.rgb);\n"
 		"    }\n"
 		"    if (u_FogColor.w > 0.5f)\n"
 		"    {\n"
@@ -637,8 +790,10 @@ namespace
 		s_cachedLightLookupId = -1;
 		s_lastVSConstsValid = false;
 		s_lastPSConstsValid = false;
+		s_lastShaderParamsValid = false;
 		s_cachedBoundVSGpu = 0;
 		s_cachedBoundPSGpu = 0;
+		s_cachedBoundShaderGpu = 0;
 		s_cachedBlendFactorValid = false;
 		s_cachedStencilRefValid = false;
 		s_cachedIBMode = 0;
@@ -662,6 +817,7 @@ namespace
 		s_cmdList->Reset(s_cmdAllocs[s_frameIdx], NULL);
 		s_uploadOffset = 0;
 		s_srvCursor = 0;
+		s_frameSRVPairCache.clear();
 		s_frameCBuffUploadBytes = 0;
 		s_frameCBuffUploadCount = 0;
 		InvalidateWorldPipelineCacheFn();
@@ -902,10 +1058,15 @@ namespace
 		bool blendEnable, int blendSrc, int blendDst, uint8_t writeMask,
 		bool depthTestEnable, bool depthMask, int depthFunc,
 		bool stencilEnable, int stencilFunc,
-		bool cullEnable, bool cullCW, int depthBiasBucket)
+		bool cullEnable, bool cullCW, int depthBiasBucket, bool hasLight)
 	{
 		const bool isLine = (primType == 4 || primType == 5);
 		const int isComp = (vType == 1) ? 1 : 0;
+		const bool inWorldPass = (s_shaderFrameParams.worldMeta[3] > 0.5f);
+		const bool useVanillaPS = (!inWorldPass || s_shaderMode == C4J_SHADER_MODE_OFF || !hasLight);
+		const bool useCustom = (!useVanillaPS && s_shaderMode == C4J_SHADER_MODE_CUSTOM &&
+			s_customVsStd && s_customVsComp && s_customPsWorld);
+		const uint32_t shaderVariant = useVanillaPS ? 0u : (useCustom ? (s_customShaderGen + 2u) : (blendEnable ? 2u : 1u));
 
 		uint64_t key = ((uint64_t)isComp) |
 			((uint64_t)(isLine ? 1 : 0) << 1) |
@@ -920,7 +1081,8 @@ namespace
 			((uint64_t)(stencilFunc & 0xF) << 24) |
 			((uint64_t)(cullEnable ? 1 : 0) << 28) |
 			((uint64_t)(cullCW ? 1 : 0) << 29) |
-			((uint64_t)(depthBiasBucket & 0x3) << 30);
+			((uint64_t)(depthBiasBucket & 0x3) << 30) |
+			((uint64_t)shaderVariant << 32);
 
 		if (s_cachedWorldPSOKeyValid && key == s_cachedWorldPSOKey && s_cachedWorldPSO)
 		{
@@ -947,12 +1109,15 @@ namespace
 			{ "TEXCOORD", 1, DXGI_FORMAT_R16G16B16A16_SINT, 0, 8, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 }
 		};
 
+		ID3DBlob *vsBlob = useCustom ? (isComp ? s_customVsComp : s_customVsStd) : (isComp ? s_vsComp : s_vsStd);
+		ID3DBlob *psBlob = useVanillaPS ? s_psVanilla : (useCustom ? s_customPsWorld : (blendEnable ? s_psWorld : s_psOpaque));
+
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso = {};
 		pso.pRootSignature = s_worldRootSig;
-		pso.VS.pShaderBytecode = (isComp ? s_vsComp : s_vsStd)->GetBufferPointer();
-		pso.VS.BytecodeLength = (isComp ? s_vsComp : s_vsStd)->GetBufferSize();
-		pso.PS.pShaderBytecode = s_psWorld->GetBufferPointer();
-		pso.PS.BytecodeLength = s_psWorld->GetBufferSize();
+		pso.VS.pShaderBytecode = vsBlob->GetBufferPointer();
+		pso.VS.BytecodeLength = vsBlob->GetBufferSize();
+		pso.PS.pShaderBytecode = psBlob->GetBufferPointer();
+		pso.PS.BytecodeLength = psBlob->GetBufferSize();
 		pso.InputLayout.pInputElementDescs = isComp ? compLayout : stdLayout;
 		pso.InputLayout.NumElements = isComp ? 2 : 5;
 
@@ -1025,6 +1190,23 @@ namespace
 		}
 		if (err) { err->Release(); err = NULL; }
 
+		if (FAILED(D3DCompile(s_hlslPSVanilla, strlen(s_hlslPSVanilla), "WorldPSVanilla", NULL, NULL, "PSMain", "ps_5_0",
+			D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &s_psVanilla, &err)))
+		{
+			if (err) err->Release();
+			return false;
+		}
+		if (err) { err->Release(); err = NULL; }
+
+		const D3D_SHADER_MACRO opaqueMacros[] = { { "C4J_OPAQUE_ONLY", "1" }, { NULL, NULL } };
+		if (FAILED(D3DCompile(s_hlslPS, strlen(s_hlslPS), "WorldPSOpaque", opaqueMacros, NULL, "PSMain", "ps_5_0",
+			D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &s_psOpaque, &err)))
+		{
+			if (err) err->Release();
+			return false;
+		}
+		if (err) { err->Release(); err = NULL; }
+
 		if (FAILED(D3DCompile(s_hlslPS, strlen(s_hlslPS), "WorldPS", NULL, NULL, "PSMain", "ps_5_0",
 			D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &s_psWorld, &err)))
 		{
@@ -1037,13 +1219,13 @@ namespace
 		D3D12_DESCRIPTOR_RANGE rSamp0 = { D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND };
 		D3D12_DESCRIPTOR_RANGE rSamp1 = { D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND };
 
-		D3D12_ROOT_PARAMETER params[5] = {};
+		D3D12_ROOT_PARAMETER params[6] = {};
 		params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
 		params[0].Descriptor.ShaderRegister = 0;
 		params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
 
 		params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-		params[1].Descriptor.ShaderRegister = 1;
+		params[1].Descriptor.ShaderRegister = 0;
 		params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
 		params[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
@@ -1061,8 +1243,12 @@ namespace
 		params[4].DescriptorTable.pDescriptorRanges = &rSamp1;
 		params[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
+		params[5].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+		params[5].Descriptor.ShaderRegister = 1;
+		params[5].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
 		D3D12_ROOT_SIGNATURE_DESC rsDesc = {};
-		rsDesc.NumParameters = 5;
+		rsDesc.NumParameters = 6;
 		rsDesc.pParameters = params;
 		rsDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
@@ -1260,16 +1446,26 @@ namespace
 		D3D12_GPU_DESCRIPTOR_HANDLE gpu0 = s_cachedTex0Gpu;
 		if (needDescUpdate)
 		{
-			if (s_srvCursor + 2 > C4J_DX12_FRAME_SRV_CAPACITY) return;
-			D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-			srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			srvDesc.Texture2D.MipLevels = (UINT)-1;
+			DX12SRVPairKey pairKey = { tex0Res, tex1Res };
+			auto pit = s_frameSRVPairCache.find(pairKey);
+			if (pit != s_frameSRVPairCache.end())
+			{
+				gpu0 = pit->second;
+			}
+			else
+			{
+				if (s_srvCursor + 2 > C4J_DX12_FRAME_SRV_CAPACITY) return;
+				D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+				srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+				srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+				srvDesc.Texture2D.MipLevels = (UINT)-1;
 
-			D3D12_CPU_DESCRIPTOR_HANDLE cpu0 = {};
-			AllocateFrameSRVFn(tex0Res, &srvDesc, &cpu0, &gpu0);
-			AllocateFrameSRVFn(tex1Res, &srvDesc, NULL, NULL);
+				D3D12_CPU_DESCRIPTOR_HANDLE cpu0 = {};
+				AllocateFrameSRVFn(tex0Res, &srvDesc, &cpu0, &gpu0);
+				AllocateFrameSRVFn(tex1Res, &srvDesc, NULL, NULL);
+				s_frameSRVPairCache[pairKey] = gpu0;
+			}
 			s_cachedTex0Res = tex0Res;
 			s_cachedTex1Res = tex1Res;
 			s_cachedTex0Gpu = gpu0;
@@ -1304,12 +1500,24 @@ namespace
 			s_lastPSConstsValid = true;
 		}
 
+		D3D12_GPU_VIRTUAL_ADDRESS shaderGpu = s_lastShaderGpuVA;
+		if (!s_lastShaderParamsValid || memcmp(&s_shaderFrameParams, &s_lastShaderParams, sizeof(s_shaderFrameParams)) != 0)
+		{
+			const UINT shAligned = (sizeof(s_shaderFrameParams) + 255u) & ~255u;
+			void *shPtr = AllocFrameUploadBytesFn(shAligned, 256u, &shaderGpu);
+			if (!shPtr) return;
+			memcpy(shPtr, &s_shaderFrameParams, sizeof(s_shaderFrameParams));
+			s_lastShaderParams = s_shaderFrameParams;
+			s_lastShaderGpuVA = shaderGpu;
+			s_lastShaderParamsValid = true;
+		}
+
 		int biasBucket = (fabsf(s_tls.depthBiasSlope) > 1e-6f || fabsf(s_tls.depthBiasConstant) > 1e-6f) ? 1 : 0;
 		ID3D12PipelineState *pso = GetOrCreateWorldPSO(
 			vType, primType, blendEnable, blendSrc, blendDst, s_tls.colorWriteMask,
 			depthTestEnable, depthMask, s_tls.depthFunc,
 			s_tls.stencilEnable, s_tls.stencilFunc,
-			cullEnable, cullCW, biasBucket);
+			cullEnable, cullCW, biasBucket, hasLight);
 		if (!pso) return;
 
 		if (rootSigChanged)
@@ -1324,6 +1532,7 @@ namespace
 			s_cmdList->SetGraphicsRootDescriptorTable(4, GetSamplerGPUHandleFn(true, true));
 			s_cachedBoundVSGpu = 0;
 			s_cachedBoundPSGpu = 0;
+			s_cachedBoundShaderGpu = 0;
 		}
 		if (s_cachedWorldPSO != pso)
 		{
@@ -1368,6 +1577,11 @@ namespace
 		{
 			s_cmdList->SetGraphicsRootConstantBufferView(1, psGpu);
 			s_cachedBoundPSGpu = psGpu;
+		}
+		if (s_cachedBoundShaderGpu != shaderGpu)
+		{
+			s_cmdList->SetGraphicsRootConstantBufferView(5, shaderGpu);
+			s_cachedBoundShaderGpu = shaderGpu;
 		}
 		if (needDescUpdate)
 		{
@@ -1530,11 +1744,12 @@ namespace
 			bool linear = (i >= 2);
 			bool clamp = ((i & 1) != 0);
 			D3D12_SAMPLER_DESC sd = {};
-			sd.Filter = linear ? D3D12_FILTER_MIN_MAG_MIP_LINEAR : D3D12_FILTER_MIN_MAG_MIP_POINT;
+			sd.Filter = linear ? D3D12_FILTER_MIN_MAG_MIP_LINEAR : D3D12_FILTER_MIN_MAG_POINT_MIP_LINEAR;
 			sd.AddressU = clamp ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 			sd.AddressV = clamp ? D3D12_TEXTURE_ADDRESS_MODE_CLAMP : D3D12_TEXTURE_ADDRESS_MODE_WRAP;
 			sd.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-			sd.MaxLOD = D3D12_FLOAT32_MAX;
+			sd.MipLODBias = linear ? 0.0f : -1.0f;
+			sd.MaxLOD = linear ? D3D12_FLOAT32_MAX : 2.0f;
 			sd.MaxAnisotropy = 1;
 			sd.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
 			D3D12_CPU_DESCRIPTOR_HANDLE dst = { smpBase.ptr + (SIZE_T)i * s_samplerDescSize };
@@ -1675,7 +1890,12 @@ namespace
 		if (s_worldRootSig) { s_worldRootSig->Release(); s_worldRootSig = NULL; }
 		if (s_vsStd) { s_vsStd->Release(); s_vsStd = NULL; }
 		if (s_vsComp) { s_vsComp->Release(); s_vsComp = NULL; }
-		if (s_psWorld) { s_psWorld->Release(); s_psWorld = NULL; }
+		if (s_psVanilla) { s_psVanilla->Release(); s_psVanilla = NULL; }
+		if (s_psOpaque)  { s_psOpaque->Release(); s_psOpaque = NULL; }
+		if (s_psWorld)   { s_psWorld->Release(); s_psWorld = NULL; }
+		if (s_customVsStd) { s_customVsStd->Release(); s_customVsStd = NULL; }
+		if (s_customVsComp) { s_customVsComp->Release(); s_customVsComp = NULL; }
+		if (s_customPsWorld) { s_customPsWorld->Release(); s_customPsWorld = NULL; }
 
 		ReleaseSwapchainResources();
 		for (uint32_t f = 0; f < C4J_DX12_FRAMES_IN_FLIGHT; ++f)
@@ -2626,6 +2846,130 @@ namespace
 		return ok;
 	}
 
+	static void DX12_ShaderSetFrameParams(const C4JShaderFrameParams *params)
+	{
+		if (!params) return;
+		std::lock_guard<std::recursive_mutex> lock(s_dx12Mutex);
+		s_shaderFrameParams = *params;
+	}
+
+	static void DX12_ShaderClearCustomProgram(void)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_dx12Mutex);
+		if (s_customVsStd)   { s_customVsStd->Release(); s_customVsStd = NULL; }
+		if (s_customVsComp)  { s_customVsComp->Release(); s_customVsComp = NULL; }
+		if (s_customPsWorld) { s_customPsWorld->Release(); s_customPsWorld = NULL; }
+		if (s_shaderMode == C4J_SHADER_MODE_CUSTOM)
+			s_shaderMode = C4J_SHADER_MODE_DEFAULT;
+		s_cachedWorldPSOKeyValid = false;
+	}
+
+	static int DX12_ShaderLoadCustomProgram(const C4JShaderProgramDesc *desc, char *errBuf, size_t errBufSize)
+	{
+		if (errBuf && errBufSize > 0) errBuf[0] = 0;
+		if (!desc || !desc->hlslSource || desc->hlslSource[0] == 0)
+		{
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "Missing HLSL shader source");
+			return 0;
+		}
+		std::lock_guard<std::recursive_mutex> lock(s_dx12Mutex);
+		if (!s_device)
+		{
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "DX12 device not initialized");
+			return 0;
+		}
+
+		const char *src = desc->hlslSource;
+		size_t srcLen = strlen(src);
+		const char *vsStdEntry  = "VSMainStandard";
+		const char *vsCompEntry = "VSMainCompressed";
+		const char *psEntry     = "PSMain";
+
+		ID3DBlob *newVsStd = NULL;
+		ID3DBlob *newVsComp = NULL;
+		ID3DBlob *newPs = NULL;
+		ID3DBlob *err = NULL;
+
+		HRESULT hr = D3DCompile(src, srcLen, "CustomWorldDX12", NULL, NULL, psEntry, "ps_5_0",
+			D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &newPs, &err);
+		if (FAILED(hr) || !newPs)
+		{
+			if (err && errBuf && errBufSize > 0)
+				snprintf(errBuf, errBufSize, "HLSL PS error: %.*s", (int)err->GetBufferSize(), (const char*)err->GetBufferPointer());
+			if (err) err->Release();
+			return 0;
+		}
+		if (err) { err->Release(); err = NULL; }
+
+		hr = D3DCompile(src, srcLen, "CustomWorldDX12", NULL, NULL, vsStdEntry, "vs_5_0",
+			D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &newVsStd, &err);
+		if (FAILED(hr) || !newVsStd)
+		{
+			if (err) { err->Release(); err = NULL; }
+			if (s_vsStd) { newVsStd = s_vsStd; newVsStd->AddRef(); }
+		}
+		else if (err) { err->Release(); err = NULL; }
+
+		hr = D3DCompile(src, srcLen, "CustomWorldDX12", NULL, NULL, vsCompEntry, "vs_5_0",
+			D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &newVsComp, &err);
+		if (FAILED(hr) || !newVsComp)
+		{
+			if (err) { err->Release(); err = NULL; }
+			if (s_vsComp) { newVsComp = s_vsComp; newVsComp->AddRef(); }
+		}
+		else if (err) { err->Release(); err = NULL; }
+
+		if (!newVsStd || !newVsComp)
+		{
+			if (newVsStd) newVsStd->Release();
+			if (newVsComp) newVsComp->Release();
+			newPs->Release();
+			return 0;
+		}
+
+		/* Defer-release any old custom PSOs so the cache does not grow unbounded across reloads */
+		for (auto it = s_worldPSOCache.begin(); it != s_worldPSOCache.end(); )
+		{
+			if ((it->first >> 32) > 2u)
+			{
+				DeferredReleaseIUnknownFn(it->second);
+				it = s_worldPSOCache.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
+
+		if (s_customVsStd)   s_customVsStd->Release();
+		if (s_customVsComp)  s_customVsComp->Release();
+		if (s_customPsWorld) s_customPsWorld->Release();
+		s_customVsStd   = newVsStd;
+		s_customVsComp  = newVsComp;
+		s_customPsWorld = newPs;
+		s_customShaderGen++;
+		if (s_customShaderGen == 0) s_customShaderGen = 1;
+		s_shaderMode = C4J_SHADER_MODE_CUSTOM;
+		s_cachedWorldPSOKeyValid = false;
+		s_cachedWorldPSO = NULL;
+		return 1;
+	}
+
+	static void DX12_ShaderSetMode(int mode)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_dx12Mutex);
+		if (mode == C4J_SHADER_MODE_CUSTOM && (!s_customVsStd || !s_customVsComp || !s_customPsWorld))
+			s_shaderMode = C4J_SHADER_MODE_DEFAULT;
+		else if (mode >= C4J_SHADER_MODE_OFF && mode <= C4J_SHADER_MODE_CUSTOM)
+			s_shaderMode = mode;
+		s_cachedWorldPSOKeyValid = false;
+	}
+
+	static int DX12_ShaderGetMode(void)
+	{
+		return s_shaderMode;
+	}
+
 	static const C4JRenderBackendAPI s_dx12API =
 	{
 		sizeof(C4JRenderBackendAPI),
@@ -2744,7 +3088,12 @@ namespace
 		DX12_GDrawSetViewport4J,
 		DX12_GDrawWrappedTextureCreate,
 		DX12_GDrawWrappedTextureDestroy,
-		DX12_CaptureBackBufferRGBA
+		DX12_CaptureBackBufferRGBA,
+		DX12_ShaderSetFrameParams,
+		DX12_ShaderLoadCustomProgram,
+		DX12_ShaderClearCustomProgram,
+		DX12_ShaderSetMode,
+		DX12_ShaderGetMode
 	};
 }
 

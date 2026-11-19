@@ -55,9 +55,6 @@ private:
 	UI_BEGIN_MAP_ELEMENTS_AND_NAMES(UIScene)
 
 #ifndef __PSVITA__
-#ifdef __ORBIS__
-	if (!InputManager.UsingRemoteVita())
-#endif
 	{
 		UI_MAP_ELEMENT( m_labelCurrentLayout, "CurrentLayout")
 

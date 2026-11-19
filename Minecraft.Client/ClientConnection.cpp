@@ -47,9 +47,6 @@
 #else
 #include "Common\UI\UI.h"
 #endif
-#ifdef __PS3__
-#include "PS3/Network/SonyVoiceChat.h"
-#endif
 #include "DLCTexturePack.h"
 
 #ifdef _DURANGO
@@ -1779,7 +1776,7 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
 	isAtLeastOneFriend = TRUE;
 	cantPlayContentRestricted= FALSE;
 
-#if ( defined __PS3__ || defined __ORBIS__ || defined __PSVITA__)
+#if defined(__PSVITA__)
 
 	if(!g_NetworkManager.IsHost() && !app.GetGameHostOption(eGameHostOption_FriendsOfFriends))
 	{
@@ -1788,18 +1785,14 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
 		ProfileManager.GetChatAndContentRestrictions(m_userIndex,true,&bChatRestricted,NULL,NULL);
 
 		// Chat restricted orbis players can still play online
-#ifndef __ORBIS__
 		canPlay = !bChatRestricted;
-#endif
 
 		if(m_userIndex == ProfileManager.GetPrimaryPad() )
 		{
 			// Is this user friends with the host player?			
 			bool isFriend = true;
 			unsigned int friendCount = 0;
-#ifdef __PS3__
-			int ret = sceNpBasicGetFriendListEntryCount(&friendCount);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 			sce::Toolkit::NP::Utilities::Future<sce::Toolkit::NP::FriendsList> friendList;
 			int ret = -1;
 			if(!CGameNetworkManager::usingAdhocMode())	// we don't need to be friends in PSN for adhoc mode
@@ -1839,11 +1832,7 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
 				SceNpId npid;
 				for( unsigned int i = 0; i < friendCount; i++ )
 				{
-#ifdef __PS3__
-					ret = sceNpBasicGetFriendListEntry( i, &npid );
-#else
 					npid = friendList.get()->at(i).npid;
-#endif
 					if( ret == 0 )
 					{
 						if(strcmp(npid.handle.data, packet->m_playerXuids[packet->m_hostIndex].getOnlineID()) == 0)
@@ -1882,9 +1871,7 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
 		}
 
 		// Chat restricted orbis players can still play online
-#ifndef __ORBIS__
 		canPlayLocal = !bChatRestricted;
-#endif
 
 		cantPlayContentRestricted = bContentRestricted ? 1 : 0;
 	}
@@ -1955,11 +1942,7 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
 
 	if(!canPlay || !canPlayLocal || !isAtLeastOneFriend || cantPlayContentRestricted)
 	{
-#ifndef __PS3__
 		DisconnectPacket::eDisconnectReason reason = DisconnectPacket::eDisconnect_NoUGC_Remote;
-#else
-		DisconnectPacket::eDisconnectReason reason = DisconnectPacket::eDisconnect_None;
-#endif		
 		if(m_userIndex == ProfileManager.GetPrimaryPad())			
 		{
 			if(!isFriendsWithHost) reason = DisconnectPacket::eDisconnect_NotFriendsWithHost;
@@ -2040,7 +2023,7 @@ void ClientConnection::handlePreLogin(shared_ptr<PreLoginPacket> packet)
 #endif
 
 		// On PS3, all non-signed in players (even guests) can get a useful offlineXUID
-#if !(defined __PS3__ || defined _DURANGO ) 
+#if !defined(_DURANGO)
 		if( !ProfileManager.IsGuest( m_userIndex ) )
 #endif
 		{
@@ -3271,7 +3254,7 @@ int ClientConnection::HostDisconnectReturned(void *pParam,int iPad,C4JStorage::E
 		}
 	}
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 	// Give the player the option to save their game
 	// does the save exist?
 	bool bSaveExists;
@@ -3303,7 +3286,7 @@ int ClientConnection::HostDisconnectReturned(void *pParam,int iPad,C4JStorage::E
 	else
 #endif
 	{
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 				StorageManager.SetSaveDisabled(false);
 #endif
 		MinecraftServer::getInstance()->setSaveOnExit( true );
@@ -3322,7 +3305,7 @@ int ClientConnection::ExitGameAndSaveReturned(void *pParam,int iPad,C4JStorage::
 		//INT saveOrCheckpointId = 0;
 		//bool validSave = StorageManager.GetSaveUniqueNumber(&saveOrCheckpointId);
 		//SentientManager.RecordLevelSaveOrCheckpoint(ProfileManager.GetPrimaryPad(), saveOrCheckpointId);
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 				StorageManager.SetSaveDisabled(false);
 #endif
 		MinecraftServer::getInstance()->setSaveOnExit( true );

@@ -25,7 +25,7 @@ private:
 
 	static int ExitDLCMainMenu(void *pParam,int iPad,C4JStorage::EMessageResult result);
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
  	bool m_bCategoriesShown;
 #endif
 

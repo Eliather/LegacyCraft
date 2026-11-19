@@ -31,9 +31,6 @@ void UIScene_TrialExitUpsell::handleInput(int iPad, int key, bool repeat, bool p
 		navigateBack();
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		if(pressed)
 		{
 			//CD - Added for audio
@@ -48,7 +45,7 @@ void UIScene_TrialExitUpsell::handleInput(int iPad, int key, bool repeat, bool p
 			ui.PlayUISFX(eSFX_Press);
 
 			// 4J-PB - need to check this user can access the store
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 			bool bContentRestricted;
 			ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),true,NULL,&bContentRestricted,NULL);
 			if(bContentRestricted)

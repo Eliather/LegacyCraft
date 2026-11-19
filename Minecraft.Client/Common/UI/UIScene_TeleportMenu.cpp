@@ -236,9 +236,6 @@ void UIScene_TeleportMenu::handleInput(int iPad, int key, bool repeat, bool pres
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_UP:
 	case ACTION_MENU_DOWN:
 	case ACTION_MENU_PAGEUP:

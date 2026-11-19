@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "DebugOverlay.h"
+#include "ShaderManager.h"
 #include "Minecraft.h"
 #include "MultiplayerLocalPlayer.h"
 #include "MultiPlayerLevel.h"
@@ -278,6 +279,17 @@ namespace
 		std::wstring gpuAdapter = TrimWide(AsciiToWide(RenderManager.GetAdapterName()));
 		swprintf(buf, 256, L"GPU: %ls", gpuAdapter.c_str());
 		outLines.push_back(buf);
+
+		std::wstring shaderDisplay = ShaderManager::GetActiveDisplayName();
+		swprintf(buf, 256, L"Shaders: %ls", shaderDisplay.c_str());
+		outLines.push_back(buf);
+
+		const std::wstring &shaderErr = ShaderManager::GetLastError();
+		if (!shaderErr.empty())
+		{
+			swprintf(buf, 256, L"Shader Error: %.64ls", shaderErr.c_str());
+			outLines.push_back(buf);
+		}
 	}
 }
 
@@ -370,6 +382,25 @@ void DebugOverlay::HandleInput(Minecraft *minecraft)
 	{
 		Toggle();
 	}
+#ifdef _WINDOWS64
+	static bool s_f4WasDown = false;
+	static bool s_f3RWasDown = false;
+	const bool f4Down = (GetAsyncKeyState(VK_F4) & 0x8000) != 0;
+	const bool f3RDown = ((GetAsyncKeyState(VK_F3) & 0x8000) != 0) && ((GetAsyncKeyState('R') & 0x8000) != 0);
+	if (inActiveGameplay)
+	{
+		if (f4Down && !s_f4WasDown)
+		{
+			ShaderManager::ToggleEnabled();
+		}
+		if (f3RDown && !s_f3RWasDown)
+		{
+			ShaderManager::ReloadCurrent();
+		}
+	}
+	s_f4WasDown = f4Down;
+	s_f3RWasDown = f3RDown;
+#endif
 }
 
 void DebugOverlay::RegisterLeftSection(SectionProviderFn provider)

@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <stdint.h>
+#include "ShaderTypes.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -197,6 +198,13 @@ typedef struct C4JRenderBackendAPI
 
 	/* Backbuffer capture (top-down RGBA8, alpha=255) */
 	int  (*CaptureBackBufferRGBA)(C4JCaptureAllocFn allocFn, void *user, int *outWidth, int *outHeight);
+
+	/* Modular Shader System */
+	void (*ShaderSetFrameParams)(const C4JShaderFrameParams *params);
+	int  (*ShaderLoadCustomProgram)(const C4JShaderProgramDesc *desc, char *errBuf, size_t errBufLen);
+	void (*ShaderClearCustomProgram)(void);
+	void (*ShaderSetMode)(int mode);
+	int  (*ShaderGetMode)(void);
 } C4JRenderBackendAPI;
 
 typedef const C4JRenderBackendAPI *(*PFN_C4JBackend_GetAPI)(void);

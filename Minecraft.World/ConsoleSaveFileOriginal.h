@@ -17,9 +17,6 @@ private:
 #ifdef _LARGE_WORLDS
 	static const unsigned int CSF_PAGE_SIZE = 64 * 1024;
 	static const unsigned int MAX_PAGE_COUNT = 32 * 1024; // 2GB virtual allocation
-#elif defined(__PS3__)
-	static const unsigned int CSF_PAGE_SIZE = 1024 * 1024;
-	static const unsigned int MAX_PAGE_COUNT = 64;
 #else
 	static const unsigned int CSF_PAGE_SIZE = 64 * 1024;
 	static const unsigned int MAX_PAGE_COUNT = 1024;
@@ -32,7 +29,7 @@ private:
 	void MoveDataBeyond(FileEntry *file, DWORD nNumberOfBytesToWrite);
 
 public:
-#if (defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ || defined _DURANGO || defined _WINDOWS64)
+#if defined(__PSVITA__) || defined(_DURANGO) || defined(_WINDOWS64)
 	static int SaveSaveDataCallback(LPVOID lpParam,bool bRes);
 #endif
 	ConsoleSaveFileOriginal(const wstring &fileName, LPVOID pvSaveData = NULL, DWORD fileSize = 0, bool forceCleanSave = false, ESavePlatform plat = SAVE_FILE_PLATFORM_LOCAL);
@@ -65,7 +62,7 @@ public:
 	virtual vector<FileEntry *> *getFilesWithPrefix(const wstring &prefix);
 	virtual vector<FileEntry *> *getRegionFilesByDimension(unsigned int dimensionIndex);
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	virtual wstring getPlayerDataFilenameForLoad(const PlayerUID& pUID);
 	virtual wstring getPlayerDataFilenameForSave(const PlayerUID& pUID);
 	virtual vector<FileEntry *> *getValidPlayerDatFiles();

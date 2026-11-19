@@ -188,9 +188,6 @@ private:
 #endif //__PSVITA__
 	virtual void handleReload();
 
-#ifdef __ORBIS__
-	bool m_bErrorDialogRunning;
-#endif
 
 #if defined(_WINDOWS64)
 	CustomGenericBackground m_slimSkinBackground;

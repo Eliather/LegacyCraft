@@ -101,16 +101,6 @@ vector<Texture *> *TextureManager::createTextures(const wstring &filename, bool 
 	}
 	else
 	{
-#ifdef __PS3__
-		if(app.GetBootedFromDiscPatch())
-		{
-			const char *pchTextureName=wstringtofilename(filename);
-			char *pchUsrDir = app.GetBDUsrDirPath(pchTextureName);
-			wstring wstr (pchUsrDir, pchUsrDir+strlen(pchUsrDir));
-			drive= wstr + L"\\Common\\res\\TitleUpdate\\";
-		}
-		else
-#endif		
 		{
 			drive = Minecraft::GetInstance()->skins->getDefault()->getPath(true);
 		}

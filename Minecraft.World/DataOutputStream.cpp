@@ -257,7 +257,7 @@ void DataOutputStream::writeUTF(const wstring& str)
 // 4J Added
 void DataOutputStream::writePlayerUID(PlayerUID player)
 {
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 	for(int idPos=0;idPos<sizeof(PlayerUID); idPos++)
 		writeByte(((char*)&player)[idPos]);
 #elif defined(_DURANGO)

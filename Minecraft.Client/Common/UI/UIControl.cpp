@@ -50,6 +50,11 @@ void UIControl::UpdateControl()
 	IggyValueGetF64RS( getIggyValuePath() , m_nameYPos , NULL , &fy ); 
 	IggyValueGetF64RS( getIggyValuePath() , m_nameWidth , NULL , &fwidth ); 
 	IggyValueGetF64RS( getIggyValuePath() , m_nameHeight , NULL , &fheight );
+	rrbool bVisible = m_isVisible;
+	if(IggyValueGetBooleanRS( getIggyValuePath(), m_nameVisible, NULL, &bVisible ) == IGGY_RESULT_SUCCESS)
+	{
+		m_isVisible = (bVisible != 0);
+	}
 	m_x = (S32)fx;
 	m_y = (S32)fy;
 	m_width = (S32)Math::round(fwidth);

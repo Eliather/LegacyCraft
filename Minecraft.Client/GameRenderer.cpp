@@ -1,5 +1,6 @@
 #include "stdafx.h"
 #include "GameRenderer.h"
+#include "ShaderManager.h"
 #include "ItemInHandRenderer.h"
 #include "LevelRenderer.h"
 #include "Frustum.h"
@@ -196,14 +197,8 @@ GameRenderer::GameRenderer(Minecraft *mc)
 		lightTexture[i] = mc->textures->getTexture(img);		// 4J - changed to one light texture per level to support split screen
 	}
 	delete img;
-#ifdef __PS3__
-	// we're using the RSX now to upload textures to vram, so we need the main ram textures allocated from io space
-	for(int i=0;i<NUM_LIGHT_TEXTURES;i++)
-		lightPixels[i] = intArray((int*)RenderManager.allocIOMem(16*16*sizeof(int)), 16*16);
-#else
 	for(int i=0;i<NUM_LIGHT_TEXTURES;i++)
 		lightPixels[i] = intArray(16*16);
-#endif
 
 #ifdef MULTITHREAD_ENABLE
 	m_updateEvents  = new C4JThread::EventArray(eUpdateEventCount, C4JThread::EventArray::e_modeAutoClear);
@@ -211,9 +206,6 @@ GameRenderer::GameRenderer(Minecraft *mc)
 
 	InitializeCriticalSection(&m_csDeleteStack);
 	m_updateThread = new C4JThread(runUpdate, NULL, "Chunk update");
-#ifdef __PS3__
-	m_updateThread->SetPriority(THREAD_PRIORITY_ABOVE_NORMAL);
-#endif// __PS3__
 	m_updateThread->SetProcessor(CPU_CORE_CHUNK_UPDATE);
 	m_updateThread->Run();
 #endif
@@ -1013,7 +1005,7 @@ void GameRenderer::updateLightTexture(float a)
 
 #if ( defined _DURANGO || defined _WIN64 || __PSVITA__ )
 			lightPixels[j][i] = a << 24 | b << 16 | g << 8 | r;
-#elif ( defined _XBOX || defined __ORBIS__ )
+#elif defined(_XBOX)
 			lightPixels[j][i] = a << 24 | r << 16 | g << 8 | b;
 #else
 			lightPixels[j][i] = r << 24 | g << 16 | b << 8 | a;
@@ -1402,6 +1394,65 @@ void GameRenderer::renderLevel(float a, __int64 until)
 	double yOff = cameraEntity->yOld + (cameraEntity->y - cameraEntity->yOld) * a;
 	double zOff = cameraEntity->zOld + (cameraEntity->z - cameraEntity->zOld) * a;
 
+#ifdef _WINDOWS64
+	if (mc->level != NULL)
+	{
+		ShaderManager::Initialize();
+		C4JShaderFrameParams sp = {};
+		const float sunAngle = mc->level->getSunAngle(a);
+		const float sunX = -sinf(sunAngle);
+		const float sunY =  cosf(sunAngle);
+		const float sunZ =  0.22f;
+		const float sunLen = sqrtf(sunX * sunX + sunY * sunY + sunZ * sunZ);
+		const float invSunLen = (sunLen > 1e-4f) ? (1.0f / sunLen) : 1.0f;
+		const float dayFactor = (sunY > 0.0f) ? (sunY * invSunLen) : 0.0f;
+		const float dirSign = (sunY >= 0.0f) ? 1.0f : -1.0f;
+		/* Pre-normalized world-space sun/moon direction (camera-independent) */
+		sp.sunDir[0] = (sunX * dirSign) * invSunLen;
+		sp.sunDir[1] = (sunY * dirSign) * invSunLen;
+		sp.sunDir[2] = (sunZ * dirSign) * invSunLen;
+		sp.sunDir[3] = dayFactor;
+
+		static __int64 s_shaderStartMs = 0;
+		__int64 nowMs = System::currentTimeMillis();
+		if (s_shaderStartMs == 0) s_shaderStartMs = nowMs;
+		const float timeSec = (float)(nowMs - s_shaderStartMs) * 0.001f;
+		sp.cameraPos[0] = (float)xOff;
+		sp.cameraPos[1] = (float)yOff;
+		sp.cameraPos[2] = (float)zOff;
+		sp.cameraPos[3] = timeSec;
+
+		Vec3 *skyCol = mc->level->getSkyColor(cameraEntity, a);
+		sp.skyColor[0] = skyCol ? (float)skyCol->x : 0.5f;
+		sp.skyColor[1] = skyCol ? (float)skyCol->y : 0.7f;
+		sp.skyColor[2] = skyCol ? (float)skyCol->z : 1.0f;
+		sp.skyColor[3] = mc->level->getRainLevel(a);
+
+		sp.fogColor[0] = fr;
+		sp.fogColor[1] = fg;
+		sp.fogColor[2] = fb;
+		sp.fogColor[3] = mc->level->getThunderLevel(a);
+
+		sp.worldMeta[0] = sunAngle;
+		sp.worldMeta[1] = (float)(mc->level->getTime() % 24000);
+		sp.worldMeta[2] = (mc->level->dimension != NULL) ? (float)mc->level->dimension->id : 0.0f;
+		sp.worldMeta[3] = 1.0f; /* inWorldPass = true */
+
+		sp.waterTint[0] = 0.25f;
+		sp.waterTint[1] = 0.55f;
+		sp.waterTint[2] = 0.92f;
+		sp.waterTint[3] = 0.0f;
+
+		const float torchFlicker = 0.32f * (1.0f + 0.025f * sinf(timeSec * 5.3f) * sinf(timeSec * 3.1f));
+		sp.torchTint[0] = 1.00f;
+		sp.torchTint[1] = 0.74f;
+		sp.torchTint[2] = 0.42f;
+		sp.torchTint[3] = torchFlicker;
+
+		ShaderManager::UpdateWorldFrameParams(sp);
+	}
+#endif
+
 	for (int i = 0; i < 2; i++)
 	{
 		const bool captureWorldOnlyThisFrame = app.ShouldCaptureSaveThumbnailFromWorldFrame(mc->player->GetXboxPad());
@@ -1636,10 +1687,16 @@ void GameRenderer::renderLevel(float a, __int64 until)
 
 		if (!mc->options->anaglyph3d)
 		{
+#ifdef _WINDOWS64
+			ShaderManager::SetInWorldPass(false);
+#endif
 			return;
 		}
 	}
 	glColorMask(true, true, true, false);
+#ifdef _WINDOWS64
+	ShaderManager::SetInWorldPass(false);
+#endif
 }
 
 void GameRenderer::tickRain()
@@ -1922,6 +1979,9 @@ void GameRenderer::renderSnowAndRain(float a)
 // 4J - added forceScale parameter
 void GameRenderer::setupGuiScreen(int forceScale /*=-1*/)
 {
+#ifdef _WINDOWS64
+	ShaderManager::SetInWorldPass(false);
+#endif
 	ScreenSizeCalculator ssc(mc->options, mc->width, mc->height, forceScale);
 
 	glClear(GL_DEPTH_BUFFER_BIT);

@@ -30,7 +30,7 @@ public:
 	virtual vector<FileEntry *> *getFilesWithPrefix(const wstring &prefix) = 0;
 	virtual vector<FileEntry *> *getRegionFilesByDimension(unsigned int dimensionIndex) = 0;
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	virtual wstring getPlayerDataFilenameForLoad(const PlayerUID& pUID) = 0;
 	virtual wstring getPlayerDataFilenameForSave(const PlayerUID& pUID) = 0;
 	virtual vector<FileEntry *> *getValidPlayerDatFiles() = 0;

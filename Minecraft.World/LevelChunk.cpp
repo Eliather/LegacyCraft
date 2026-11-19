@@ -16,9 +16,6 @@
 #include "..\Minecraft.Client\ServerChunkCache.h"
 #include "..\Minecraft.Client\GameRenderer.h"
 
-#ifdef __PS3__
-#include "C4JSpursJob.h"
-#endif //__PS3__
 
 
 #ifdef SHARING_ENABLED
@@ -1223,17 +1220,7 @@ void LevelChunk::removeEntity(shared_ptr<Entity> e, int yc)
 		entityBlocks[yc]->erase(it);
 		// 4J - we don't want storage creeping up here as thinkgs move round the world accumulating up spare space
 		MemSect(31);
-#ifdef __PS3__
-		// MGH - have to sort this C++11 code
-		static bool bShowMsg = true;
-		if(bShowMsg)
-		{ 
-			app.DebugPrintf("Need to add C++11 shrink_to_fit for PS3\n");
-			bShowMsg = false;
-		}
-#else
 		entityBlocks[yc]->shrink_to_fit();
-#endif
 		MemSect(0);
 	}
 

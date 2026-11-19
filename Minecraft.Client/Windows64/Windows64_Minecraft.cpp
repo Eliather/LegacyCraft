@@ -19,6 +19,7 @@
 #include "..\..\Minecraft.World\Level.h"
 #include "..\..\Minecraft.World\net.minecraft.world.level.tile.h"
 #include "..\UserData_Info.h"
+#include "..\ShaderManager.h"
 
 #include "..\ClientConnection.h"
 #include "..\User.h"
@@ -1104,6 +1105,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	app.InitGameSettings();
 	UserData_Info::EnsureLoaded();
+	ShaderManager::Initialize();
 	if(pMinecraft != NULL && pMinecraft->options != NULL)
 	{
 		const int renderDistance = (int)UserData_Info::GetRenderDistance();

@@ -5,9 +5,6 @@
 #include "..\Minecraft.World\JavaIntHash.h"
 #include "..\Minecraft.World\Level.h"
 #include <xmcore.h>
-#ifdef __PS3__
-#include "C4JSpursJob.h"
-#endif
 class MultiPlayerLevel;
 class Textures;
 class Chunk;
@@ -47,10 +44,6 @@ public:
 	static const int MAX_COMMANDBUFFER_ALLOCATIONS = 512 * 1024 * 1024;		// 4J - added
 #elif defined _WINDOWS64
 	static const int MAX_COMMANDBUFFER_ALLOCATIONS = 1024 * 1024 * 1024;		// Windows64
-#elif defined __ORBIS__
-	static const int MAX_COMMANDBUFFER_ALLOCATIONS = 448 * 1024 * 1024;		// 4J - added - hard limit is 512 so giving a lot of headroom here for fragmentation (have seen 16MB lost to fragmentation in multiplayer crash dump before)
-#elif defined __PS3__
-	static const int MAX_COMMANDBUFFER_ALLOCATIONS = 110 * 1024 * 1024;		// 4J - added
 #else
 	static const int MAX_COMMANDBUFFER_ALLOCATIONS = 55 * 1024 * 1024;		// 4J - added
 #endif
@@ -98,13 +91,6 @@ public:
 	void tileLightChanged(int x, int y, int z);
 	void setTilesDirty(int x0, int y0, int z0, int x1, int y1, int z1, Level *level);	// 4J - added level param
 
-#ifdef __PS3__
-	void cull_SPU(int playerIndex, Culler *culler, float a);
-	void waitForCull_SPU();
-	C4JSpursJobQueue::Port* m_jobPort_CullSPU;
-	C4JSpursJobQueue::Port* m_jobPort_FindNearestChunk;
-	bool	m_bSPUCullStarted[4];
-#endif // __PS3__
 	void cull(Culler *culler, float a);
 	void playStreamingMusic(const wstring& name, int x, int y, int z);
 	void playSound(int iSound, double x, double y, double z, float volume, float pitch, float fSoundClipDist=16.0f);

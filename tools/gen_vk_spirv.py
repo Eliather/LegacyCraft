@@ -74,6 +74,8 @@ OP_FORD_GREATER_EQUAL = 190
 OP_SHIFT_RIGHT_LOGICAL = 194
 OP_BITWISE_XOR = 198
 OP_BITWISE_AND = 199
+OP_DPDX = 207
+OP_DPDY = 208
 OP_SELECTION_MERGE = 247
 OP_LABEL = 248
 OP_BRANCH = 249
@@ -83,13 +85,18 @@ OP_RETURN = 253
 
 # GLSL.std.450 extinst opcodes
 GLSL_FABS = 4
+GLSL_SIN = 13
+GLSL_COS = 14
+GLSL_POW = 26
 GLSL_EXP = 27
 GLSL_SQRT = 31
 GLSL_FMIN = 37
 GLSL_FMAX = 40
 GLSL_FCLAMP = 43
 GLSL_FMIX = 46
+GLSL_STEP = 48
 GLSL_LENGTH = 66
+GLSL_CROSS = 68
 GLSL_NORMALIZE = 69
 
 # Storage classes
@@ -165,6 +172,7 @@ class SpvModule:
         self.t_vec4 = self.decl_type(OP_TYPE_VECTOR, self.t_f32, 4)
         self.t_ivec4 = self.decl_type(OP_TYPE_VECTOR, self.t_i32, 4)
         self.t_uvec4 = self.decl_type(OP_TYPE_VECTOR, self.t_u32, 4)
+        self.t_bvec3 = self.decl_type(OP_TYPE_VECTOR, self.t_bool, 3)
         self.t_mat4 = self.decl_type(OP_TYPE_MATRIX, self.t_vec4, 4)
         self.t_fn_void = self.decl_type(OP_TYPE_FUNCTION, self.t_void)
 
@@ -451,6 +459,7 @@ def gen_mc_std_vert():
     out_lightuv = m.add_io_var(SC_OUTPUT, m.t_vec2, location=1)
     out_fogdist = m.add_io_var(SC_OUTPUT, m.t_f32,  location=2)
     out_col     = m.add_io_var(SC_OUTPUT, m.t_vec4, location=3)
+    out_viewpos = m.add_io_var(SC_OUTPUT, m.t_vec3, location=4)
 
     v_col_var = m.local_var(m.t_vec4)
     v_uv_var = m.local_var(m.t_vec4)
@@ -477,6 +486,7 @@ def gen_mc_std_vert():
     mv = m.ubo_load(ubo, m.t_mat4, 1)
     view_pos = m.op(OP_MATRIX_TIMES_VECTOR, m.t_vec4, mv, pos4)
     view_xyz = m.shuffle(m.t_vec3, view_pos, view_pos, 0, 1, 2)
+    m.store(out_viewpos, view_xyz)
     fog_d = m.glsl(GLSL_LENGTH, m.t_f32, view_xyz)
     m.store(out_fogdist, fog_d)
 
@@ -597,6 +607,7 @@ def gen_mc_comp_vert():
     out_lightuv = m.add_io_var(SC_OUTPUT, m.t_vec2, location=1)
     out_fogdist = m.add_io_var(SC_OUTPUT, m.t_f32,  location=2)
     out_col     = m.add_io_var(SC_OUTPUT, m.t_vec4, location=3)
+    out_viewpos = m.add_io_var(SC_OUTPUT, m.t_vec3, location=4)
 
     m.begin_main()
     a = m.load(m.t_ivec4, in_a)
@@ -618,7 +629,9 @@ def gen_mc_comp_vert():
 
     mv = m.ubo_load(ubo, m.t_mat4, 1)
     vp = m.op(OP_MATRIX_TIMES_VECTOR, m.t_vec4, mv, pos4)
-    m.store(out_fogdist, m.glsl(GLSL_LENGTH, m.t_f32, m.shuffle(m.t_vec3, vp, vp, 0, 1, 2)))
+    vp_xyz = m.shuffle(m.t_vec3, vp, vp, 0, 1, 2)
+    m.store(out_viewpos, vp_xyz)
+    m.store(out_fogdist, m.glsl(GLSL_LENGTH, m.t_f32, vp_xyz))
 
     inv8192 = m.const_f32(1.0 / 8192.0)
     ux = m.op(OP_FMUL, m.t_f32, m.op(OP_CONVERT_STOF, m.t_f32, m.extract(m.t_i32, b, 0)), inv8192)
@@ -662,6 +675,13 @@ def gen_mc_world_frag():
         (m.t_f32,  56, None),  # 8: u_FogFar
         (m.t_f32,  60, None),  # 9: u_FogDensity
         (m.t_i32,  64, None),  # 10: u_UseProjection
+        (m.t_vec4, 80, None),  # 11: u_SunDir
+        (m.t_vec4, 96, None),  # 12: u_CameraPos
+        (m.t_vec4, 112, None), # 13: u_SkyColor
+        (m.t_vec4, 128, None), # 14: u_ShaderFogColor
+        (m.t_vec4, 144, None), # 15: u_WorldMeta
+        (m.t_vec4, 160, None), # 16: u_WaterTint
+        (m.t_vec4, 176, None), # 17: u_TorchTint
     ]
     ps_ubo, _ = m.add_uniform_struct(ubo_members, 0, 1)
     tex0 = m.add_sampler2d(0, 2)
@@ -671,11 +691,13 @@ def gen_mc_world_frag():
     in_lightuv = m.add_io_var(SC_INPUT, m.t_vec2, location=1)
     in_fogdist = m.add_io_var(SC_INPUT, m.t_f32,  location=2)
     in_col     = m.add_io_var(SC_INPUT, m.t_vec4, location=3)
+    in_viewpos = m.add_io_var(SC_INPUT, m.t_vec3, location=4)
     out_color  = m.add_io_var(SC_OUTPUT, m.t_vec4, location=0)
 
     col_var = m.local_var(m.t_vec4)
     pass_var = m.local_var(m.t_bool)
     fog_var = m.local_var(m.t_f32)
+    lit_var = m.local_var(m.t_vec3)
 
     m.begin_main()
     state_col = m.ubo_load(ps_ubo, m.t_vec4, 0)
@@ -736,6 +758,134 @@ def gen_mc_world_frag():
         m.emit_if(fail_cond, do_kill)
         return False
     m.emit_if(not_always, do_alpha_test)
+
+    # Default Enhanced Shader Pass (active when u_WaterTint.w > 0.5 && u_WorldMeta.w > 0.5 && hasLightmap)
+    u_sundir   = m.ubo_load(ps_ubo, m.t_vec4, 11)
+    u_campos   = m.ubo_load(ps_ubo, m.t_vec4, 12)
+    u_skycol   = m.ubo_load(ps_ubo, m.t_vec4, 13)
+    u_wmeta    = m.ubo_load(ps_ubo, m.t_vec4, 15)
+    u_watert   = m.ubo_load(ps_ubo, m.t_vec4, 16)
+    u_torcht   = m.ubo_load(ps_ubo, m.t_vec4, 17)
+
+    sh_mode_on = m.op(OP_FORD_GREATER_THAN, m.t_bool, m.extract(m.t_f32, u_watert, 3), m.const_f32(0.5))
+    in_world   = m.op(OP_FORD_GREATER_THAN, m.t_bool, m.extract(m.t_f32, u_wmeta, 3), m.const_f32(0.5))
+    sh_on = m.op(OP_LOGICAL_AND, m.t_bool, m.op(OP_LOGICAL_AND, m.t_bool, sh_mode_on, in_world), has_lm)
+    def apply_default_shader():
+        z0 = m.const_f32(0.0)
+        o1 = m.const_f32(1.0)
+        shader_active = o1
+        v3_one = m.const_vec(m.t_vec3, [o1, o1, o1])
+        v3_zero = m.const_vec(m.t_vec3, [z0, z0, z0])
+        luv = m.load(m.t_vec2, in_lightuv)
+        inv_range = m.const_f32(1.0 / 0.9375)
+        bias_l = m.const_f32(0.03125)
+        bl = m.glsl(GLSL_FCLAMP, m.t_f32, m.op(OP_FMUL, m.t_f32, m.op(OP_FSUB, m.t_f32, m.extract(m.t_f32, luv, 0), bias_l), inv_range), z0, o1)
+        sl = m.glsl(GLSL_FCLAMP, m.t_f32, m.op(OP_FMUL, m.t_f32, m.op(OP_FSUB, m.t_f32, m.extract(m.t_f32, luv, 1), bias_l), inv_range), z0, o1)
+        day_f = m.glsl(GLSL_FCLAMP, m.t_f32, m.extract(m.t_f32, u_sundir, 3), z0, o1)
+        rain_l = m.glsl(GLSL_FCLAMP, m.t_f32, m.extract(m.t_f32, u_skycol, 3), z0, o1)
+        t_sec = m.extract(m.t_f32, u_campos, 3)
+
+        vpos = m.load(m.t_vec3, in_viewpos)
+        dpdx = m.op(OP_DPDX, m.t_vec3, vpos)
+        dpdy = m.op(OP_DPDY, m.t_vec3, vpos)
+        cr = m.glsl(GLSL_CROSS, m.t_vec3, dpdx, dpdy)
+        cr_len = m.glsl(GLSL_LENGTH, m.t_f32, cr)
+        up_def = m.const_vec(m.t_vec3, [z0, o1, z0])
+        cr_safe = m.op(OP_VECTOR_TIMES_SCALAR, m.t_vec3, cr, m.op(OP_FDIV, m.t_f32, o1, m.glsl(GLSL_FMAX, m.t_f32, cr_len, m.const_f32(1e-5))))
+        n_ok = m.op(OP_FORD_GREATER_THAN, m.t_bool, cr_len, m.const_f32(1e-5))
+        surf_n0 = m.op(OP_SELECT, m.t_vec3, m.construct(m.t_bvec3, n_ok, n_ok, n_ok), cr_safe, up_def)
+
+        neg_vpos = m.op(OP_FADD, m.t_vec3, m.op(OP_FNEGATE, m.t_vec3, vpos), m.const_vec(m.t_vec3, [z0, z0, m.const_f32(1e-5)]))
+        vdir = m.glsl(GLSL_NORMALIZE, m.t_vec3, neg_vpos)
+        flip_n = m.op(OP_FORD_LESS_THAN, m.t_bool, m.op(OP_DOT, m.t_f32, surf_n0, vdir), z0)
+        surf_n = m.op(OP_SELECT, m.t_vec3, m.construct(m.t_bvec3, flip_n, flip_n, flip_n), m.op(OP_FNEGATE, m.t_vec3, surf_n0), surf_n0)
+
+        sun_v = m.glsl(GLSL_NORMALIZE, m.t_vec3, m.shuffle(m.t_vec3, u_sundir, u_sundir, 0, 1, 2))
+        ndotl = m.glsl(GLSL_FCLAMP, m.t_f32, m.op(OP_DOT, m.t_f32, surf_n, sun_v), z0, o1)
+        sun_str = m.op(OP_FMUL, m.t_f32,
+            m.op(OP_FADD, m.t_f32, m.const_f32(0.35), m.op(OP_FMUL, m.t_f32, m.const_f32(0.65), day_f)),
+            m.op(OP_FSUB, m.t_f32, o1, m.op(OP_FMUL, m.t_f32, m.const_f32(0.55), rain_l)))
+
+        day_f3 = m.construct(m.t_vec3, day_f, day_f, day_f)
+        moon_tint = m.const_vec(m.t_vec3, [m.const_f32(0.72), m.const_f32(0.80), m.const_f32(1.00)])
+        warm_sun  = m.const_vec(m.t_vec3, [m.const_f32(1.12), m.const_f32(1.04), m.const_f32(0.92)])
+        sun_tint  = m.glsl(GLSL_FMIX, m.t_vec3, moon_tint, warm_sun, day_f3)
+
+        hemi_t = m.op(OP_FADD, m.t_f32, m.const_f32(0.5), m.op(OP_FMUL, m.t_f32, m.const_f32(0.5), m.extract(m.t_f32, surf_n, 1)))
+        hemi_t3 = m.construct(m.t_vec3, hemi_t, hemi_t, hemi_t)
+        hemi_lo = m.const_vec(m.t_vec3, [m.const_f32(0.78), m.const_f32(0.84), m.const_f32(0.96)])
+        hemi_hi = m.const_vec(m.t_vec3, [m.const_f32(1.06), m.const_f32(1.03), m.const_f32(0.98)])
+        hemi_tint = m.glsl(GLSL_FMIX, m.t_vec3, hemi_lo, hemi_hi, hemi_t3)
+
+        dir_hi = m.op(OP_VECTOR_TIMES_SCALAR, m.t_vec3, sun_tint, m.op(OP_FADD, m.t_f32, m.const_f32(0.88), m.op(OP_FMUL, m.t_f32, m.const_f32(0.34), ndotl)))
+        dir_lo = m.const_vec(m.t_vec3, [m.const_f32(0.86), m.const_f32(0.89), m.const_f32(0.96)])
+        sl_s = m.op(OP_FMUL, m.t_f32, sl, sun_str)
+        sl_s3 = m.construct(m.t_vec3, sl_s, sl_s, sl_s)
+        dir_boost = m.glsl(GLSL_FMIX, m.t_vec3, dir_lo, dir_hi, sl_s3)
+
+        phase = m.op(OP_FADD, m.t_f32,
+            m.op(OP_FMUL, m.t_f32, t_sec, m.const_f32(6.5)),
+            m.op(OP_FADD, m.t_f32,
+                m.op(OP_FMUL, m.t_f32, m.extract(m.t_f32, vpos, 0), m.const_f32(1.7)),
+                m.op(OP_FMUL, m.t_f32, m.extract(m.t_f32, vpos, 2), m.const_f32(1.3))))
+        flicker = m.op(OP_FADD, m.t_f32, m.const_f32(0.96), m.op(OP_FMUL, m.t_f32, m.const_f32(0.04), m.glsl(GLSL_SIN, m.t_f32, phase)))
+        bl_pow = m.glsl(GLSL_POW, m.t_f32, m.glsl(GLSL_FMAX, m.t_f32, bl, m.const_f32(1e-4)), m.const_f32(2.2))
+        torch_mask = m.op(OP_FMUL, m.t_f32, m.op(OP_FMUL, m.t_f32, bl_pow, m.extract(m.t_f32, u_torcht, 3)), flicker)
+
+        c4 = m.load(m.t_vec4, col_var)
+        crgb = m.shuffle(m.t_vec3, c4, c4, 0, 1, 2)
+        sa3 = m.construct(m.t_vec3, shader_active, shader_active, shader_active)
+        dh = m.op(OP_FMUL, m.t_vec3, dir_boost, hemi_tint)
+        lit0 = m.op(OP_FMUL, m.t_vec3, crgb, m.glsl(GLSL_FMIX, m.t_vec3, v3_one, dh, sa3))
+        torch_add = m.op(OP_VECTOR_TIMES_SCALAR, m.t_vec3,
+            m.op(OP_FMUL, m.t_vec3, crgb, m.shuffle(m.t_vec3, u_torcht, u_torcht, 0, 1, 2)),
+            m.op(OP_FMUL, m.t_f32, torch_mask, m.op(OP_FMUL, m.t_f32, m.const_f32(0.55), shader_active)))
+        m.store(lit_var, m.op(OP_FADD, m.t_vec3, lit0, torch_add))
+
+        ca = m.extract(m.t_f32, c4, 3)
+        cr_c = m.extract(m.t_f32, c4, 0)
+        cb_c = m.extract(m.t_f32, c4, 2)
+        is_water = m.op(OP_LOGICAL_AND, m.t_bool,
+            m.op(OP_LOGICAL_AND, m.t_bool,
+                m.op(OP_FORD_GREATER_EQUAL, m.t_bool, ca, m.const_f32(0.10)),
+                m.op(OP_FORD_LESS_EQUAL, m.t_bool, ca, m.const_f32(0.92))),
+            m.op(OP_FORD_GREATER_THAN, m.t_bool, cb_c, m.op(OP_FADD, m.t_f32, cr_c, m.const_f32(0.05))))
+        def do_water():
+            ndotv = m.glsl(GLSL_FCLAMP, m.t_f32, m.op(OP_DOT, m.t_f32, surf_n, vdir), z0, o1)
+            fres = m.glsl(GLSL_POW, m.t_f32, m.glsl(GLSL_FMAX, m.t_f32, m.op(OP_FSUB, m.t_f32, o1, ndotv), m.const_f32(1e-4)), m.const_f32(3.0))
+            half_v = m.glsl(GLSL_NORMALIZE, m.t_vec3, m.op(OP_FADD, m.t_vec3, sun_v, vdir))
+            wx = m.glsl(GLSL_SIN, m.t_f32, m.op(OP_FADD, m.t_f32, m.op(OP_FMUL, m.t_f32, m.extract(m.t_f32, vpos, 0), m.const_f32(2.4)), m.op(OP_FMUL, m.t_f32, t_sec, m.const_f32(2.6))))
+            wz = m.glsl(GLSL_COS, m.t_f32, m.op(OP_FSUB, m.t_f32, m.op(OP_FMUL, m.t_f32, m.extract(m.t_f32, vpos, 2), m.const_f32(2.4)), m.op(OP_FMUL, m.t_f32, t_sec, m.const_f32(2.1))))
+            wave = m.op(OP_FADD, m.t_f32, m.const_f32(0.5), m.op(OP_FMUL, m.t_f32, m.const_f32(0.5), m.op(OP_FMUL, m.t_f32, wx, wz)))
+            ndoth = m.glsl(GLSL_FCLAMP, m.t_f32, m.op(OP_DOT, m.t_f32, surf_n, half_v), z0, o1)
+            spec_p = m.glsl(GLSL_POW, m.t_f32, m.glsl(GLSL_FMAX, m.t_f32, ndoth, m.const_f32(1e-4)), m.const_f32(28.0))
+            spec = m.op(OP_FMUL, m.t_f32, spec_p, m.op(OP_FMUL, m.t_f32, m.op(OP_FADD, m.t_f32, m.const_f32(0.55), m.op(OP_FMUL, m.t_f32, m.const_f32(0.45), wave)), sl_s))
+            cur_lit = m.load(m.t_vec3, lit_var)
+            tinted = m.op(OP_FMUL, m.t_vec3, cur_lit, m.shuffle(m.t_vec3, u_watert, u_watert, 0, 1, 2))
+            sky_refl = m.op(OP_VECTOR_TIMES_SCALAR, m.t_vec3, m.shuffle(m.t_vec3, u_skycol, u_skycol, 0, 1, 2), m.const_f32(1.15))
+            fm = m.op(OP_FMUL, m.t_f32, fres, m.op(OP_FMUL, m.t_f32, m.const_f32(0.42), sl))
+            fm3 = m.construct(m.t_vec3, fm, fm, fm)
+            w_lit = m.glsl(GLSL_FMIX, m.t_vec3, tinted, sky_refl, fm3)
+            w_lit = m.op(OP_FADD, m.t_vec3, w_lit, m.op(OP_VECTOR_TIMES_SCALAR, m.t_vec3, sun_tint, m.op(OP_FMUL, m.t_f32, spec, m.const_f32(0.65))))
+            m.store(lit_var, w_lit)
+            return False
+        m.emit_if(is_water, do_water)
+
+        # ACES-lite filmic tone mapping
+        lit_f = m.load(m.t_vec3, lit_var)
+        x = m.op(OP_VECTOR_TIMES_SCALAR, m.t_vec3, lit_f, m.const_f32(1.08))
+        c251 = m.const_f32(2.51); c003 = m.const_vec(m.t_vec3, [m.const_f32(0.03)] * 3)
+        c243 = m.const_f32(2.43); c059 = m.const_vec(m.t_vec3, [m.const_f32(0.59)] * 3)
+        c014 = m.const_vec(m.t_vec3, [m.const_f32(0.14)] * 3)
+        num = m.op(OP_FMUL, m.t_vec3, x, m.op(OP_FADD, m.t_vec3, m.op(OP_VECTOR_TIMES_SCALAR, m.t_vec3, x, c251), c003))
+        den = m.op(OP_FADD, m.t_vec3, m.op(OP_FMUL, m.t_vec3, x, m.op(OP_FADD, m.t_vec3, m.op(OP_VECTOR_TIMES_SCALAR, m.t_vec3, x, c243), c059)), c014)
+        mapped = m.glsl(GLSL_FCLAMP, m.t_vec3, m.op(OP_FDIV, m.t_vec3, num, den), v3_zero, v3_one)
+        t45 = m.const_vec(m.t_vec3, [m.const_f32(0.45)] * 3)
+        blended = m.glsl(GLSL_FMIX, m.t_vec3, lit_f, mapped, t45)
+        out_rgb = m.glsl(GLSL_FMIX, m.t_vec3, crgb, blended, sa3)
+        m.store(col_var, m.construct(m.t_vec4, m.extract(m.t_f32, out_rgb, 0), m.extract(m.t_f32, out_rgb, 1), m.extract(m.t_f32, out_rgb, 2), ca))
+        return False
+    m.emit_if(sh_on, apply_default_shader)
 
     # Fog
     fog_col4 = m.ubo_load(ps_ubo, m.t_vec4, 5)

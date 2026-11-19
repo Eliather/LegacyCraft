@@ -35,9 +35,7 @@ SignTileEntity::SignTileEntity() : TileEntity()
 SignTileEntity::~SignTileEntity()
 {
 	// TODO ORBIS_STUBBED;
-#ifndef __ORBIS__
 	// 4J-PB - we don't need to verify strings anymore - InputManager.CancelQueuedVerifyStrings(&SignTileEntity::StringVerifyCallback,(LPVOID)this);
-#endif
 }
 
 void SignTileEntity::save(CompoundTag *tag) 
@@ -125,9 +123,6 @@ void SignTileEntity::setChanged()
 			}
 		}
 		// at this point, we can ask the online string verifier if our sign text is ok
-#ifdef __ORBIS__
-			m_bVerified=true;
-#else
 
 		if(!InputManager.VerifyStrings((WCHAR**)&wcMessages,MAX_SIGN_LINES,&SignTileEntity::StringVerifyCallback,(LPVOID)this))
 		{
@@ -138,7 +133,6 @@ void SignTileEntity::setChanged()
 		{
 			delete [] wcMessages[i];
 		}
-#endif
 	}
 	else
 	{

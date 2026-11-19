@@ -83,7 +83,7 @@ int IUIScene_PauseMenu::ExitGameSaveDialogReturned(void *pParam,int iPad,C4JStor
 			}
 			else
 			{
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 				StorageManager.SetSaveDisabled(false);
 #endif
 				MinecraftServer::getInstance()->setSaveOnExit( true );
@@ -118,7 +118,7 @@ int IUIScene_PauseMenu::ExitGameAndSaveReturned(void *pParam,int iPad,C4JStorage
 		//INT saveOrCheckpointId = 0;
 		//bool validSave = StorageManager.GetSaveUniqueNumber(&saveOrCheckpointId);
 		//SentientManager.RecordLevelSaveOrCheckpoint(ProfileManager.GetPrimaryPad(), saveOrCheckpointId);
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 		StorageManager.SetSaveDisabled(false);
 #endif
 		scene->SetIgnoreInput(true);
@@ -159,7 +159,7 @@ int IUIScene_PauseMenu::ExitGameDeclineSaveReturned(void *pParam,int iPad,C4JSto
 	// results switched for this dialog
 	if(result==C4JStorage::EMessage_ResultDecline) 
 	{
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 		// Don't do this here, as it will still try and save some things even though it shouldn't!
 		//StorageManager.SetSaveDisabled(false);
 #endif
@@ -197,7 +197,7 @@ int IUIScene_PauseMenu::ExitGameDeclineSaveReturned(void *pParam,int iPad,C4JSto
 
 int IUIScene_PauseMenu::WarningTrialTexturePackReturned(void *pParam,int iPad,C4JStorage::EMessageResult result)
 {
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	if(result==C4JStorage::EMessage_ResultAccept)
 	{
 		if(!ProfileManager.IsSignedInLive(iPad))
@@ -237,14 +237,10 @@ int IUIScene_PauseMenu::WarningTrialTexturePackReturned(void *pParam,int iPad,C4
 					// find the info on the skin pack
 					// we have to retrieve the skuid from the store info, it can't be hardcoded since Sony may change it.
 					// So we assume the first sku for the product is the one we want
-#ifdef __ORBIS__
-					sprintf(chName,"%s",pSONYDLCInfo->chDLCKeyname);
-#else
 					sprintf(chName,"%s-%s",app.GetCommerceCategory(),pSONYDLCInfo->chDLCKeyname);
-#endif
 					app.GetDLCSkuIDFromProductList(chName,chSkuID);
 					// 4J-PB - need to check for an empty store
-#if defined __ORBIS__ || defined __PSVITA__ || defined __PS3__
+#if defined(__PSVITA__)
 					if(app.CheckForEmptyStore(iPad)==false)
 #endif
 					{					
@@ -362,7 +358,7 @@ int IUIScene_PauseMenu::SaveWorldThreadProc( LPVOID lpParameter )
 
 		if(!MinecraftServer::serverHalted() && !app.GetChangingSessionType() ) app.SetGameStarted(true);
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 		if(app.GetGameHostOption(eGameHostOption_DisableSaving)) StorageManager.SetSaveDisabled(true);
 #endif
 	}
@@ -423,16 +419,6 @@ void IUIScene_PauseMenu::_ExitWorld(LPVOID lpParameter)
 					exitReasonStringId = IDS_NO_USER_CREATED_CONTENT_PRIVILEGE_SINGLE_LOCAL;
 					exitReasonTitleId = IDS_CONNECTION_FAILED;
 					break;
-#if defined(__PS3__) || defined(__ORBIS__)
-				case DisconnectPacket::eDisconnect_ContentRestricted_AllLocal:
-					exitReasonStringId = IDS_CONTENT_RESTRICTION_MULTIPLAYER;
-					exitReasonTitleId = IDS_CONNECTION_FAILED;
-					break;
-				case DisconnectPacket::eDisconnect_ContentRestricted_Single_Local:
-					exitReasonStringId = IDS_CONTENT_RESTRICTION;
-					exitReasonTitleId = IDS_CONNECTION_FAILED;
-					break;
-#endif
 #ifdef _XBOX
 				case DisconnectPacket::eDisconnect_NoUGC_Remote:
 					exitReasonStringId = IDS_NO_USER_CREATED_CONTENT_PRIVILEGE_REMOTE;
@@ -445,12 +431,6 @@ void IUIScene_PauseMenu::_ExitWorld(LPVOID lpParameter)
 				case DisconnectPacket::eDisconnect_Quitting:
 					exitReasonStringId = IDS_DISCONNECTED_SERVER_QUIT;
 					break;
-#ifdef __ORBIS__
-				case DisconnectPacket::eDisconnect_NetworkError:
-					exitReasonStringId = IDS_ERROR_NETWORK_EXIT;
-					exitReasonTitleId = IDS_ERROR_NETWORK_TITLE;
-					break;
-#endif
 				case DisconnectPacket::eDisconnect_NoFriendsInGame:
 					exitReasonStringId = IDS_DISCONNECTED_NO_FRIENDS_IN_GAME;
 					exitReasonTitleId = IDS_CANTJOIN_TITLE;
@@ -482,7 +462,7 @@ void IUIScene_PauseMenu::_ExitWorld(LPVOID lpParameter)
 					break;
 #endif
 
-#if defined __ORBIS__ || defined __PS3__ || defined __PSVITA__
+#if defined(__PSVITA__)
 				case DisconnectPacket::eDisconnect_NATMismatch:
 					exitReasonStringId = IDS_DISCONNECTED_NAT_TYPE_MISMATCH;
 					exitReasonTitleId = IDS_CONNECTION_FAILED;
@@ -543,16 +523,6 @@ void IUIScene_PauseMenu::_ExitWorld(LPVOID lpParameter)
 				exitReasonStringId = IDS_NO_USER_CREATED_CONTENT_PRIVILEGE_SINGLE_LOCAL;
 				exitReasonTitleId = IDS_CONNECTION_FAILED;
 				break;
-#if defined(__PS3__) || defined(__ORBIS__)
-			case DisconnectPacket::eDisconnect_ContentRestricted_AllLocal:
-				exitReasonStringId = IDS_CONTENT_RESTRICTION_MULTIPLAYER;
-				exitReasonTitleId = IDS_CONNECTION_FAILED;
-				break;
-			case DisconnectPacket::eDisconnect_ContentRestricted_Single_Local:
-				exitReasonStringId = IDS_CONTENT_RESTRICTION;
-				exitReasonTitleId = IDS_CONNECTION_FAILED;
-				break;
-#endif
 #ifdef _XBOX
 			case DisconnectPacket::eDisconnect_NoUGC_Remote:
 				exitReasonStringId = IDS_NO_USER_CREATED_CONTENT_PRIVILEGE_REMOTE;
@@ -562,12 +532,6 @@ void IUIScene_PauseMenu::_ExitWorld(LPVOID lpParameter)
 			case DisconnectPacket::eDisconnect_Quitting:
 				exitReasonStringId = IDS_DISCONNECTED_SERVER_QUIT;
 				break;
-#ifdef __ORBIS__
-			case DisconnectPacket::eDisconnect_NetworkError:
-				exitReasonStringId = IDS_ERROR_NETWORK_EXIT;
-				exitReasonTitleId = IDS_ERROR_NETWORK_TITLE;
-				break;
-#endif
 			case DisconnectPacket::eDisconnect_NoMultiplayerPrivilegesJoin:
 				exitReasonStringId = IDS_NO_MULTIPLAYER_PRIVILEGE_JOIN_TEXT;
 				break;
@@ -583,7 +547,7 @@ void IUIScene_PauseMenu::_ExitWorld(LPVOID lpParameter)
 				exitReasonStringId = IDS_DISCONNECTED_SERVER_FULL;
 				exitReasonTitleId = IDS_CANTJOIN_TITLE;
 				break;
-#if defined __ORBIS__ || defined __PS3__ || defined __PSVITA__
+#if defined(__PSVITA__)
 			case DisconnectPacket::eDisconnect_NATMismatch:
 				exitReasonStringId = IDS_DISCONNECTED_NAT_TYPE_MISMATCH;
 				exitReasonTitleId = IDS_CONNECTION_FAILED;
@@ -628,7 +592,7 @@ void IUIScene_PauseMenu::_ExitWorld(LPVOID lpParameter)
 	app.SetChangingSessionType(false);
 	app.SetReallyChangingSessionType(false);
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 	// Make sure we don't think saving is disabled in the menus
 	StorageManager.SetSaveDisabled(false);
 #endif
@@ -640,7 +604,7 @@ int IUIScene_PauseMenu::SaveGameDialogReturned(void *pParam,int iPad,C4JStorage:
 	// results switched for this dialog
 	if(result==C4JStorage::EMessage_ResultDecline) 
 	{
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 		UINT uiIDA[2];
 		uiIDA[0]=IDS_CONFIRM_CANCEL;
 		uiIDA[1]=IDS_CONFIRM_OK;

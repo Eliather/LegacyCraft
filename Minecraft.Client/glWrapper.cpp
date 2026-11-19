@@ -277,14 +277,10 @@ void glTexParameteri(int target, int param, int value)
 
 void glPolygonOffset(float factor, float units)
 {
-#ifdef __PS3__
-	RenderManager.StateSetDepthSlopeAndBias(factor, units);
-#else
 	// DirectX specifies these offsets in z buffer 0 to 1 sort of range, whereas opengl seems to be in a 0 -> depth buffer size sort of range.
 	// The slope factor is quite possibly different too. Magic factor for now anyway.
 	const float magicFactor = 65536.0f;
 	RenderManager.StateSetDepthSlopeAndBias(factor / magicFactor, units / magicFactor);
-#endif
 }
 
 void glFogi(int param, int value)

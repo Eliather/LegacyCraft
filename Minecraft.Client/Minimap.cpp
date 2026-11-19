@@ -8,32 +8,16 @@
 #include "..\Minecraft.World\net.minecraft.world.level.saveddata.h"
 #include "..\Minecraft.World\net.minecraft.world.level.material.h"
 
-#ifdef __ORBIS__
-short Minimap::LUT[256];	// 4J added
-#else
 int Minimap::LUT[256];	// 4J added
-#endif
 bool Minimap::genLUT = true;		// 4J added
 
 Minimap::Minimap(Font *font, Options *options, Textures *textures, bool optimised)
 {
-#ifdef __PS3__
-	// we're using the RSX now to upload textures to vram, so we need the main ram textures allocated from io space
-	this->pixels = intArray((int*)RenderManager.allocIOMem(w*h*sizeof(int)), 16*16);
-
-#elif defined __ORBIS__
-	this->pixels = shortArray(w*h);
-#else
 	this->pixels = intArray(w*h);
-#endif
     this->options = options;
     this->font = font;
 	BufferedImage *img = new BufferedImage(w, h, BufferedImage::TYPE_INT_ARGB);
-#ifdef __ORBIS__
-	mapTexture = textures->getTexture(img, C4JRender::TEXTURE_FORMAT_RxGyBzAw5551, false );	// 4J - make sure we aren't mipmapping as we never set the data for mipmaps
-#else
     mapTexture = textures->getTexture(img, C4JRender::TEXTURE_FORMAT_RxGyBzAw, false );	// 4J - make sure we aren't mipmapping as we never set the data for mipmaps
-#endif
 	delete img;
     for (int i = 0; i < w * h; i++)
 	{
@@ -58,11 +42,7 @@ void Minimap::reloadColours()
 		if (i / 4 == 0)
 		{
 			// 4J - changed byte order to save having to reorder later
-#ifdef __ORBIS__
-			LUT[i] = 0;
-#else
 			LUT[i] = (((i + i / w) & 1) * 8 + 16);
-#endif
 			//pixels[i] = (((i + i / w) & 1) * 8 + 16) << 24;
 		}
 		else
@@ -83,9 +63,6 @@ void Minimap::reloadColours()
 			LUT[i] =  255 << 24 | b << 16 | g << 8 | r;
 #elif defined _XBOX
 			LUT[i] =  255 << 24 | r << 16 | g << 8 | b;
-#elif defined __ORBIS__
-			r >>= 3; g >>= 3; b >>= 3;
-			LUT[i] = 1 << 15 | ( r << 10 ) | ( g << 5 ) | b; 
 #else
 			LUT[i] =  r << 24 | g << 16 | b << 8 | 255;
 #endif

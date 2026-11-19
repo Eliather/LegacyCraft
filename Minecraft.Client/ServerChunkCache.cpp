@@ -240,9 +240,6 @@ LevelChunk *ServerChunkCache::create(int x, int z, bool asyncPostProcess)	// 4J 
 		}
     }
 
-#ifdef __PS3__
-	Sleep(1);
-#endif // __PS3__
     return chunk;
 
 }

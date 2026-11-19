@@ -195,9 +195,6 @@ UIScene_AbstractContainerMenu::UIScene_AbstractContainerMenu(int iPad, UILayer *
 	// in this scene, we override the press sound with our own for crafting success or fail
 	ui.OverrideSFX(m_iPad,ACTION_MENU_A,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_OK,true);
-#ifdef __ORBIS__
-	ui.OverrideSFX(m_iPad,ACTION_MENU_TOUCHPAD_PRESS,true);
-#endif
 	ui.OverrideSFX(m_iPad,ACTION_MENU_X,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_Y,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT_SCROLL,true);
@@ -234,9 +231,6 @@ void UIScene_AbstractContainerMenu::handleDestroy()
 
 	ui.OverrideSFX(m_iPad,ACTION_MENU_A,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_OK,false);
-#ifdef __ORBIS__
-	ui.OverrideSFX(m_iPad,ACTION_MENU_TOUCHPAD_PRESS,false);
-#endif
 	ui.OverrideSFX(m_iPad,ACTION_MENU_X,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_Y,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT_SCROLL,false);
@@ -292,17 +286,6 @@ void UIScene_AbstractContainerMenu::PlatformInitialize(int iPad, int startIndex)
 	m_fPanelMinY = fPanelY;
 	m_fPanelMaxY = fPanelY + fPanelHeight;
 
-#ifdef __ORBIS__
-	// we need to map the touchpad rectangle to the UI rectangle. While it works great for the creative menu, it is much too sensitive for the smaller menus.
-	//X coordinate of the touch point (0 to 1919)    
-	//Y coordinate of the touch point (0 to 941: DUALSHOCK®4 wireless controllers and the CUH-ZCT1J/CAP-ZCT1J/CAP-ZCT1U controllers for the PlayStation®4 development tool,    
-	//0 to 753: JDX-1000x series controllers for the PlayStation®4 development tool,)     
-	m_fTouchPadMulX=fPanelWidth/1919.0f;
-	m_fTouchPadMulY=fPanelHeight/941.0f;
-	m_fTouchPadDeadZoneX=15.0f*m_fTouchPadMulX;
-	m_fTouchPadDeadZoneY=15.0f*m_fTouchPadMulY;
-
-#endif
 
 	// 4J-PB - need to limit this in splitscreen
 	if(app.GetLocalPlayerCount()>1)

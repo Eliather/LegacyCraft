@@ -162,9 +162,6 @@ void UIScene_InGameInfoMenu::updateTooltips()
 		}
 	}
 	
-#if defined(__PS3__) || defined(__ORBIS__)
-	if(m_iPad == ProfileManager.GetPrimaryPad() ) ikeyY = IDS_TOOLTIPS_GAME_INVITES;
-#else
 	if(!m_buttonGameOptions.hasFocus())
 	{
 		// if the player is me, then view gamer profile
@@ -177,7 +174,6 @@ void UIScene_InGameInfoMenu::updateTooltips()
 			ikeyY = IDS_TOOLTIPS_VIEW_GAMERCARD;
 		}
 	}
-#endif
 	ui.SetTooltips( m_iPad, keyA,IDS_TOOLTIPS_BACK,keyX,ikeyY);
 }
 
@@ -346,31 +342,6 @@ void UIScene_InGameInfoMenu::handleInput(int iPad, int key, bool repeat, bool pr
 		}
 		break;
 	case ACTION_MENU_Y:
-#if defined(__PS3__) || defined(__ORBIS__)
-		if(pressed && iPad == ProfileManager.GetPrimaryPad())
-		{
-#ifdef __PS3__
-			// are we offline?
-			if(!ProfileManager.IsSignedInLive(iPad))
-			{
-				// get them to sign in to online
-				UINT uiIDA[2];
-				uiIDA[0]=IDS_PRO_NOTONLINE_ACCEPT;
-				uiIDA[1]=IDS_PRO_NOTONLINE_DECLINE;
-				ui.RequestMessageBox(IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, ProfileManager.GetPrimaryPad(),&UIScene_InGameInfoMenu::MustSignInReturnedPSN,this, app.GetStringTable());
-			}
-			else
-#endif
-			{
-#ifdef __ORBIS__
-				SQRNetworkManager_Orbis::RecvInviteGUI();
-#else // __PS3__
-				int ret = sceNpBasicRecvMessageCustom(SCE_NP_BASIC_MESSAGE_MAIN_TYPE_INVITE, SCE_NP_BASIC_RECV_MESSAGE_OPTIONS_INCLUDE_BOOTABLE, SYS_MEMORY_CONTAINER_ID_INVALID);
-				app.DebugPrintf("sceNpBasicRecvMessageCustom return %d ( %08x )\n", ret, ret);
-#endif 
-			}
-		}
-#else
 
 
 		if(pressed && m_playerList.hasFocus() && (m_playerList.getItemCount() > 0) && (m_playerList.getCurrentSelection() < m_playersCount) )
@@ -390,7 +361,6 @@ void UIScene_InGameInfoMenu::handleInput(int iPad, int key, bool repeat, bool pr
 			}
 		}
 
-#endif
 		break;
 	case ACTION_MENU_X:
 
@@ -406,9 +376,6 @@ void UIScene_InGameInfoMenu::handleInput(int iPad, int key, bool repeat, bool pr
 
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_UP:
 	case ACTION_MENU_DOWN:
 	case ACTION_MENU_PAGEUP:
@@ -566,18 +533,14 @@ int UIScene_InGameInfoMenu::KickPlayerReturned(void *pParam,int iPad,C4JStorage:
 	return 0;
 }
 
-#if defined __PS3__ || defined __PSVITA__
+#if defined(__PSVITA__)
 int UIScene_InGameInfoMenu::MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EMessageResult result)
 {
 	UIScene_InGameInfoMenu* pClass = (UIScene_InGameInfoMenu*)pParam;
 
 	if(result==C4JStorage::EMessage_ResultAccept) 
 	{
-#ifdef __PS3__
-		SQRNetworkManager_PS3::AttemptPSNSignIn(&UIScene_InGameInfoMenu::ViewInvites_SignInReturned, pClass);
-#else // __PSVITA__
 		SQRNetworkManager_Vita::AttemptPSNSignIn(&UIScene_InGameInfoMenu::ViewInvites_SignInReturned, pClass);
-#endif
 	}
 
 	return 0;
@@ -590,14 +553,7 @@ int UIScene_InGameInfoMenu::ViewInvites_SignInReturned(void *pParam,bool bContin
 		// Check if we're signed in to LIVE
 		if(ProfileManager.IsSignedInLive(iPad))
 		{
-#ifdef __ORBIS__
-			SQRNetworkManager_Orbis::RecvInviteGUI();
-#elif defined(__PS3__)
-			int ret = sceNpBasicRecvMessageCustom(SCE_NP_BASIC_MESSAGE_MAIN_TYPE_INVITE, SCE_NP_BASIC_RECV_MESSAGE_OPTIONS_INCLUDE_BOOTABLE, SYS_MEMORY_CONTAINER_ID_INVALID);
-			app.DebugPrintf("sceNpBasicRecvMessageCustom return %d ( %08x )\n", ret, ret);
-#else // __PSVITA__
 			PSVITA_STUBBED;
-#endif
 		}
 	}
 	return 0;

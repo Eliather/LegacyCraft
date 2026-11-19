@@ -6,7 +6,7 @@ using namespace std;
 #include "NetworkPlayerInterface.h"
 #ifdef _XBOX
 #include "..\..\Xbox\Network\PlatformNetworkManagerXbox.h"
-#elif defined __PS3__ || defined __ORBIS__ || defined __PSVITA__
+#elif defined(__PSVITA__)
 #include "..\..\Common\Network\Sony\PlatformNetworkManagerSony.h"
 #elif defined _DURANGO
 #include "..\..\Durango\Network\PlatformNetworkManagerDurango.h"
@@ -15,9 +15,6 @@ using namespace std;
 #endif
 #include "SessionInfo.h"
 
-#ifdef __ORBIS__
-#include "..\..\Orbis\Network\PsPlusUpsellWrapper_Orbis.h"
-#endif
 
 class ClientConnection;
 class Minecraft;
@@ -31,7 +28,7 @@ class CGameNetworkManager
 {
 #ifdef _XBOX
 	friend class CPlatformNetworkManagerXbox;
-#elif defined __PS3__ || defined __ORBIS__ || defined __PSVITA__
+#elif defined(__PSVITA__)
 	friend class CPlatformNetworkManagerSony;
 #elif defined _DURANGO
 	friend class CPlatformNetworkManagerDurango;
@@ -118,7 +115,7 @@ public:
 	static int		ServerThreadProc( void* lpParameter );
 	static int		ExitAndJoinFromInviteThreadProc( void* lpParam );
 
-#if (defined __PS3__) || (defined __ORBIS__) || (defined __PSVITA__) 
+#if defined(__PSVITA__)
 	static int		MustSignInReturned_0(void *pParam,int iPad,C4JStorage::EMessageResult result);
 	static int		PSNSignInReturned_0(void* pParam, bool bContinue, int iPad);
 
@@ -185,7 +182,7 @@ private:
 	void GameInviteReceived( int userIndex, const INVITE_INFO *pInviteInfo);
 	void HandleInviteWhenInMenus( int userIndex, const INVITE_INFO *pInviteInfo);
 	void AddLocalPlayerFailed(int idx, bool serverFull = false);
-#if defined __PS3__ || defined __PSVITA__ || defined __ORBIS__
+#if defined(__PSVITA__)
 	void HandleDisconnect(bool bLostRoomOnly,bool bPSNSignOut);
 #else
 	void HandleDisconnect(bool bLostRoomOnly);
@@ -212,15 +209,10 @@ private:
 	int GetJoiningReadyPercentage();
 	bool m_bLastDisconnectWasLostRoomOnly;
 	bool m_bFullSessionMessageOnNextSessionChange;
-#if defined __PS3__ || defined __PSVITA__ || defined __ORBIS__
+#if defined(__PSVITA__)
 	bool m_bSignedOutofPSN;
 #endif
 
-#ifdef __ORBIS__
-	PsPlusUpsellWrapper	*m_pUpsell;
-	INVITE_INFO			*m_pInviteInfo;
-	int					 m_iPlayerInvited;
-#endif
 
 public:
 #ifndef _XBOX
@@ -230,7 +222,3 @@ public:
 
 extern CGameNetworkManager g_NetworkManager;
 
-#ifdef __PS3__
-#undef __in
-#define __out
-#endif

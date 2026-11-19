@@ -116,6 +116,7 @@ IUIScene_CraftingMenu::IUIScene_CraftingMenu()
 
 	m_iDisplayDescription=DISPLAY_INVENTORY;
 	m_iIngredientsC=0;
+	m_bFilterCraftableOnly=false;
 }
 
 LPCWSTR IUIScene_CraftingMenu::GetGroupNameText(int iGroupType)
@@ -192,9 +193,6 @@ bool IUIScene_CraftingMenu::handleKeyDown(int iPad, int iAction, bool bRepeat)
 		bHandled = true;
 		break;
 	case ACTION_MENU_A:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		// Do some crafting!
 		if(m_pPlayer && m_pPlayer->inventory)
 		{	
@@ -832,6 +830,80 @@ void IUIScene_CraftingMenu::CheckRecipesAvailable()
 	int iIndex=0;
 	//RecipyList *recipes = ((Recipes *)Recipes::getInstance())->getRecipies();
 	Recipy::INGREDIENTS_REQUIRED *pRecipeIngredientsRequired=Recipes::getInstance()->getRecipeIngredientsArray();
+
+#ifdef _WINDOWS64
+	{
+		const int pad = getPad();
+		const bool craftAnything = (app.DebugSettingsOn() && (app.GetGameSettingsDebugMask(ProfileManager.GetPrimaryPad()) & (1L << eDebugSetting_CraftAnything)));
+
+		// 1. Within each H-slot column, put craftable variants first (and drop non-craftable if filter is active)
+		int colCount = 0;
+		while (colCount < m_iCraftablesMaxHSlotC && CanBeMadeA[colCount].iCount != 0)
+		{
+			++colCount;
+		}
+		for (int c = 0; c < colCount; ++c)
+		{
+			int sorted[m_iMaxVSlotC];
+			int outC = 0;
+			for (int r = 0; r < CanBeMadeA[c].iCount; ++r)
+			{
+				const int rid = CanBeMadeA[c].iRecipeA[r];
+				if (craftAnything || pRecipeIngredientsRequired[rid].bCanMake[pad])
+				{
+					sorted[outC++] = rid;
+				}
+			}
+			if (!m_bFilterCraftableOnly)
+			{
+				for (int r = 0; r < CanBeMadeA[c].iCount; ++r)
+				{
+					const int rid = CanBeMadeA[c].iRecipeA[r];
+					if (!craftAnything && !pRecipeIngredientsRequired[rid].bCanMake[pad])
+					{
+						sorted[outC++] = rid;
+					}
+				}
+			}
+			CanBeMadeA[c].iCount = outC;
+			for (int r = 0; r < outC; ++r)
+			{
+				CanBeMadeA[c].iRecipeA[r] = sorted[r];
+			}
+		}
+
+		// 2. Stable-sort columns: craftable columns first, then missing-material recommendations (or compact if filtered)
+		CANBEMADE reordered[m_iMaxHSlotC];
+		memset(reordered, 0, sizeof(reordered));
+		int outCols = 0;
+		for (int c = 0; c < colCount; ++c)
+		{
+			if (CanBeMadeA[c].iCount > 0 && (craftAnything || pRecipeIngredientsRequired[CanBeMadeA[c].iRecipeA[0]].bCanMake[pad]))
+			{
+				reordered[outCols++] = CanBeMadeA[c];
+			}
+		}
+		if (!m_bFilterCraftableOnly)
+		{
+			for (int c = 0; c < colCount; ++c)
+			{
+				if (CanBeMadeA[c].iCount > 0 && !craftAnything && !pRecipeIngredientsRequired[CanBeMadeA[c].iRecipeA[0]].bCanMake[pad])
+				{
+					reordered[outCols++] = CanBeMadeA[c];
+				}
+			}
+		}
+		memcpy(CanBeMadeA, reordered, sizeof(CANBEMADE) * m_iCraftablesMaxHSlotC);
+		if (outCols > 0 && m_iCurrentSlotHIndex >= outCols)
+		{
+			m_iCurrentSlotHIndex = 0;
+		}
+		else if (outCols == 0)
+		{
+			m_iCurrentSlotHIndex = 0;
+		}
+	}
+#endif
 
 	while((iIndex<m_iCraftablesMaxHSlotC) && CanBeMadeA[iIndex].iCount!=0)
 	{

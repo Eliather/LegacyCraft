@@ -59,7 +59,7 @@ void UIScene_JoinMenu::tick()
 
 		m_buttonListPlayers.init(eControl_GamePlayers);
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined __PSVITA__
+#if defined(__PSVITA__)
 		for( int i = 0; i < MINECRAFT_NET_MAX_PLAYERS; i++ )
 		{
 			if( m_selectedSession->data.players[i] != NULL )
@@ -282,9 +282,6 @@ void UIScene_JoinMenu::handleInput(int iPad, int key, bool repeat, bool pressed,
 		}
 		handled = true;
 		break;
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_UP:
 	case ACTION_MENU_DOWN:
 	case ACTION_MENU_PAGEUP:
@@ -433,19 +430,6 @@ void UIScene_JoinMenu::JoinGame(UIScene_JoinMenu* pClass)
 	// If this is an online game but not all players are signed in to Live, stop!
 	if (!isSignedInLive)
 	{
-#ifdef __ORBIS__
-		// Check if PSN is unavailable because of age restriction
-		int npAvailability = ProfileManager.getNPAvailability(iPadNotSignedInLive);
-		if (npAvailability == SCE_NP_ERROR_AGE_RESTRICTION)
-		{
-			pClass->m_bIgnoreInput = false;
-			// 4J Stu - This is a bit messy and is due to the library incorrectly returning false for IsSignedInLive if the npAvailability isn't SCE_OK
-			UINT uiIDA[1];
-			uiIDA[0]=IDS_OK;
-			ui.RequestMessageBox(IDS_ONLINE_SERVICE_TITLE, IDS_CONTENT_RESTRICTION, uiIDA, 1, iPadNotSignedInLive, NULL, NULL, app.GetStringTable());
-		}
-		else
-#endif
 		{
 			pClass->m_bIgnoreInput=false;
 			UINT uiIDA[1];
@@ -460,7 +444,7 @@ void UIScene_JoinMenu::JoinGame(UIScene_JoinMenu* pClass)
 	BOOL pccAllowed = TRUE;
 	BOOL pccFriendsAllowed = TRUE;
 
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	if(isSignedInLive)
 	{
 		ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),false,&noUGC,NULL,NULL);
@@ -499,7 +483,7 @@ void UIScene_JoinMenu::JoinGame(UIScene_JoinMenu* pClass)
 	}
 	else
 	{
-#if defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 		bool chatRestricted = false;
 		ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),false,&chatRestricted,NULL,NULL);
 		if(chatRestricted)

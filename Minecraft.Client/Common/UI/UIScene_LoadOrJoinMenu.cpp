@@ -21,11 +21,11 @@
 #include "..\..\TexturePackRepository.h"
 #include "..\..\TexturePack.h"
 #include "..\Network\SessionInfo.h"
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 #include "Common\Network\Sony\SonyHttp.h"
 #include "Common\Network\Sony\SonyRemoteStorage.h"
 #endif
-#if defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 #include <ces.h>
 #endif
 #ifdef __PSVITA__
@@ -1587,7 +1587,7 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
     m_controlJoinTimer.setVisible( true );
 
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
     m_spaceIndicatorSaves.init(L"",eControl_SpaceIndicator,0, (4LL *1024LL * 1024LL * 1024LL) );
 #elif defined(_WINDOWS64)
     m_spaceIndicatorSaves.init(L"",eControl_SpaceIndicator,0, (4LL *1024LL * 1024LL * 1024LL) );
@@ -1616,6 +1616,7 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
     m_bMultiplayerAllowed = ProfileManager.IsSignedInLive( m_iPad ) && ProfileManager.AllowedToPlayMultiplayer(m_iPad);
 #ifdef _WINDOWS64
 	m_bUsingWindows64DirectDiskSaves = false;
+	m_wasMouseLeftDown = false;
 #endif
 
 #ifdef _XBOX_ONE
@@ -1640,7 +1641,7 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
     }
 #endif
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__) || defined(_DURANGO)
+#if defined(__PSVITA__) || defined(_DURANGO)
     // Always clear the saves when we enter this menu
     StorageManager.ClearSavesInfo();
 #endif
@@ -1694,13 +1695,8 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
     for(unsigned int i = 0; i < app.GetDLCInfoTexturesOffersCount(); ++i)
     {
         bTexturePackAlreadyListed=false;
-#if defined(__PS3__) || defined(__ORBIS__)
-        char *pchDLCName=app.GetDLCInfoTextures(i);
-        pDLCInfo=app.GetDLCInfo(pchDLCName);
-#else
         ULONGLONG ull=app.GetDLCInfoTexturesFullOffer(i);
         pDLCInfo=app.GetDLCInfoForFullOfferID(ull);
-#endif
         for(unsigned int i = 0; i < texturePacksCount; ++i)
         {
             TexturePack *tp = pMinecraft->skins->getTexturePackByIndex(i);
@@ -1729,13 +1725,8 @@ UIScene_LoadOrJoinMenu::UIScene_LoadOrJoinMenu(int iPad, void *initData, UILayer
         for(unsigned int i = 0; i < app.GetDLCInfoTexturesOffersCount(); ++i)
         {
             bTexturePackAlreadyListed=false;
-#if defined(__PS3__) || defined(__ORBIS__)
-            char *pchDLCName=app.GetDLCInfoTextures(i);
-            pDLCInfo=app.GetDLCInfo(pchDLCName);
-#else
             ULONGLONG ull=app.GetDLCInfoTexturesFullOffer(i);
             pDLCInfo=app.GetDLCInfoForFullOfferID(ull);
-#endif
             for(unsigned int i = 0; i < texturePacksCount; ++i)
             {
                 TexturePack *tp = pMinecraft->skins->getTexturePackByIndex(i);
@@ -1841,7 +1832,7 @@ void UIScene_LoadOrJoinMenu::updateTooltips()
         else iLB = IDS_TOOLTIPS_PARTY_GAMES;
     }
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
     if(m_iPad == ProfileManager.GetPrimaryPad() ) iY = IDS_TOOLTIPS_GAME_INVITES;
 #endif
 
@@ -1904,7 +1895,7 @@ void UIScene_LoadOrJoinMenu::Initialise()
     }
     else if(StorageManager.GetSaveDisabled())
     {
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
         GetSaveInfo();
 #else
 
@@ -1959,7 +1950,7 @@ void UIScene_LoadOrJoinMenu::handleDestroy()
 #endif
 
 	// shut down the keyboard if it is displayed
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO)
+#if defined(_DURANGO)
 	InputManager.DestroyKeyboard();
 #endif
 }
@@ -2044,7 +2035,7 @@ void UIScene_LoadOrJoinMenu::tick()
 {
     UIScene::tick();
 
-#if (defined  __PS3__  || defined __ORBIS__ || defined _DURANGO || defined _WINDOWS64 || defined __PSVITA__)
+#if defined(_DURANGO) || defined(_WINDOWS64) || defined(__PSVITA__)
     if(m_bExitScene) // navigate forward or back
     {
         if(!m_bRetrievingSaveThumbnails)
@@ -2056,7 +2047,72 @@ void UIScene_LoadOrJoinMenu::tick()
     // Stop loading thumbnails if we navigate forwards
     if(hasFocus(m_iPad))
     {
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#ifdef _WINDOWS64
+        if(!m_bIgnoreInput && m_bSavesDisplayed && !Mouse::isGrabbed())
+        {
+            const bool isLeftDown = Mouse::isButtonDown(0) || Mouse::isButtonPressed(0);
+            const bool clicked = isLeftDown && !m_wasMouseLeftDown;
+            m_wasMouseLeftDown = isLeftDown;
+
+            if(clicked)
+            {
+                const float screenW = ui.getScreenWidth();
+                const float screenH = ui.getScreenHeight();
+                const S32 sceneW = getRenderWidth();
+                const S32 sceneH = getRenderHeight();
+                if(screenW > 0.0f && screenH > 0.0f && sceneW > 0 && sceneH > 0)
+                {
+                    const S32 localX = (S32)(((float)Mouse::getX() * (float)sceneW) / screenW);
+                    const S32 localY = (S32)(((float)Mouse::getY() * (float)sceneH) / screenH);
+
+                    S32 panelOffX = 0;
+                    S32 panelOffY = 0;
+                    UIControl *pMainPanel = GetMainPanel();
+                    if(pMainPanel != NULL)
+                    {
+                        pMainPanel->UpdateControl();
+                        if(!pMainPanel->getHidden())
+                        {
+                            panelOffX = pMainPanel->getXPos();
+                            panelOffY = pMainPanel->getYPos();
+                        }
+                    }
+
+                    auto hitLabelTab = [&](UIControl_Label &label) -> bool
+                    {
+                        label.UpdateControl();
+                        const S32 lx1 = label.getXPos() + panelOffX - 24;
+                        const S32 ly1 = label.getYPos() + panelOffY - 16;
+                        const S32 lx2 = label.getXPos() + panelOffX + label.getWidth() + 24;
+                        const S32 ly2 = label.getYPos() + panelOffY + label.getHeight() + 16;
+                        return (localX >= lx1 && localX <= lx2 && localY >= ly1 && localY <= ly2);
+                    };
+
+                    if(hitLabelTab(m_labelSavesListTitle))
+                    {
+                        if(DoesGamesListHaveFocus())
+                        {
+                            ui.PlayUISFX(eSFX_Focus);
+                            sendInputToMovie(ACTION_MENU_LEFT, false, true, false);
+                        }
+                    }
+                    else if(hitLabelTab(m_labelJoinListTitle))
+                    {
+                        if(DoesSavesListHaveFocus() && m_buttonListGames.getItemCount() > 0)
+                        {
+                            ui.PlayUISFX(eSFX_Focus);
+                            sendInputToMovie(ACTION_MENU_RIGHT, false, true, false);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            m_wasMouseLeftDown = Mouse::isButtonDown(0) || Mouse::isButtonPressed(0);
+        }
+#endif
+#if defined(_XBOX_ONE)
         if(m_bUpdateSaveSize)
         {
             if((m_iDefaultButtonsC > 0) && (m_iSaveListIndex >= m_iDefaultButtonsC))
@@ -2089,7 +2145,7 @@ void UIScene_LoadOrJoinMenu::tick()
             if(m_pSaveDetails!=NULL)
             {
                 //CD - Fix - Adding define for ORBIS/XBOXONE
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
                 m_spaceIndicatorSaves.reset();
 #endif
 
@@ -2116,8 +2172,6 @@ void UIScene_LoadOrJoinMenu::tick()
                     const int visibleIndex = m_iSaveDetailsCount;
 #if defined(_XBOX_ONE)
                     m_spaceIndicatorSaves.addSave(m_pSaveDetails->SaveInfoA[i].totalSize);
-#elif defined(__ORBIS__)
-                    m_spaceIndicatorSaves.addSave(m_pSaveDetails->SaveInfoA[i].blocksUsed * (32 * 1024) );
 #endif
 #ifdef _DURANGO
                     m_buttonListSaves.addItem(m_pSaveDetails->SaveInfoA[i].UTF16SaveTitle, L"");
@@ -2216,14 +2270,10 @@ void UIScene_LoadOrJoinMenu::tick()
                 srcmax=MAX_SAVEFILENAME_LENGTH;
                 dstmax=MAX_SAVEFILENAME_LENGTH;
 
-#if defined(__PS3__)
-                L10nResult lres= UTF8stoUTF16s((uint8_t *)m_saveDetails[m_iRequestingThumbnailId].UTF8SaveFilename,&srcmax,u16Message,&dstmax);
-#else
                 SceCesUcsContext context;
                 sceCesUcsContextInit(&context);
 
                 sceCesUtf8StrToUtf16Str(&context, (uint8_t *)m_saveDetails[m_iRequestingThumbnailId].UTF8SaveFilename,srcmax,&srclen,u16Message,dstmax,&dstlen);
-#endif
 #endif
                 if( m_saveDetails[m_iRequestingThumbnailId].pbThumbnailData )
                 {
@@ -2326,35 +2376,6 @@ void UIScene_LoadOrJoinMenu::tick()
 #endif
 
     // SAVE TRANSFERS
-#ifdef __ORBIS__
-	// check the status of the PSPlus common dialog
-	switch (sceNpCommerceDialogUpdateStatus())
-	{
-	case SCE_COMMON_DIALOG_STATUS_FINISHED:
-		{
-			SceNpCommerceDialogResult Result;
-			sceNpCommerceDialogGetResult(&Result);
-			sceNpCommerceDialogTerminate();
-
-			if(Result.authorized)
-			{
-				// they just became a PSPlus member
-				ProfileManager.PsPlusUpdate(ProfileManager.GetPrimaryPad(), &Result);
-
-			}
-			else
-			{
-
-			}
-
-			// 4J-JEV: Fix for PS4 #5148 - [ONLINE] If the user attempts to join a game when they do not have Playstation Plus, the title will lose all functionality.
-			m_bIgnoreInput = false;
-		}
-		break;
-	default:
-		break;
-	}
-#endif
 
 }
 
@@ -2398,14 +2419,6 @@ void UIScene_LoadOrJoinMenu::GetSaveInfo()
 
     if(app.DebugSettingsOn() && app.GetLoadSavesFromFolderEnabled())
     {
-#ifdef __ORBIS__
-		// We need to make sure this is non-null so that we have an idea of free space
-        m_pSaveDetails=StorageManager.ReturnSavesInfo();
-        if(m_pSaveDetails==NULL)
-        {
-            C4JStorage::ESaveGameState eSGIStatus= StorageManager.GetSavesInfo(m_iPad,NULL,this,"save"); 
-        }
-#endif
 
         uiSaveC = 0;
 #ifdef _XBOX
@@ -2671,7 +2684,7 @@ void UIScene_LoadOrJoinMenu::handleInput(int iPad, int key, bool repeat, bool pr
     case ACTION_MENU_CANCEL:
         if(pressed)
         {
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
             m_bExitScene=true;
 #else
             navigateBack();
@@ -2707,22 +2720,10 @@ void UIScene_LoadOrJoinMenu::handleInput(int iPad, int key, bool repeat, bool pr
 #endif
         break;
     case ACTION_MENU_Y:
-#if defined(__PS3__) || defined(__PSVITA__) || defined(__ORBIS__)
+#if defined(__PSVITA__)
 		m_eAction = eAction_ViewInvites;
         if(pressed && iPad == ProfileManager.GetPrimaryPad())
         {
-#ifdef __ORBIS__
-			// Check if PSN is unavailable because of age restriction
-			int npAvailability = ProfileManager.getNPAvailability(iPad);
-			if (npAvailability == SCE_NP_ERROR_AGE_RESTRICTION)
-			{
-				UINT uiIDA[1];
-				uiIDA[0] = IDS_OK;
-				ui.RequestMessageBox(IDS_ONLINE_SERVICE_TITLE, IDS_CONTENT_RESTRICTION, uiIDA, 1, iPad, NULL, NULL, app.GetStringTable());
-
-				break;
-			}
-#endif
 
             // are we offline?
             if(!ProfileManager.IsSignedInLive(iPad))
@@ -2735,9 +2736,7 @@ void UIScene_LoadOrJoinMenu::handleInput(int iPad, int key, bool repeat, bool pr
             }
             else
             {
-#ifdef __ORBIS__
-                SQRNetworkManager_Orbis::RecvInviteGUI();
-#elif defined __PSVITA__
+#if defined __PSVITA__
                 SQRNetworkManager_Vita::RecvInviteGUI();
 #else
                 int ret = sceNpBasicRecvMessageCustom(SCE_NP_BASIC_MESSAGE_MAIN_TYPE_INVITE, SCE_NP_BASIC_RECV_MESSAGE_OPTIONS_INCLUDE_BOOTABLE, SYS_MEMORY_CONTAINER_ID_INVALID);
@@ -2805,7 +2804,7 @@ void UIScene_LoadOrJoinMenu::handleInput(int iPad, int key, bool repeat, bool pr
                             uiIDA[3]=IDS_TOOLTIPS_SAVETRANSFER_UPLOAD;
                         }
 #endif
-#if defined _XBOX_ONE || defined __ORBIS__
+#if defined(_XBOX_ONE)
                             numOptions = 4;
                             uiIDA[3]=IDS_COPYSAVE;
 #endif
@@ -2878,9 +2877,6 @@ void UIScene_LoadOrJoinMenu::handleInput(int iPad, int key, bool repeat, bool pr
         break;
 
     case ACTION_MENU_OK:
-#ifdef __ORBIS__
-    case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
     case ACTION_MENU_UP:
     case ACTION_MENU_DOWN:
     case ACTION_MENU_PAGEUP:
@@ -2905,7 +2901,7 @@ int UIScene_LoadOrJoinMenu::KeyboardCompleteWorldNameCallback(LPVOID lpParam,boo
         // check the name is valid
         if(ui16Text[0]!=0)
         {
-#if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined(__PSVITA__))
+#if defined(_DURANGO) || defined(__PSVITA__)
             // open the save and overwrite the metadata
             const int saveListIndex = pClass->m_iSaveListIndex - pClass->m_iDefaultButtonsC;
             const int storageSaveIndex = pClass->m_saveDetails[saveListIndex].saveId;
@@ -3027,20 +3023,6 @@ void UIScene_LoadOrJoinMenu::handlePress(F64 controlId, F64 childId)
             else
             {
                 const int saveListIndex = ((int)childId) - m_iDefaultButtonsC;
-#ifdef __ORBIS__
-                // check if this is a damaged save
-				PSAVE_INFO pSaveInfo = &m_pSaveDetails->SaveInfoA[m_saveDetails[saveListIndex].saveId];
-                if(pSaveInfo->thumbnailData == NULL && pSaveInfo->modifiedTime == 0)		// no thumbnail data and time of zero and zero blocks useset for corrupt files
-                {
-                    // give the option to delete the save
-                    UINT uiIDA[2];
-                    uiIDA[0]=IDS_CONFIRM_CANCEL;
-                    uiIDA[1]=IDS_CONFIRM_OK;
-                    ui.RequestMessageBox(IDS_CORRUPT_OR_DAMAGED_SAVE_TITLE, IDS_CORRUPT_OR_DAMAGED_SAVE_TEXT, uiIDA, 2, ProfileManager.GetPrimaryPad(),&UIScene_LoadOrJoinMenu::DeleteSaveDialogReturned,this, app.GetStringTable(),NULL,0,false);
-
-                }
-                else
-#endif
                 {		
                     app.SetTutorialMode( false );
 
@@ -3111,7 +3093,7 @@ void UIScene_LoadOrJoinMenu::CheckAndJoinGame(int gameIndex)
 {
 	if( m_buttonListGames.getItemCount() > 0 && gameIndex < m_currentSessions->size() )
 	{
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 		// 4J-PB - is the player allowed to join games?
 		bool noUGC=false;
 		bool bContentRestricted=false;
@@ -3119,33 +3101,6 @@ void UIScene_LoadOrJoinMenu::CheckAndJoinGame(int gameIndex)
 		// we're online, since we are joining a game
 		ProfileManager.GetChatAndContentRestrictions(m_iPad,true,&noUGC,&bContentRestricted,NULL);
 
-#ifdef __ORBIS__
-		// 4J Stu - On PS4 we don't restrict playing multiplayer based on chat restriction, so remove this check
-		noUGC = false;
-
-		bool bPlayStationPlus=true;
-		int iPadWithNoPlaystationPlus=0;
-		bool isSignedInLive = true;				
-		int iPadNotSignedInLive = -1;
-		for(unsigned int i = 0; i < XUSER_MAX_COUNT; ++i)
-		{
-			if( InputManager.IsPadConnected(i) || ProfileManager.IsSignedIn(i) )
-			{
-				if (isSignedInLive && !ProfileManager.IsSignedInLive(i))
-				{
-					// Record the first non signed in live pad
-					iPadNotSignedInLive = i;
-				}
-
-				isSignedInLive = isSignedInLive && ProfileManager.IsSignedInLive(i);
-				if(ProfileManager.HasPlayStationPlus(i)==false)
-				{
-					bPlayStationPlus=false;
-					break;
-				}
-			}
-		}
-#endif
 #ifdef __PSVITA__
 		if( CGameNetworkManager::usingAdhocMode() )
 		{
@@ -3177,52 +3132,6 @@ void UIScene_LoadOrJoinMenu::CheckAndJoinGame(int gameIndex)
 			m_bIgnoreInput=false;
 			return;
 		}
-#ifdef __ORBIS__
-		// If this is an online game but not all players are signed in to Live, stop!
-		else if (!isSignedInLive)
-		{
-			UINT uiIDA[1];
-			uiIDA[0]=IDS_CONFIRM_OK;
-
-			// Check if PSN is unavailable because of age restriction
-			int npAvailability = ProfileManager.getNPAvailability(iPadNotSignedInLive);
-			if (npAvailability == SCE_NP_ERROR_AGE_RESTRICTION)
-			{
-				m_bIgnoreInput = false;
-				// 4J Stu - This is a bit messy and is due to the library incorrectly returning false for IsSignedInLive if the npAvailability isn't SCE_OK
-				ui.RequestMessageBox(IDS_ONLINE_SERVICE_TITLE, IDS_CONTENT_RESTRICTION, uiIDA, 1, iPadNotSignedInLive, NULL, NULL, app.GetStringTable());
-			}
-			else
-			{
-				ui.RequestMessageBox( IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA,1,iPadNotSignedInLive, &UIScene_LoadOrJoinMenu::MustSignInReturnedPSN, this, app.GetStringTable());
-			}
-			return;
-		}
-		else if(bPlayStationPlus==false)
-		{
-			// PS Plus upsell
-			// 4J-PB - we're not allowed to show the text Playstation Plus - have to call the upsell all the time!
-			// upsell psplus
-			int32_t iResult=sceNpCommerceDialogInitialize();
-
-			SceNpCommerceDialogParam param;
-			sceNpCommerceDialogParamInitialize(&param);
-			param.mode=SCE_NP_COMMERCE_DIALOG_MODE_PLUS;
-			param.features = SCE_NP_PLUS_FEATURE_REALTIME_MULTIPLAY; 
-			param.userId = ProfileManager.getUserID(iPadWithNoPlaystationPlus);
-
-			iResult=sceNpCommerceDialogOpen(&param);
-
-			//                     UINT uiIDA[2];
-			//                     uiIDA[0]=IDS_CONFIRM_OK;
-			//                     uiIDA[1]=IDS_PLAYSTATIONPLUS_SIGNUP;
-			//                     ui.RequestMessageBox( IDS_FAILED_TO_CREATE_GAME_TITLE, IDS_NO_PLAYSTATIONPLUS, uiIDA,2,ProfileManager.GetPrimaryPad(),&UIScene_LoadOrJoinMenu::PSPlusReturned,this, app.GetStringTable(),NULL,0,false);
-
-			m_bIgnoreInput=false;
-			return;
-		}
-
-#endif
 #endif
 
 		//CScene_MultiGameInfo::JoinMenuInitData *initData = new CScene_MultiGameInfo::JoinMenuInitData();
@@ -3582,7 +3491,7 @@ void UIScene_LoadOrJoinMenu::handleTimerComplete(int id)
     case CHECKFORAVAILABLETEXTUREPACKS_TIMER_ID:
         {
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
             for(int i=0;i<m_iTexturePacksNotInstalled;i++)
             {
                 if(m_iConfigA[i]!=-1)
@@ -3842,21 +3751,6 @@ int UIScene_LoadOrJoinMenu::RenameSaveDataReturned(LPVOID lpParam,bool bRes)
     return 0;
 }
 
-#ifdef __ORBIS__
-
-
-void UIScene_LoadOrJoinMenu::LoadRemoteFileFromDisk(char* remoteFilename)
-{
-    wchar_t wSaveName[128];
-    mbstowcs(wSaveName, remoteFilename, strlen(remoteFilename)+1); // plus null
-
-    // 	processConsoleSave(wSaveName, L"ProcessedSave.bin");
-
-    // 	File remoteFile(L"ProcessedSave.bin");
-    File remoteFile(wSaveName);
-    LoadSaveFromDisk(&remoteFile, SAVE_FILE_PLATFORM_PS3);
-}
-#endif
 
 
 #ifdef _WINDOWS64
@@ -3960,7 +3854,7 @@ int UIScene_LoadOrJoinMenu::SaveOptionsDialogReturned(void *pParam,int iPad,C4JS
         }
         break;
 #endif // SONY_REMOTE_STORAGE_UPLOAD
-#if defined _XBOX_ONE  || defined __ORBIS__
+#if defined(_XBOX_ONE)
     case C4JStorage::EMessage_ResultFourthOption: // copy save
         {
 			UINT uiIDA[2];
@@ -4038,16 +3932,14 @@ int UIScene_LoadOrJoinMenu::TexturePackDialogReturned(void *pParam,int iPad,C4JS
     return 0;
 }
 
-#if defined __PS3__ || defined __PSVITA__ || defined __ORBIS__
+#if defined(__PSVITA__)
 int UIScene_LoadOrJoinMenu::MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EMessageResult result)
 {
     UIScene_LoadOrJoinMenu* pClass = (UIScene_LoadOrJoinMenu*)pParam;
 
 	if(result==C4JStorage::EMessage_ResultAccept) 
 	{
-#if defined(__PS3__)
-		SQRNetworkManager_PS3::AttemptPSNSignIn(&UIScene_LoadOrJoinMenu::PSN_SignInReturned, pClass);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 		SQRNetworkManager_Vita::AttemptPSNSignIn(&UIScene_LoadOrJoinMenu::PSN_SignInReturned, pClass);
 #else
 		SQRNetworkManager_Orbis::AttemptPSNSignIn(&UIScene_LoadOrJoinMenu::PSN_SignInReturned, pClass, false, iPad);
@@ -4072,10 +3964,7 @@ int UIScene_LoadOrJoinMenu::PSN_SignInReturned(void *pParam,bool bContinue, int 
 			// Check if we're signed in to LIVE
 			if(ProfileManager.IsSignedInLive(iPad))
 			{
-#if defined(__PS3__)
-				int ret = sceNpBasicRecvMessageCustom(SCE_NP_BASIC_MESSAGE_MAIN_TYPE_INVITE, SCE_NP_BASIC_RECV_MESSAGE_OPTIONS_INCLUDE_BOOTABLE, SYS_MEMORY_CONTAINER_ID_INVALID);
-				app.DebugPrintf("sceNpBasicRecvMessageCustom return %d ( %08x )\n", ret, ret);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 				// TO BE IMPLEMENTED FOR VITA
 				PSVITA_STUBBED;
 #else
@@ -4385,12 +4274,7 @@ int UIScene_LoadOrJoinMenu::DownloadSonyCrossSaveThreadProc( LPVOID lpParameter 
 			}
 			else
 			{
-#ifdef __PS3__
-				// ignore the CRC on PS3
-				C4JStorage::ESaveGameState eLoadStatus=StorageManager.LoadSaveData(&pSaveDetails->SaveInfoA[saveInfoIndex],&LoadCrossSaveDataCallback,pClass, true);
-#else
 				C4JStorage::ESaveGameState eLoadStatus=StorageManager.LoadSaveData(&pSaveDetails->SaveInfoA[saveInfoIndex],&LoadCrossSaveDataCallback,pClass);
-#endif
 				if(eLoadStatus == C4JStorage::ESaveGame_Load)
 				{
 					pClass->m_eSaveTransferState = eSaveTransfer_LoadingSaveFromDisc;
@@ -4464,7 +4348,7 @@ int UIScene_LoadOrJoinMenu::DownloadSonyCrossSaveThreadProc( LPVOID lpParameter 
 			{
 				// On Durango/Orbis, we need to wait for all the asynchronous saving processes to complete before destroying the levels, as that will ultimately delete
 				// the directory level storage & therefore the ConsoleSaveSplit instance, which needs to be around until all the sub files have completed saving.
-#if defined(_DURANGO) || defined(__ORBIS__)
+#if defined(_DURANGO)
 				while(StorageManager.GetSaveState() != C4JStorage::ESaveGame_Idle )
 				{
 					Sleep(10);
@@ -4953,7 +4837,7 @@ int UIScene_LoadOrJoinMenu::DownloadXbox360SaveThreadProc( LPVOID lpParameter )
         case C4JStorage::eSaveTransfer_Saving:
             // On Durango/Orbis, we need to wait for all the asynchronous saving processes to complete before destroying the levels, as that will ultimately delete
             // the directory level storage & therefore the ConsoleSaveSplit instance, which needs to be around until all the sub files have completed saving.
-#if defined(_DURANGO) || defined(__ORBIS__)
+#if defined(_DURANGO)
 			pMinecraft->progressRenderer->progressStage(IDS_PROGRESS_SAVING_TO_DISC);            
 			
 			while(StorageManager.GetSaveState() != C4JStorage::ESaveGame_Idle )
@@ -5188,7 +5072,7 @@ void UIScene_LoadOrJoinMenu::HandleDLCLicenseChange()
 }
 #endif
 
-#if defined _XBOX_ONE || defined __ORBIS__
+#if defined(_XBOX_ONE)
 int UIScene_LoadOrJoinMenu::CopySaveDialogReturned(void *pParam,int iPad,C4JStorage::EMessageResult result)
 {
     UIScene_LoadOrJoinMenu* pClass = (UIScene_LoadOrJoinMenu*)pParam;
@@ -5282,30 +5166,8 @@ int UIScene_LoadOrJoinMenu::CopySaveDataReturned(LPVOID lpParam, bool success, C
 		}
 		else
 		{
-#ifdef __ORBIS__
-			UINT uiIDA[1];
-			// you cancelled the save on exit after choosing exit and save? You go back to the Exit choices then.
-			uiIDA[0]=IDS_OK;
-
-			if( stat == C4JStorage::ESaveGame_CopyCompleteFailLocalStorage )
-			{
-				ui.LeaveCallbackIdCriticalSection();
-				ui.RequestMessageBox(IDS_COPYSAVE_FAILED_TITLE, IDS_COPYSAVE_FAILED_LOCAL, uiIDA, 1, ProfileManager.GetPrimaryPad(), CopySaveErrorDialogFinishedCallback, lpParam, app.GetStringTable());
-			}
-			else if( stat == C4JStorage::ESaveGame_CopyCompleteFailQuota )
-			{
-				ui.LeaveCallbackIdCriticalSection();
-				ui.RequestMessageBox(IDS_COPYSAVE_FAILED_TITLE, IDS_COPYSAVE_FAILED_QUOTA, uiIDA, 1, ProfileManager.GetPrimaryPad(), CopySaveErrorDialogFinishedCallback, lpParam, app.GetStringTable());
-			}
-			else
-			{
-				pClass->m_bCopying = false;
-				ui.LeaveCallbackIdCriticalSection();
-			}
-#else
 			pClass->m_bCopying = false;
 			ui.LeaveCallbackIdCriticalSection();
-#endif
 		}
 	}
 	else

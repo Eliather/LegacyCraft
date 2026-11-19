@@ -11,7 +11,7 @@ UIScene_Intro::UIScene_Intro(int iPad, void *initData, UILayer *parentLayer) : U
 	m_bAnimationEnded = false;
 
 	bool bSkipESRB = false;
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	bSkipESRB = app.GetProductSKU() != e_sku_SCEA;
 #elif defined(_XBOX) || defined(_DURANGO)
 	bSkipESRB = !ProfileManager.LocaleIsUSorCanada();
@@ -23,10 +23,6 @@ UIScene_Intro::UIScene_Intro(int iPad, void *initData, UILayer *parentLayer) : U
 	platformIdx = 1;
 #elif defined(_DURANGO)
 	platformIdx = 2;
-#elif defined(__PS3__)
-	platformIdx = 3;
-#elif defined(__ORBIS__)
-	platformIdx = 4;
 #elif defined(__PSVITA__)
 	platformIdx = 5;
 #endif
@@ -58,14 +54,11 @@ void UIScene_Intro::handleInput(int iPad, int key, bool repeat, bool pressed, bo
 	switch(key)
 	{
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		if(!m_bIgnoreNavigate)
 		{
 			m_bIgnoreNavigate = true;
 			//ui.NavigateToHomeMenu();
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 
 			// has the user seen the EULA already ? We need their options file loaded for this
 			C4JStorage::eOptionsCallback eStatus=app.GetOptionsCallbackStatus(0);
@@ -114,7 +107,7 @@ void UIScene_Intro::handleAnimationEnd()
 	{
 		m_bIgnoreNavigate = true;
 		//ui.NavigateToHomeMenu();
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 		// has the user seen the EULA already ? We need their options file loaded for this
 		C4JStorage::eOptionsCallback eStatus=app.GetOptionsCallbackStatus(0);
 		switch(eStatus)

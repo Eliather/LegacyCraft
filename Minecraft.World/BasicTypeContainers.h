@@ -49,11 +49,7 @@ public:
 	static const double MAX_VALUE;
 
 	static bool isNaN( double a ) {
-#ifdef __PS3__
-		return isnan(a);
-#else
 		return ( a != a );
-#endif
 	}
 	static bool isInfinite( double a ) { return false; /*4J TODO*/ }
 

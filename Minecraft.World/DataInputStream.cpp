@@ -512,7 +512,7 @@ int DataInputStream::readUTFChar()
 PlayerUID DataInputStream::readPlayerUID()
 {
 	PlayerUID returnValue;
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	for(int idPos=0;idPos<sizeof(PlayerUID); idPos++)
 		((char*)&returnValue)[idPos] = readByte();
 #elif defined(_DURANGO)

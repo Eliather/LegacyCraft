@@ -23,19 +23,35 @@ UIScene_MessageBox::UIScene_MessageBox(int iPad, void *initData, UILayer *parent
 	int buttonIndex = 0;
 	if(param->uiOptionC > 3)
 	{
+		m_buttonButtons[eControl_Button0].setHidden(false);
 		m_buttonButtons[eControl_Button0].init(app.GetString(param->uiOptionA[buttonIndex]),buttonIndex);
 		++buttonIndex;
 	}
+	else
+	{
+		m_buttonButtons[eControl_Button0].setHidden(true);
+	}
 	if(param->uiOptionC > 2)
 	{
+		m_buttonButtons[eControl_Button1].setHidden(false);
 		m_buttonButtons[eControl_Button1].init(app.GetString(param->uiOptionA[buttonIndex]),buttonIndex);
 		++buttonIndex;
 	}
+	else
+	{
+		m_buttonButtons[eControl_Button1].setHidden(true);
+	}
 	if(param->uiOptionC > 1)
 	{
-	m_buttonButtons[eControl_Button2].init(app.GetString(param->uiOptionA[buttonIndex]),buttonIndex);
+		m_buttonButtons[eControl_Button2].setHidden(false);
+		m_buttonButtons[eControl_Button2].init(app.GetString(param->uiOptionA[buttonIndex]),buttonIndex);
 		++buttonIndex;
 	}
+	else
+	{
+		m_buttonButtons[eControl_Button2].setHidden(true);
+	}
+	m_buttonButtons[eControl_Button3].setHidden(false);
 	m_buttonButtons[eControl_Button3].init(app.GetString(param->uiOptionA[buttonIndex]),buttonIndex);
 
 	m_labelTitle.init(app.GetString(param->uiTitle));
@@ -104,9 +120,6 @@ void UIScene_MessageBox::handleInput(int iPad, int key, bool repeat, bool presse
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		sendInputToMovie(key, repeat, pressed, released);
 		break;
 	case ACTION_MENU_UP:

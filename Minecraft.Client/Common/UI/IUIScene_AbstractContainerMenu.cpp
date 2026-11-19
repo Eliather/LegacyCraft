@@ -9,9 +9,6 @@
 #include "..\..\MultiplayerLocalPlayer.h"
 #include "..\..\Minecraft.h"
 
-#ifdef __ORBIS__
-#include <pad.h>
-#endif
 
 IUIScene_AbstractContainerMenu::IUIScene_AbstractContainerMenu()
 {
@@ -79,12 +76,6 @@ void IUIScene_AbstractContainerMenu::Initialize(int iPad, AbstractContainerMenu*
 	// 		m_bFirstTouchStored[i]=false;
 	// 	}
 
-#ifdef __ORBIS__
-	for(int i=0;i<XUSER_MAX_COUNT;i++)
-	{
-		m_bFirstTouchStored[i]=false;
-	}
-#endif
 
 	PlatformInitialize(iPad,startIndex);
 }
@@ -283,65 +274,6 @@ void IUIScene_AbstractContainerMenu::onMouseTick()
 	float fInputX = InputManager.GetJoypadStick_LX( iPad, false )*((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InMenu)/100.0f); // apply the sensitivity
 	float fInputY = InputManager.GetJoypadStick_LY( iPad, false )*((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InMenu)/100.0f); // apply the sensitivity
 
-#ifdef __ORBIS__
-	// should have sensitivity for the touchpad
-	//(float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_TouchPadInMenu)/100.0f
-
-	// get the touchpad input and treat it as a map to the window
-	ScePadTouchData *pTouchPadData=InputManager.GetTouchPadData(iPad);
-
-	// make sure the touchpad button isn't down (it's the pausemenu)
-
-	if((!InputManager.ButtonDown(iPad, ACTION_MENU_TOUCHPAD_PRESS)) && (pTouchPadData->touchNum>0))
-	{
-		if(m_bFirstTouchStored[iPad]==false)
-		{
-			m_oldvTouchPos.x=(float)pTouchPadData->touch[0].x;
-			m_oldvTouchPos.y=(float)pTouchPadData->touch[0].y;
-			m_oldvPointerPos.x=vPointerPos.x;
-			m_oldvPointerPos.y=vPointerPos.y;
-			m_bFirstTouchStored[iPad]=true;
-		}
-
-		// should take the average of multiple touch points
-
-		float fNewX=(((float)pTouchPadData->touch[0].x)-m_oldvTouchPos.x) * m_fTouchPadMulX;
-		float fNewY=(((float)pTouchPadData->touch[0].y)-m_oldvTouchPos.y) * m_fTouchPadMulY;
-		// relative positions - needs a deadzone 
-
-		if(fNewX>m_fTouchPadDeadZoneX)
-		{
-			vPointerPos.x=m_oldvPointerPos.x+((fNewX-m_fTouchPadDeadZoneX)*((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InMenu)/100.0f));
-		}
-		else if(fNewX<-m_fTouchPadDeadZoneX)
-		{
-			vPointerPos.x=m_oldvPointerPos.x+((fNewX+m_fTouchPadDeadZoneX)*((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InMenu)/100.0f));
-		}
-
-		if(fNewY>m_fTouchPadDeadZoneY)
-		{
-			vPointerPos.y=m_oldvPointerPos.y+((fNewY-m_fTouchPadDeadZoneY)*((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InMenu)/100.0f));		
-		}
-		else if(fNewY<-m_fTouchPadDeadZoneY)
-		{
-			vPointerPos.y=m_oldvPointerPos.y+((fNewY+m_fTouchPadDeadZoneY)*((float)app.GetGameSettings(iPad,eGameSetting_Sensitivity_InMenu)/100.0f));		
-		}
-
-		// Clamp to pointer extents.
-		if ( vPointerPos.x < m_fPointerMinX )				vPointerPos.x = m_fPointerMinX;
-		else if ( vPointerPos.x > m_fPointerMaxX )			vPointerPos.x = m_fPointerMaxX;
-		if ( vPointerPos.y < m_fPointerMinY )				vPointerPos.y = m_fPointerMinY;
-		else if ( vPointerPos.y > m_fPointerMaxY )			vPointerPos.y = m_fPointerMaxY;
-
-		bStickInput = true;
-		m_eCurrTapState=eTapStateNoInput;	
-	}
-	else
-	{
-		// reset the touch flag
-		m_bFirstTouchStored[iPad]=false;
-
-#endif
 
 
 
@@ -459,9 +391,6 @@ void IUIScene_AbstractContainerMenu::onMouseTick()
 #endif		
 		}
 
-#ifdef __ORBIS__
-	}
-#endif
 
 	// Determine which slot the pointer is currently over.
 	ESceneSection eSectionUnderPointer = eSectionNone;
@@ -1295,9 +1224,6 @@ bool IUIScene_AbstractContainerMenu::handleKeyDown(int iPad, int iAction, bool b
 	case ACTION_MENU_A:
 #ifdef _WINDOWS64
 	case ACTION_MENU_OK:
-#endif
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
 #endif
 		if(!bRepeat)
 		{

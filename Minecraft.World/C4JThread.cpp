@@ -31,9 +31,6 @@ void C4JThread::StaticInit()
 C4JThread	C4JThread::m_mainThread("Main thread");
 #endif
 
-#ifdef __ORBIS__
-__thread SceKernelCpumask C4JThread::m_oldAffinityMask;
-#endif
 
 
 #if __PSVITA__
@@ -54,32 +51,14 @@ C4JThread::C4JThread( C4JThreadStartFunc* startFunc, void* param, const char* th
 	if(m_stackSize < 16384)
 		m_stackSize = 16384;
 
-#ifdef __PS3__
-	sprintf(m_threadName, "(4J) %s", threadName );
-#else
 	sprintf_s(m_threadName,64, "(4J) %s", threadName );
-#endif
 
 	m_isRunning = false;
 	m_hasStarted = false;
 
 	m_exitCode = STILL_ACTIVE;
 
-#ifdef __PS3__
-	m_completionFlag = new Event(Event::e_modeManualClear);
-	m_threadID = 0;
-	m_lastSleepTime = 0;
-	m_priority = 1002;	// main thread has priority 1001
-#elif defined __ORBIS__
-	m_completionFlag = new Event(Event::e_modeManualClear);
-	m_threadID = 0;
-	m_lastSleepTime = 0;
-	scePthreadAttrInit(&m_threadAttr);
-	int err = scePthreadAttrSetaffinity(&m_threadAttr, 63); // set the thread affinity to all cores to start with
-	assert(err == SCE_OK);
-	m_oldAffinityMask = 0;
-	m_priority = SCE_KERNEL_PRIO_FIFO_DEFAULT;
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	m_completionFlag = new Event(Event::e_modeManualClear);
 	m_threadID = 0;
 	m_lastSleepTime = 0;
@@ -132,11 +111,7 @@ C4JThread::C4JThread( const char* mainThreadName)
 	m_threadParam = NULL;
 	m_stackSize = 0;
 
-#ifdef __PS3__
-	sprintf(m_threadName, "(4J) %s", mainThreadName);
-#else
 	sprintf_s(m_threadName, 64, "(4J) %s", mainThreadName);
-#endif
 	m_isRunning = true;
 	m_hasStarted = true;
 	m_lastSleepTime = System::currentTimeMillis();
@@ -145,14 +120,7 @@ C4JThread::C4JThread( const char* mainThreadName)
 	InitializeCriticalSection(&ms_threadListCS);
 
 
-#ifdef __PS3__
-	m_completionFlag = new Event(Event::e_modeManualClear);
-	sys_ppu_thread_get_id(&m_threadID);
-#elif defined __ORBIS__
-	m_completionFlag = new Event(Event::e_modeManualClear);
-	m_threadID = scePthreadSelf();
-	m_priority = SCE_KERNEL_PRIO_FIFO_DEFAULT;
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	m_completionFlag = new Event(Event::e_modeManualClear);
 	g_DefaultPriority = sceKernelGetThreadCurrentPriority();
 	m_threadID = sceKernelGetThreadId();
@@ -173,13 +141,10 @@ C4JThread::C4JThread( const char* mainThreadName)
 
 C4JThread::~C4JThread()
 {
-#if defined __PS3__ || defined __ORBIS__ || defined __PSVITA__
+#if defined(__PSVITA__)
 	delete m_completionFlag;
 #endif
 
-#if defined __ORBIS__
-	scePthreadJoin(m_threadID, NULL);
-#endif
 
 	EnterCriticalSection(&ms_threadListCS);
 
@@ -196,25 +161,7 @@ C4JThread::~C4JThread()
 	LeaveCriticalSection(&ms_threadListCS);
 }
 
-#ifdef __PS3__
-void C4JThread::entryPoint(uint64_t param)
-{
-	C4JThread* pThread = (C4JThread*)param;
-	pThread->m_exitCode = (*pThread->m_startFunc)(pThread->m_threadParam);
-	pThread->m_completionFlag->Set();
-	pThread->m_isRunning = false;
-	sys_ppu_thread_exit(0);
-}
-#elif defined __ORBIS__
-void * C4JThread::entryPoint(void *param)
-{
-	C4JThread* pThread = (C4JThread*)param;
-	pThread->m_exitCode = (*pThread->m_startFunc)(pThread->m_threadParam);
-	pThread->m_completionFlag->Set();
-	pThread->m_isRunning = false;
-	scePthreadExit(NULL);
-}
-#elif defined __PSVITA__
+#if defined __PSVITA__
 struct StrArg {
 	C4JThread* Thread;
 };
@@ -253,22 +200,7 @@ DWORD WINAPI	C4JThread::entryPoint(LPVOID lpParam)
 
 void C4JThread::Run()
 {
-#ifdef __PS3__
-	//		prio specifies the priority value of the PPU thread within the range from 0 to 3071 where 0 is the highest.
-	// One of the following values is set to flags:
-	// 0 - non-joinable non-interrupt thread 
-	// SYS_PPU_THREAD_CREATE_JOINABLE - Create a joinable thread 
-	// SYS_PPU_THREAD_CREATE_INTERRUPT - Create an interrupt thread 
-	uint64_t flags = 0;
-	int err = sys_ppu_thread_create(&m_threadID, entryPoint, (uint64_t)this, m_priority, m_stackSize, flags, m_threadName);
-#elif defined __ORBIS__
-	scePthreadAttrSetstacksize(&m_threadAttr, m_stackSize);
-	scePthreadAttrSetguardsize(&m_threadAttr, 1024);
-	int ret = scePthreadCreate(&m_threadID, &m_threadAttr, entryPoint, this, m_threadName);
-	assert( ret == SCE_OK );
-	scePthreadSetprio(m_threadID,m_priority);
-	scePthreadAttrDestroy(&m_threadAttr);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	StrArg strArg = {this};
 //	m_threadID = sceKernelCreateThread(m_threadName, entryPoint, m_priority, m_stackSize, 0, m_CPUMask, NULL);
 	sceKernelStartThread( m_threadID, sizeof(strArg), &strArg);
@@ -282,11 +214,7 @@ void C4JThread::Run()
 
 void C4JThread::SetProcessor( int proc )
 {
-#ifdef __PS3__
-	// does nothing since we only have the 1 processor
-#elif defined __ORBIS__
-	scePthreadAttrSetaffinity(&m_threadAttr, 1 << proc);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	int Proc = proc >> 1;			// convert from 360's 3 cores * 2 hardware threads to Vita's 3 cores
 	int Mask = SCE_KERNEL_CPU_MASK_USER_0 << Proc;
 	//m_CPUMask = Mask;
@@ -302,34 +230,7 @@ void C4JThread::SetProcessor( int proc )
 
 void C4JThread::SetPriority( int priority )
 {
-#ifdef __PS3__
-	switch(priority)
-	{
-	case THREAD_PRIORITY_LOWEST:			m_priority = 1003; break;  
-	case THREAD_PRIORITY_BELOW_NORMAL:		m_priority = 1002; break;  
-	case THREAD_PRIORITY_NORMAL:			m_priority = 1001; break;  // same as main thread
-	case THREAD_PRIORITY_ABOVE_NORMAL:		m_priority = 1000; break; 
-	case THREAD_PRIORITY_HIGHEST:			m_priority = 999; break; 
-	}
-	if(m_threadID != 0)
-		sys_ppu_thread_set_priority(m_threadID, m_priority);
-	//int erro = sys_ppu_thread_set_priority(m_threadID, priority);
-#elif defined __ORBIS__
-
-	switch(priority)
-	{
-		case THREAD_PRIORITY_LOWEST:			m_priority = SCE_KERNEL_PRIO_FIFO_LOWEST; break;  
-		case THREAD_PRIORITY_BELOW_NORMAL:		m_priority = SCE_KERNEL_PRIO_FIFO_LOWEST + ((SCE_KERNEL_PRIO_FIFO_DEFAULT-SCE_KERNEL_PRIO_FIFO_LOWEST)/2); break;  
-		case THREAD_PRIORITY_NORMAL:			m_priority = SCE_KERNEL_PRIO_FIFO_DEFAULT; break;  // same as main thread
-		case THREAD_PRIORITY_ABOVE_NORMAL:		m_priority = SCE_KERNEL_PRIO_FIFO_DEFAULT + ((SCE_KERNEL_PRIO_FIFO_HIGHEST-SCE_KERNEL_PRIO_FIFO_DEFAULT)/2); break; 
-		case THREAD_PRIORITY_HIGHEST:			m_priority = SCE_KERNEL_PRIO_FIFO_HIGHEST; break; 
-	}
-
-	if( m_threadID != 0 )
-	{
-		scePthreadSetprio(m_threadID,m_priority);
-	}
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	int Mid = g_DefaultPriority;//(SCE_KERNEL_LOWEST_PRIORITY_USER + SCE_KERNEL_HIGHEST_PRIORITY_USER) / 2;
 	switch(priority)
 	{
@@ -359,13 +260,7 @@ void C4JThread::SetPriority( int priority )
 
 DWORD C4JThread::WaitForCompletion( int timeoutMs )
 {
-#ifdef __PS3__
-	if(timeoutMs == INFINITE)
-		timeoutMs = SYS_NO_TIMEOUT ;
-	return m_completionFlag->WaitForSignal(timeoutMs);
-#elif defined __ORBIS__
-	return m_completionFlag->WaitForSignal( timeoutMs );
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	return m_completionFlag->WaitForSignal( timeoutMs );
 /*	SceUInt32 Timeout = timeoutMs * 1000;
 	SceInt32 err = sceKernelWaitThreadEnd(m_threadID, &m_exitCode, &Timeout);
@@ -394,7 +289,7 @@ DWORD C4JThread::WaitForCompletion( int timeoutMs )
 
 int C4JThread::GetExitCode()
 {
-#if defined  __PS3__ || defined __ORBIS__ || defined __PSVITA__
+#if defined(__PSVITA__)
 	return m_exitCode;
 #else
 	DWORD exitcode = 0;
@@ -406,18 +301,7 @@ int C4JThread::GetExitCode()
 
 void C4JThread::Sleep( int millisecs )
 {
-#ifdef __PS3__
-	if(millisecs == 0)
-	{
-		// https://ps3.scedev.net/forums/thread/116470/
-		// "sys_timer_usleep(0) does not yield the CPU."
-		sys_ppu_thread_yield();
-	}
-	else
-		sys_timer_usleep(millisecs * 1000);
-#elif defined __ORBIS__
-	sceKernelUsleep(((SceKernelUseconds)millisecs) * 1000);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	// 4J Stu - 0 is an error, so add a tiny sleep when we just want to yield
 	sceKernelDelayThread(millisecs * 1000 + 1);
 #else
@@ -427,12 +311,7 @@ void C4JThread::Sleep( int millisecs )
 
 C4JThread* C4JThread::getCurrentThread()
 {
-#ifdef __PS3__
-	sys_ppu_thread_t currThreadID;
-	sys_ppu_thread_get_id(&currThreadID);
-#elif defined __ORBIS__
-	ScePthread currThreadID = scePthreadSelf();
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	SceUID currThreadID = sceKernelGetThreadId();
 #else
 	DWORD currThreadID = GetCurrentThreadId();
@@ -465,23 +344,7 @@ bool C4JThread::isMainThread()
 C4JThread::Event::Event(EMode mode/* = e_modeAutoClear*/)
 {
 	m_mode = mode;
-#ifdef __PS3__
-	sys_event_flag_attribute_t attr;
-	// default values taken from sys_event_flag_attribute_initialize
-	attr.attr_protocol = SYS_SYNC_PRIORITY;
-	attr.attr_pshared = SYS_SYNC_NOT_PROCESS_SHARED;
-	attr.key = 0;
-	attr.flags = 0;
-	attr.type = SYS_SYNC_WAITER_SINGLE; 
-	attr.name[0] = '\0';
-	sys_event_flag_attribute_initialize(attr);
-	
-	int err = sys_event_flag_create(&m_event, &attr, 0);
-
-#elif defined __ORBIS__
-	char name[1] = {0};
-	sceKernelCreateEventFlag( &m_event, name, SCE_KERNEL_EVF_ATTR_TH_FIFO | SCE_KERNEL_EVF_ATTR_MULTI, 0, NULL);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	char name[1] = {0};
 	m_event = sceKernelCreateEventFlag( name, SCE_KERNEL_EVF_ATTR_TH_FIFO | SCE_KERNEL_EVF_ATTR_MULTI, 0, NULL);
 #else
@@ -492,11 +355,7 @@ C4JThread::Event::Event(EMode mode/* = e_modeAutoClear*/)
 
 C4JThread::Event::~Event()
 {
-#ifdef __PS3__
-	sys_event_flag_destroy(m_event);
-#elif defined __ORBIS__
-	sceKernelDeleteEventFlag(m_event);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	sceKernelDeleteEventFlag(m_event);
 #else
 	CloseHandle( m_event );
@@ -506,11 +365,7 @@ C4JThread::Event::~Event()
 
 void C4JThread::Event::Set()
 {
-#ifdef __PS3__
-	int err =sys_event_flag_set(m_event, 1);
-#elif defined __ORBIS__
-	sceKernelSetEventFlag(m_event, 1);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	sceKernelSetEventFlag(m_event, 1);
 #else
 	SetEvent(m_event);
@@ -519,11 +374,7 @@ void C4JThread::Event::Set()
 
 void C4JThread::Event::Clear()
 {
-#ifdef __PS3__
-	int err =sys_event_flag_clear(m_event, ~(1));
-#elif defined __ORBIS__
-	sceKernelClearEventFlag(m_event, ~(1));
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	sceKernelClearEventFlag(m_event, ~1);
 #else
 	ResetEvent(m_event);
@@ -532,49 +383,7 @@ void C4JThread::Event::Clear()
 
 DWORD C4JThread::Event::WaitForSignal( int timeoutMs )
 {
-#ifdef __PS3__
-	if(timeoutMs == INFINITE)
-		timeoutMs = SYS_NO_TIMEOUT ;
-	int timoutMicrosecs = timeoutMs * 1000;
-	uint32_t mode = SYS_EVENT_FLAG_WAIT_AND;
-	if(m_mode == e_modeAutoClear)
-		mode |= SYS_EVENT_FLAG_WAIT_CLEAR;
-	int err = sys_event_flag_wait(m_event, 1, mode, 0, timoutMicrosecs);
-
-	switch(err)
-	{
-	case CELL_OK: return WAIT_OBJECT_0;
-	case ETIMEDOUT: return WAIT_TIMEOUT;
-	case ECANCELED: return WAIT_ABANDONED;
-	default: return WAIT_FAILED;
-	}
-
-#elif defined __ORBIS__
-	SceKernelUseconds timeoutMicrosecs;
-	SceKernelUseconds *pTimeoutMicrosecs;
-	if( timeoutMs == INFINITE )
-	{
-		pTimeoutMicrosecs = NULL;
-	}
-	else
-	{
-		timeoutMicrosecs = ((SceKernelUseconds)timeoutMs) * 1000;
-		pTimeoutMicrosecs = &timeoutMicrosecs;
-	}
-	uint32_t waitMode = SCE_KERNEL_EVF_WAITMODE_AND;
-	if(m_mode == e_modeAutoClear)
-	{
-		waitMode |= SCE_KERNEL_EVF_WAITMODE_CLEAR_PAT;
-	}
-	int err = sceKernelWaitEventFlag(m_event, 1, waitMode, NULL, pTimeoutMicrosecs);
-	switch(err)
-	{
-		case SCE_OK: return WAIT_OBJECT_0;
-		case SCE_KERNEL_ERROR_ETIMEDOUT: return WAIT_TIMEOUT;
-		case SCE_KERNEL_ERROR_ECANCELED: return WAIT_ABANDONED;
-		default: return WAIT_FAILED;
-	}
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	SceUInt32 timeoutMicrosecs;
 	SceUInt32 *pTimeoutMicrosecs;
 	if( timeoutMs == INFINITE )
@@ -609,22 +418,7 @@ C4JThread::EventArray::EventArray( int size, EMode mode/* = e_modeAutoClear*/)
 	assert(size<32);
 	m_size = size;
 	m_mode = mode;
-#ifdef __PS3__
-	sys_event_flag_attribute_t attr;
-	// default values taken from sys_event_flag_attribute_initialize
-	attr.attr_protocol = SYS_SYNC_PRIORITY;
-	attr.attr_pshared = SYS_SYNC_NOT_PROCESS_SHARED;
-	attr.key = 0;
-	attr.flags = 0;
-	attr.type = SYS_SYNC_WAITER_SINGLE; 
-	attr.name[0] = '\0';
-	sys_event_flag_attribute_initialize(attr);
-	int err = sys_event_flag_create(&m_events, &attr, 0);
-	assert(err == CELL_OK);
-#elif defined __ORBIS__
-	char name[1] = {0};
-	sceKernelCreateEventFlag( &m_events, name, SCE_KERNEL_EVF_ATTR_TH_FIFO | SCE_KERNEL_EVF_ATTR_MULTI, 0, NULL);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	char name[1] = {0};
 	m_events = sceKernelCreateEventFlag( name, SCE_KERNEL_EVF_ATTR_TH_FIFO | SCE_KERNEL_EVF_ATTR_MULTI, 0, NULL);
 #else
@@ -639,12 +433,7 @@ C4JThread::EventArray::EventArray( int size, EMode mode/* = e_modeAutoClear*/)
 
 void C4JThread::EventArray::Set(int index)
 {
-#ifdef __PS3__
-	int err =sys_event_flag_set(m_events, 1<<index);
-	assert(err == CELL_OK);
-#elif defined __ORBIS__
-	sceKernelSetEventFlag(m_events, 1<<index);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	sceKernelSetEventFlag(m_events, 1<<index);
 #else
 	SetEvent(m_events[index]);
@@ -653,12 +442,7 @@ void C4JThread::EventArray::Set(int index)
 
 void C4JThread::EventArray::Clear(int index)
 {
-#ifdef __PS3__
-	int err =sys_event_flag_clear(m_events, ~(1<<index));
-	assert(err == CELL_OK);
-#elif defined __ORBIS__
-	sceKernelClearEventFlag(m_events, ~(1<<index));
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	sceKernelClearEventFlag(m_events, ~(1<<index));
 #else
 	ResetEvent(m_events[index]);
@@ -680,70 +464,7 @@ void C4JThread::EventArray::ClearAll()
 DWORD C4JThread::EventArray::WaitForSingle(int index, int timeoutMs )
 {
 	DWORD retVal;
-#ifdef __PS3__
-	int timeoutMicrosecs;
-	if(timeoutMs == INFINITE)
-		timeoutMicrosecs = SYS_NO_TIMEOUT;
-	else
-		timeoutMicrosecs = timeoutMs * 1000;
-	uint32_t mode = SYS_EVENT_FLAG_WAIT_AND;
-	if(m_mode == e_modeAutoClear)
-		mode |= SYS_EVENT_FLAG_WAIT_CLEAR;
-
-	int err = sys_event_flag_wait(m_events, 1<<index, mode, 0, timeoutMicrosecs);
-
-	switch(err)
-	{
-	case CELL_OK:
-		retVal = WAIT_OBJECT_0;
-		break;
-	case ETIMEDOUT:
-		retVal = WAIT_TIMEOUT;
-		break;
-	case ECANCELED:
-		retVal = WAIT_ABANDONED;
-		break;
-	default:
-		assert(0);
-		retVal = WAIT_FAILED;
-		break;
-	}
-#elif defined __ORBIS__
-	SceKernelUseconds timeoutMicrosecs;
-	SceKernelUseconds *pTimeoutMicrosecs;
-	if( timeoutMs == INFINITE )
-	{
-		pTimeoutMicrosecs = NULL;
-	}
-	else
-	{
-		timeoutMicrosecs = ((SceKernelUseconds)timeoutMs) * 1000;
-		pTimeoutMicrosecs = &timeoutMicrosecs;
-	}
-	uint32_t waitMode = SCE_KERNEL_EVF_WAITMODE_AND;
-	if(m_mode == e_modeAutoClear)
-	{
-		waitMode |= SCE_KERNEL_EVF_WAITMODE_CLEAR_PAT;
-	}
-	uint64_t resultPat;
-	int err = sceKernelWaitEventFlag(m_events, 1<<index, waitMode, &resultPat, pTimeoutMicrosecs);
-	assert(err != SCE_KERNEL_ERROR_ETIMEDOUT);
-	switch(err)
-	{
-		case SCE_OK:
-			retVal = WAIT_OBJECT_0;
-			break;
-		case SCE_KERNEL_ERROR_ETIMEDOUT:
-			retVal = WAIT_TIMEOUT;
-			break;
-		case SCE_KERNEL_ERROR_ECANCELED:
-			retVal = WAIT_ABANDONED;
-			break;
-		default:
-			retVal = WAIT_FAILED;
-			break;
-	}
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	SceUInt32 timeoutMicrosecs;
 	SceUInt32 *pTimeoutMicrosecs;
 	if( timeoutMs == INFINITE )
@@ -778,74 +499,7 @@ DWORD C4JThread::EventArray::WaitForSingle(int index, int timeoutMs )
 DWORD C4JThread::EventArray::WaitForAll(int timeoutMs )
 {
 	DWORD retVal;
-#ifdef __PS3__
-	if(timeoutMs == INFINITE)
-		timeoutMs = SYS_NO_TIMEOUT ;
-	int timoutMicrosecs = timeoutMs * 1000;
-	unsigned int bitmask = 0;
-	for(int i=0;i<m_size;i++)
-		bitmask |= (1<<i);
-
-	uint32_t mode = SYS_EVENT_FLAG_WAIT_AND;
-	if(m_mode == e_modeAutoClear)
-		mode |= SYS_EVENT_FLAG_WAIT_CLEAR;
-
-	int err = sys_event_flag_wait(m_events, bitmask, mode, 0, timoutMicrosecs);
-
-	switch(err)
-	{
-	case CELL_OK:
-		retVal = WAIT_OBJECT_0;
-		break;
-	case ETIMEDOUT:
-		retVal = WAIT_TIMEOUT;
-		break;
-	case ECANCELED:
-		retVal = WAIT_ABANDONED;
-		break;
-	default:
-		assert(0);
-		retVal = WAIT_FAILED;
-		break;
-	}
-
-#elif defined __ORBIS__
-	SceKernelUseconds timeoutMicrosecs;
-	SceKernelUseconds *pTimeoutMicrosecs;
-	if( timeoutMs == INFINITE )
-	{
-		pTimeoutMicrosecs = NULL;
-	}
-	else
-	{
-		timeoutMicrosecs = ((SceKernelUseconds)timeoutMs) * 1000;
-		pTimeoutMicrosecs = &timeoutMicrosecs;
-	}
-	unsigned int bitmask = 0;
-	for(int i=0;i<m_size;i++)
-		bitmask |= (1<<i);
-	uint32_t waitMode = SCE_KERNEL_EVF_WAITMODE_AND;
-	if(m_mode == e_modeAutoClear)
-	{
-		waitMode |= SCE_KERNEL_EVF_WAITMODE_CLEAR_PAT;
-	}
-	int err = sceKernelWaitEventFlag(m_events, bitmask, waitMode, NULL, pTimeoutMicrosecs);
-	switch(err)
-	{
-		case SCE_OK:
-			retVal = WAIT_OBJECT_0;
-			break;
-		case SCE_KERNEL_ERROR_ETIMEDOUT:
-			retVal = WAIT_TIMEOUT;
-			break;
-		case SCE_KERNEL_ERROR_ECANCELED:
-			retVal = WAIT_ABANDONED;
-			break;
-		default:
-			retVal = WAIT_FAILED;
-			break;
-	}
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	SceUInt32 timeoutMicrosecs;
 	SceUInt32 *pTimeoutMicrosecs;
 	if( timeoutMs == INFINITE )
@@ -882,59 +536,7 @@ DWORD C4JThread::EventArray::WaitForAll(int timeoutMs )
 
 DWORD C4JThread::EventArray::WaitForAny(int timeoutMs )
 {
-#ifdef __PS3__
-	if(timeoutMs == INFINITE)
-		timeoutMs = SYS_NO_TIMEOUT ;
-	int timoutMicrosecs = timeoutMs * 1000;
-	unsigned int bitmask = 0;
-	for(int i=0;i<m_size;i++)
-		bitmask |= (1<<i);
-
-	uint32_t mode = SYS_EVENT_FLAG_WAIT_OR;
-	if(m_mode == e_modeAutoClear)
-		mode |= SYS_EVENT_FLAG_WAIT_CLEAR;
-
-	int err = sys_event_flag_wait(m_events, bitmask, mode, 0, timoutMicrosecs);
-
-	switch(err)
-	{
-	case CELL_OK: return WAIT_OBJECT_0;
-	case ETIMEDOUT: return WAIT_TIMEOUT;
-	case ECANCELED: return WAIT_ABANDONED;
-	default:
-		assert(0);
-		return WAIT_FAILED;
-	}
-
-#elif defined __ORBIS__
-	SceKernelUseconds timeoutMicrosecs;
-	SceKernelUseconds *pTimeoutMicrosecs;
-	if( timeoutMs == INFINITE )
-	{
-		pTimeoutMicrosecs = NULL;
-	}
-	else
-	{
-		timeoutMicrosecs = ((SceKernelUseconds)timeoutMs) * 1000;
-		pTimeoutMicrosecs = &timeoutMicrosecs;
-	}
-	unsigned int bitmask = 0;
-	for(int i=0;i<m_size;i++)
-		bitmask |= (1<<i);
-	uint32_t waitMode = SCE_KERNEL_EVF_WAITMODE_OR;
-	if(m_mode == e_modeAutoClear)
-	{
-		waitMode |= SCE_KERNEL_EVF_WAITMODE_CLEAR_PAT;
-	}
-	int err = sceKernelWaitEventFlag(m_events, bitmask, waitMode, NULL, pTimeoutMicrosecs);
-	switch(err)
-	{
-		case SCE_OK: return WAIT_OBJECT_0;
-		case SCE_KERNEL_ERROR_ETIMEDOUT: return WAIT_TIMEOUT;
-		case SCE_KERNEL_ERROR_ECANCELED: return WAIT_ABANDONED;
-		default: return WAIT_FAILED;
-	}
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	SceUInt32 timeoutMicrosecs;
 	SceUInt32 *pTimeoutMicrosecs;
 	if( timeoutMs == INFINITE )
@@ -967,12 +569,6 @@ DWORD C4JThread::EventArray::WaitForAny(int timeoutMs )
 #endif // __PS3__
 }
 
-#ifdef __PS3__
-void C4JThread::EventArray::Cancel()
-{
-	sys_event_flag_cancel(m_events, NULL);
-}
-#endif 
 
 
 
@@ -1073,28 +669,3 @@ void C4JThread::EventQueue::threadPoll()
 }
 
 
-#ifdef __ORBIS__
-
-void C4JThread::PushAffinityAllCores()
-{
-	assert(m_oldAffinityMask == 0);
-	int err;
-	ScePthread currThreadID = scePthreadSelf();
-	err = scePthreadGetaffinity(currThreadID, &m_oldAffinityMask);
-	assert(err == SCE_OK);
-	err = scePthreadSetaffinity(currThreadID, 63);
-	assert(err == SCE_OK);
-
-
-}
-
-void C4JThread::PopAffinity()
-{
-	int err;
-	ScePthread currThreadID = scePthreadSelf();
-	err = scePthreadSetaffinity(currThreadID, m_oldAffinityMask);
-	m_oldAffinityMask = 0;
-	assert(err == SCE_OK);
-}
-
-#endif // __ORBIS__

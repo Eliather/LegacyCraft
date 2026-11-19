@@ -249,6 +249,7 @@ set(CLIENT_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/DistanceChunkSorter.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/DLCTexturePack.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/DebugOverlay.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/ShaderManager.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/DragonBreathParticle.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/DragonModel.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/Minecraft.Client/DripParticle.cpp"

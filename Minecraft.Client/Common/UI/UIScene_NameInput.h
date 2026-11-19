@@ -76,9 +76,7 @@ private:
 public:
 	virtual EUIScene getSceneType() { return eUIScene_NameInput; }
 
-#ifndef __PS3__
 	virtual bool hasFocus(int iPad) { return bHasFocus; }
-#endif
 
 	virtual bool hidesLowerScenes() { return false; }
 };

@@ -75,9 +75,6 @@ enum eXuiAction
 	eAppAction_ReloadTexturePack,
 	eAppAction_TexturePackRequired, // when the user has joined from invite, but doesn't have the texture pack
 
-#ifdef __ORBIS__
-	eAppAction_OptionsSaveNoSpace,
-#endif
 	eAppAction_DebugText,
 
 };
@@ -803,9 +800,6 @@ enum EControllerActions
 	ACTION_MENU_GTC_RESUME,
 #endif
 
-#ifdef __ORBIS__
-	ACTION_MENU_TOUCHPAD_PRESS,
-#endif
 
 	ACTION_MENU_OK,
 	ACTION_MENU_CANCEL,

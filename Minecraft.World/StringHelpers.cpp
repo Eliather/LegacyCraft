@@ -56,11 +56,7 @@ const char *wstringtofilename(const wstring& name)
 	for(unsigned int i = 0; i < name.length(); i++ )
 	{
 		wchar_t c = name[i];
-#if defined __PS3__ || defined __ORBIS__
-		if(c=='\\') c='/';
-#else
 		if(c=='/') c='\\';
-#endif
 		assert(c<128);	// Will we have to do any conversion of non-ASCII characters in filenames?
 		buf[i] = (char)c;
 	}

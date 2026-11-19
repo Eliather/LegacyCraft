@@ -118,11 +118,6 @@ public:
 	virtual vector<FileEntry *> *getFilesWithPrefix(const wstring &prefix);
 	virtual vector<FileEntry *> *getRegionFilesByDimension(unsigned int dimensionIndex);
 
-#if defined(__PS3__) || defined(__ORBIS__)
-	virtual wstring getPlayerDataFilenameForLoad(const PlayerUID& pUID);
-	virtual wstring getPlayerDataFilenameForSave(const PlayerUID& pUID);
-	virtual vector<FileEntry *> *getValidPlayerDatFiles();
-#endif //__PS3__
 
 	virtual int getSaveVersion();
 	virtual int getOriginalSaveVersion();

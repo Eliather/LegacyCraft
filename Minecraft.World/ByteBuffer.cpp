@@ -461,18 +461,3 @@ FloatBuffer *ByteBuffer::asFloatBuffer()
 
 
 
-#ifdef __PS3__
-// we're using the RSX now to upload textures to vram, so we need th main ram textures allocated from io space
-ByteBuffer_IO::ByteBuffer_IO( unsigned int capacity ) 
-	: ByteBuffer(capacity, (byte*)RenderManager.allocIOMem(capacity, 64))
-{
-	memset( buffer,0,sizeof(byte)*capacity);
-	byteOrder = BIGENDIAN;
-}
-
-ByteBuffer_IO::~ByteBuffer_IO()
-{
-//	delete buffer;
-	RenderManager.freeIOMem(buffer);
-}
-#endif // __PS3__

@@ -17,7 +17,9 @@ namespace
 	const unsigned char kDefaultResolutionMode = 3;
 	const unsigned char kDefaultRendererBackend = 0; // 0 = DX11, 1 = OpenGL, 2 = Vulkan, 3 = DX12
 	const unsigned char kDefaultVsyncEnabled = 0;
-	const unsigned int kUserDataInfoVersion = 8;
+	const unsigned char kDefaultShaderEnabled = 1;
+	const wchar_t *kDefaultShaderPackName = L"Default";
+	const unsigned int kUserDataInfoVersion = 9;
 
 #pragma pack(push, 1)
 	struct UserDataInfoFile
@@ -34,11 +36,13 @@ namespace
 		unsigned char resolutionMode;
 		unsigned char rendererBackend;
 		unsigned char vsyncEnabled;
+		unsigned char shaderEnabled;
+		char shaderPackName[64];
 	};
 #pragma pack(pop)
 
 	bool g_userDataLoaded = false;
-	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance, kDefaultResolutionMode, kDefaultRendererBackend, kDefaultVsyncEnabled };
+	UserData_Info::Data g_userData = { L"Steve", false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance, kDefaultResolutionMode, kDefaultRendererBackend, kDefaultVsyncEnabled, kDefaultShaderEnabled, L"Default" };
 	char g_userDataPlayerNameAnsi[17] = "Steve";
 
 	unsigned char ClampFovValue(unsigned char fov)
@@ -283,10 +287,10 @@ namespace
 
 	void ParseBinaryFile(const UserDataInfoFile &fileData)
 	{
-		UserData_Info::Data parsed = { kDefaultPlayerName, false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance, kDefaultResolutionMode, kDefaultRendererBackend, kDefaultVsyncEnabled };
+		UserData_Info::Data parsed = { kDefaultPlayerName, false, MINECRAFT_LANGUAGE_SPANISH, kDefaultSkinId, kDefaultGamma, kDefaultFov, kDefaultRenderDistance, kDefaultResolutionMode, kDefaultRendererBackend, kDefaultVsyncEnabled, kDefaultShaderEnabled, kDefaultShaderPackName };
 
 		if(memcmp(fileData.magic, "UDAT", 4) != 0 ||
-			(fileData.version != 1 && fileData.version != 2 && fileData.version != 3 && fileData.version != 4 && fileData.version != 5 && fileData.version != 6 && fileData.version != 7 && fileData.version != kUserDataInfoVersion))
+			(fileData.version < 1 || fileData.version > kUserDataInfoVersion))
 		{
 			g_userData = parsed;
 			return;
@@ -358,6 +362,25 @@ namespace
 			parsed.vsyncEnabled = kDefaultVsyncEnabled;
 		}
 
+		if(fileData.version >= 9)
+		{
+			parsed.shaderEnabled = (fileData.shaderEnabled != 0) ? 1 : 0;
+			parsed.shaderPackName.clear();
+			for(size_t i = 0; i < 63 && fileData.shaderPackName[i] != '\0'; ++i)
+			{
+				parsed.shaderPackName.push_back((wchar_t)(unsigned char)fileData.shaderPackName[i]);
+			}
+			if(parsed.shaderPackName.empty())
+			{
+				parsed.shaderPackName = kDefaultShaderPackName;
+			}
+		}
+		else
+		{
+			parsed.shaderEnabled = kDefaultShaderEnabled;
+			parsed.shaderPackName = kDefaultShaderPackName;
+		}
+
 		g_userData = parsed;
 	}
 }
@@ -389,6 +412,8 @@ void UserData_Info::EnsureLoaded()
 		g_userData.resolutionMode = kDefaultResolutionMode;
 		g_userData.rendererBackend = kDefaultRendererBackend;
 		g_userData.vsyncEnabled = kDefaultVsyncEnabled;
+		g_userData.shaderEnabled = kDefaultShaderEnabled;
+		g_userData.shaderPackName = kDefaultShaderPackName;
 	}
 
 	if(!fileLoaded || ValidateData(false))
@@ -416,6 +441,12 @@ void UserData_Info::Save()
 	fileData.skinId = g_userData.skinId;
 	fileData.rendererBackend = g_userData.rendererBackend;
 	fileData.vsyncEnabled = g_userData.vsyncEnabled;
+	fileData.shaderEnabled = g_userData.shaderEnabled ? 1 : 0;
+	for(size_t i = 0; i < 63 && i < g_userData.shaderPackName.size(); ++i)
+	{
+		wchar_t ch = g_userData.shaderPackName[i];
+		fileData.shaderPackName[i] = (ch >= 32 && ch <= 126) ? (char)ch : '_';
+	}
 
 	const std::wstring path = GetUserDataInfoPath();
 
@@ -584,5 +615,35 @@ void UserData_Info::SetVsyncEnabled(bool vsyncEnabled)
 {
 	EnsureLoaded();
 	g_userData.vsyncEnabled = ClampVsyncValue(vsyncEnabled ? 1 : 0);
+	Save();
+}
+
+bool UserData_Info::GetShaderEnabled()
+{
+	EnsureLoaded();
+	return g_userData.shaderEnabled != 0;
+}
+
+std::wstring UserData_Info::GetShaderPackName()
+{
+	EnsureLoaded();
+	return g_userData.shaderPackName.empty() ? std::wstring(kDefaultShaderPackName) : g_userData.shaderPackName;
+}
+
+void UserData_Info::SetShaderEnabled(bool shaderEnabled)
+{
+	EnsureLoaded();
+	g_userData.shaderEnabled = shaderEnabled ? 1 : 0;
+	Save();
+}
+
+void UserData_Info::SetShaderPackName(const std::wstring &shaderPackName)
+{
+	EnsureLoaded();
+	g_userData.shaderPackName = shaderPackName.empty() ? std::wstring(kDefaultShaderPackName) : shaderPackName;
+	if(g_userData.shaderPackName.size() > 63)
+	{
+		g_userData.shaderPackName.resize(63);
+	}
 	Save();
 }

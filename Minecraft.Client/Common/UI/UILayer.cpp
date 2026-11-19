@@ -318,7 +318,7 @@ bool UILayer::NavigateToScene(int iPad, EUIScene scene, void *initData)
 	case eUIScene_InGamePlayerOptionsMenu:
 		newScene = new UIScene_InGamePlayerOptionsMenu(iPad, initData, this);
 		break;
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 	case eUIScene_InGameSaveManagementMenu:
 		newScene = new UIScene_InGameSaveManagementMenu(iPad, initData, this);
 		break;

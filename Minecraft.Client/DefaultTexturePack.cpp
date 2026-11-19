@@ -67,26 +67,6 @@ InputStream *DefaultTexturePack::getResourceImplementation(const wstring &name)/
 		
 			wDrive=L"GAME:\\res\\TitleUpdate\\res";
 	#endif
-#elif __PS3__
-
-	char *pchUsrDir;	
-	if(app.GetBootedFromDiscPatch())
-	{
-		const char *pchTextureName=wstringtofilename(name);
-		pchUsrDir = app.GetBDUsrDirPath(pchTextureName);
-		app.DebugPrintf("DefaultTexturePack::getResourceImplementation - texture %s - Drive - %s\n",pchTextureName,pchUsrDir);
-	}
-	else
-	{
-		const char *pchTextureName=wstringtofilename(name);
-		pchUsrDir=getUsrDirPath();
-		app.DebugPrintf("DefaultTexturePack::getResourceImplementation - texture %s - Drive - %s\n",pchTextureName,pchUsrDir);
-	}
-
-
-	wstring wstr (pchUsrDir, pchUsrDir+strlen(pchUsrDir));
-
-	wDrive = wstr + L"\\Common\\res\\TitleUpdate\\res";
 #elif __PSVITA__
 
 	/*

@@ -223,6 +223,13 @@ public:
 	void Suspend();
 	bool Suspended();
 	void Resume();
+
+	// Modular Shader System
+	void ShaderSetFrameParams(const struct C4JShaderFrameParams *params);
+	bool ShaderLoadCustomProgram(const struct C4JShaderProgramDesc *desc, char *errBuf, size_t errBufLen);
+	void ShaderClearCustomProgram();
+	void ShaderSetMode(int mode);
+	int  ShaderGetMode();
 };
 
 

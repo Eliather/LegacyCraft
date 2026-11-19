@@ -28,8 +28,6 @@
 #include "..\Minecraft.World\JavaMath.h"
 #ifdef _XBOX
 #include "Windows64\NetworkPlayerXbox.h"
-#elif defined(__PS3__) || defined(__ORBIS__)
-#include "Common\Network\Sony\NetworkPlayerSony.h"
 #endif
 
 namespace
@@ -117,16 +115,6 @@ void PlayerList::placeNewPlayer(Connection *connection, shared_ptr<ServerPlayer>
 			player->setPlayerGamePrivilege(Player::ePlayerGamePrivilege_HOST,1);
 		}
 
-#if defined(__PS3__) || defined(__ORBIS__)
-		// PS3 networking library doesn't automatically assign PlayerUIDs to the network players for anything remote, so need to tell it what to set from the data in this packet now
-		if( !g_NetworkManager.IsLocalGame() )
-		{
-			if( networkPlayer != NULL )
-			{
-				((NetworkPlayerSony *)networkPlayer)->SetUID( packet->m_onlineXuid );
-			}
-		}
-#endif
 
 		// 4J Stu - TU-1 hotfix
 		// Fix for #13150 - When a player loads/joins a game after saving/leaving in the nether, sometimes they are spawned on top of the nether and cannot mine down

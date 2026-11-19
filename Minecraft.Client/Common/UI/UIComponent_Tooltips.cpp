@@ -22,7 +22,7 @@ UIComponent_Tooltips::UIComponent_Tooltips(int iPad, void *initData, UILayer *pa
 	}
 #endif
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	if(InputManager.IsCircleCrossSwapped())
 	{
 		IggyDataValue result;
@@ -400,7 +400,7 @@ void UIComponent_Tooltips::handleReload()
 {
 	app.DebugPrintf("UIComponent_Tooltips::handleReload\n");
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	if(InputManager.IsCircleCrossSwapped())
 	{
 		IggyDataValue result;

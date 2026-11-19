@@ -411,11 +411,7 @@ UIScene *UIGroup::FindScene(EUIScene sceneType)
 	for (int i = 0; i < eUILayer_COUNT; i++)
 	{
 		pScene = m_layers[i]->FindScene(sceneType);
-#ifdef __PS3__
-		if (pScene != NULL) return pScene;
-#else
 		if (pScene != nullptr) return pScene;
-#endif
 	}
 
 	return pScene;

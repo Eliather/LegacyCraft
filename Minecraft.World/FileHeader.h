@@ -56,10 +56,6 @@ enum ESavePlatform
 	SAVE_FILE_PLATFORM_LOCAL = SAVE_FILE_PLATFORM_X360
 #elif defined _DURANGO
 	SAVE_FILE_PLATFORM_LOCAL = SAVE_FILE_PLATFORM_XBONE
-#elif defined __PS3__
-	SAVE_FILE_PLATFORM_LOCAL = SAVE_FILE_PLATFORM_PS3
-#elif defined __ORBIS__
-	SAVE_FILE_PLATFORM_LOCAL = SAVE_FILE_PLATFORM_PS4
 #elif defined __PSVITA__
 	SAVE_FILE_PLATFORM_LOCAL = SAVE_FILE_PLATFORM_PSVITA
 #elif defined _WINDOWS64
@@ -144,7 +140,7 @@ private:
 	vector<FileEntry *> fileTable;
 	ESavePlatform	m_savePlatform;
 	ByteOrder		m_saveEndian;
-#if defined(__PS3__) || defined(_XBOX)
+#if defined(_XBOX)
 	static const ByteOrder m_localEndian = BIGENDIAN;
 #else
 	static const ByteOrder m_localEndian = LITTLEENDIAN;
@@ -178,7 +174,7 @@ protected:
 
 	vector<FileEntry *> *getValidPlayerDatFiles();
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	wstring getPlayerDataFilenameForLoad(const PlayerUID& pUID);
 	wstring getPlayerDataFilenameForSave(const PlayerUID& pUID);
 	vector<FileEntry *> *getDatFilesWithOnlineID(const PlayerUID& pUID);

@@ -213,9 +213,7 @@ Minecraft::Minecraft(Component *mouseComponent, Canvas *parent, MinecraftApplet 
 
 	// 4J-PB - Removed it from here on Orbis due to it causing a crash with the network init.
 	// We should work out why...
-#ifndef __ORBIS__
 	this->soundEngine->init(NULL);
-#endif
 
 #ifndef DISABLE_LEVELTICK_THREAD
 	levelTickEventQueue = new C4JThread::EventQueue(levelTickUpdateFunc, levelTickThreadInitFunc, "LevelTick_EventQueuePoll");
@@ -1415,31 +1413,13 @@ void Minecraft::run_middle()
 
 			for( int i = 0; i < XUSER_MAX_COUNT; i++ )
 			{
-#ifdef __ORBIS__
-				if ( m_pPsPlusUpsell != NULL && m_pPsPlusUpsell->hasResponse() && m_pPsPlusUpsell->m_userIndex == i )
-				{
-					delete m_pPsPlusUpsell;
-					m_pPsPlusUpsell = NULL;
-								
-					if ( ProfileManager.HasPlayStationPlus(i) )
-					{
-						app.DebugPrintf("<Minecraft.cpp> Player_%i is now authorised for PsPlus.\n", i);
-						if (!ui.PressStartPlaying(i)) ui.ShowPressStart(i);
-					}
-					else
-					{
-						UINT uiIDA[1] = { IDS_OK };
-						ui.RequestMessageBox( IDS_CANTJOIN_TITLE, IDS_NO_PLAYSTATIONPLUS, uiIDA, 1, i, NULL, NULL, app.GetStringTable() );
-					}
-				}
-				else
-#endif
 					if(localplayers[i])
 				{
 					bool keyboardMousePrimary = (i == ProfileManager.GetPrimaryPad()) && (options != NULL) && (screen == NULL) && !ui.GetMenuDisplayed(i);
 					bool keyboardJumpPressed = keyboardMousePrimary && Keyboard::isKeyPressed(options->keyJump->key);
 					bool mouseUsePressed = keyboardMousePrimary && Mouse::isButtonPressed(1);
 					bool keyboardInventoryPressed = keyboardMousePrimary && Keyboard::isKeyPressed(options->keyBuild->key);
+					bool keyboardCraftingPressed = keyboardMousePrimary && Keyboard::isKeyPressed(Keyboard::KEY_C);
 					bool mouseActionPressed = keyboardMousePrimary && Mouse::isButtonPressed(0);
 					bool keyboardPausePressed = keyboardMousePrimary && Keyboard::isKeyPressed(Keyboard::KEY_ESCAPE);
 					bool keyboardDropPressed = keyboardMousePrimary && Keyboard::isKeyPressed(options->keyDrop->key);
@@ -1452,7 +1432,7 @@ void Minecraft::run_middle()
 
 					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_INVENTORY) || keyboardInventoryPressed)				localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_INVENTORY;
 					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_ACTION) || mouseActionPressed)					localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_ACTION;
-					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_CRAFTING))				localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_CRAFTING;
+					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_CRAFTING) || keyboardCraftingPressed)				localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_CRAFTING;
 					if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_PAUSEMENU) || keyboardPausePressed)
 					{
 						localplayers[i]->ullButtonsPressed|=1LL<<MINECRAFT_ACTION_PAUSEMENU;
@@ -1477,6 +1457,26 @@ void Minecraft::run_middle()
 					if (i == ProfileManager.GetPrimaryPad())
 					{
 						DebugOverlay::HandleInput(this);
+#ifdef _WINDOWS64
+						// Circular doubly-linked hotbar scroll (0 <-> 1 <-> ... <-> 8 <-> 0) sampled every frame
+						// so high-FPS rendering never drops WM_MOUSEWHEEL notches before 20Hz tick().
+						if (keyboardMousePrimary && Mouse::isGrabbed() && localplayers[i]->inventory != NULL)
+						{
+							const int wheelSteps = Mouse::getWheelDelta();
+							if (wheelSteps != 0)
+							{
+								const int hotbarSize = Inventory::getSelectionSize();
+								int nextSlot = (localplayers[i]->inventory->selected - wheelSteps) % hotbarSize;
+								if (nextSlot < 0) nextSlot += hotbarSize;
+								localplayers[i]->inventory->selected = nextSlot;
+								if (localgameModes[i] != NULL && localgameModes[i]->getTutorial() != NULL)
+								{
+									localgameModes[i]->getTutorial()->onSelectedItemChanged(localplayers[i]->inventory->getSelected());
+								}
+								localplayers[i]->updateRichPresence();
+							}
+						}
+#endif
 					}
 
 #ifndef _FINAL_BUILD
@@ -1530,24 +1530,10 @@ void Minecraft::run_middle()
 #ifndef _DURANGO
 					// did we just get input from a player who doesn't exist? They'll be wanting to join the game then
 					bool tryJoin = !pause && !ui.IsIgnorePlayerJoinMenuDisplayed(ProfileManager.GetPrimaryPad()) && g_NetworkManager.SessionHasSpace() && RenderManager.IsHiDef() && InputManager.ButtonPressed(i);
-#ifdef __ORBIS__
-					// Check for remote play
-					tryJoin = tryJoin && InputManager.IsLocalMultiplayerAvailable();
-
-					// 4J Stu - Check that content restriction information has been received
-					if( !g_NetworkManager.IsLocalGame() )
-					{
-						tryJoin = tryJoin && ProfileManager.GetChatAndContentRestrictions(i,true,NULL,NULL,NULL);
-					}
-#endif
 					if(tryJoin)
 					{
 						if(!ui.PressStartPlaying(i))
 						{
-#ifdef __ORBIS__
-							// Don't let player start joining until their PS Plus check has finished
-							if (g_NetworkManager.IsLocalGame() || !ProfileManager.RequestingPlaystationPlus(i))
-#endif
 							{
 								ui.ShowPressStart(i);
 							}
@@ -1555,11 +1541,7 @@ void Minecraft::run_middle()
 						else
 						{
 							// did we just get input from a player who doesn't exist? They'll be wanting to join the game then
-#ifdef __ORBIS__
-							if(InputManager.ButtonPressed(i, ACTION_MENU_A))
-#else
 							if(InputManager.ButtonPressed(i, MINECRAFT_ACTION_PAUSEMENU))
-#endif
 							{
 								// Let them join
 
@@ -1569,21 +1551,6 @@ void Minecraft::run_middle()
 									// if this is a local game, then the player just needs to be signed in
 									if( g_NetworkManager.IsLocalGame() || (ProfileManager.IsSignedInLive(i) && ProfileManager.AllowedToPlayMultiplayer(i) ) )
 									{
-#ifdef __ORBIS__
-										bool contentRestricted = false;
-										ProfileManager.GetChatAndContentRestrictions(i,false,NULL,&contentRestricted,NULL); // TODO!
-
-										if (!g_NetworkManager.IsLocalGame() && contentRestricted)
-										{
-											ui.RequestContentRestrictedMessageBox(IDS_NO_MULTIPLAYER_PRIVILEGE_TITLE, IDS_CONTENT_RESTRICTION, i);
-										}
-										else if(!g_NetworkManager.IsLocalGame() && !ProfileManager.HasPlayStationPlus(i))
-										{
-											m_pPsPlusUpsell = new PsPlusUpsellWrapper(i);
-											m_pPsPlusUpsell->displayUpsell();
-										}
-										else
-#endif
 										if( level->isClientSide )
 										{
 											bool success=addLocalPlayer(i);
@@ -1595,17 +1562,6 @@ void Minecraft::run_middle()
 											}
 											else
 											{
-#ifdef __ORBIS__
-												if(g_NetworkManager.IsLocalGame() == false)
-												{
-													bool chatRestricted = false;
-													ProfileManager.GetChatAndContentRestrictions(i,false,&chatRestricted,NULL,NULL);
-													if(chatRestricted)
-													{
-														ProfileManager.DisplaySystemMessage( SCE_MSG_DIALOG_SYSMSG_TYPE_TRC_PSN_CHAT_RESTRICTION, i );
-													}
-												}
-#endif
 											}
 										}
 										else
@@ -1631,26 +1587,6 @@ void Minecraft::run_middle()
 											ui.HidePressStart();
 #endif
 
-#ifdef __ORBIS__
-											int npAvailability = ProfileManager.getNPAvailability(i);
-
-											// Check if PSN is unavailable because of age restriction
-											if (npAvailability == SCE_NP_ERROR_AGE_RESTRICTION)
-											{
-												UINT uiIDA[1];
-												uiIDA[0] = IDS_OK;
-												ui.RequestMessageBox(IDS_ONLINE_SERVICE_TITLE, IDS_CONTENT_RESTRICTION, uiIDA, 1, i, NULL, NULL, app.GetStringTable());
-											}
-											else if (ProfileManager.IsSignedIn(i) && !ProfileManager.IsSignedInLive(i))
-											{
-												// You're not signed in to PSN!
-												UINT uiIDA[2];
-												uiIDA[0] = IDS_PRO_NOTONLINE_ACCEPT;
-												uiIDA[1] = IDS_CANCEL;
-												ui.RequestMessageBox(IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, i,&Minecraft::MustSignInReturnedPSN, this, app.GetStringTable(), NULL, 0, false);
-											}
-											else
-#endif
 											{
 												UINT uiIDA[1];
 												uiIDA[0]=IDS_CONFIRM_OK;
@@ -1871,10 +1807,6 @@ void Minecraft::run_middle()
 
 						if(i==iPrimaryPad)
 						{
-#ifdef __ORBIS__
-							// PS4 does much of the screen-capturing for every frame, to simplify the synchronisation when we actually want a capture. This call tells it the point in the frame to do it.
-							RenderManager.InternalScreenCapture();
-#endif
 						}
 					}
 				}
@@ -3210,12 +3142,6 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 		ui.SetTooltips( iPad, iA,iB,iX,iY,iLT,iRT,iLB,iRB);
 
 		int wheel = 0;
-		if (iPad == ProfileManager.GetPrimaryPad())
-		{
-			int mouseWheel = Mouse::getWheelDelta();
-			if (mouseWheel > 0) wheel = 1;
-			else if (mouseWheel < 0) wheel = -1;
-		}
 		if (InputManager.GetValue(iPad, MINECRAFT_ACTION_LEFT_SCROLL, true) > 0 && gameMode->isInputAllowed(MINECRAFT_ACTION_LEFT_SCROLL) )
 		{
 			wheel = 1;
@@ -3762,32 +3688,6 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 				}
 
 				// optimisation to set the culling off early, in parallel with other stuff
-#if defined __PS3__ && !defined DISABLE_SPU_CODE
-				// kick off the culling for all valid players in this level
-				int currPlayerIdx = getLocalPlayerIdx();
-				for( int idx = 0; idx < XUSER_MAX_COUNT; idx++ )
-				{
-					if(localplayers[idx]!=NULL)
-					{
-						if( localplayers[idx]->level == levels[i] )
-						{
-							setLocalPlayerIdx(idx);
-							gameRenderer->setupCamera(timer->a, i);
-							Camera::prepare(localplayers[idx], localplayers[idx]->ThirdPersonView() == 2);
-							shared_ptr<Mob> cameraEntity = cameraTargetPlayer;
-							double xOff = cameraEntity->xOld + (cameraEntity->x - cameraEntity->xOld) * timer->a;
-							double yOff = cameraEntity->yOld + (cameraEntity->y - cameraEntity->yOld) * timer->a;
-							double zOff = cameraEntity->zOld + (cameraEntity->z - cameraEntity->zOld) * timer->a;
-							FrustumCuller frustObj;
-							Culler *frustum = &frustObj;
-							MemSect(0);
-							frustum->prepare(xOff, yOff, zOff);
-							levelRenderer->cull_SPU(idx, frustum, 0);
-						}
-					}
-				}
-				setLocalPlayerIdx(currPlayerIdx);
-#endif // __PS3__
 
 				// 4J Stu - We are always online, but still could be paused
 				if (!pause) // || isClientSide())
@@ -3816,16 +3716,6 @@ void Minecraft::tick(bool bFirst, bool bUpdateTextures)
 		if( pause ) tickAllConnections();
 		// player->tick();
 	}
-#ifdef __PS3__
-
-// 	while(!g_tickLevelQueue.empty()) 
-// 	{
-// 		Level* pLevel = g_tickLevelQueue.front();
-// 		g_tickLevelQueue.pop();
-// 		pLevel->tick();
-// 	};
-
-#endif
 
 	// if (Keyboard.isKeyDown(Keyboard.KEY_NUMPAD7) ||
 	// Keyboard.isKeyDown(Keyboard.KEY_Q)) rota++;
@@ -4496,9 +4386,7 @@ void Minecraft::main()
 
 	// On PS4, we call Minecraft::Start from another thread, as this has been timed taking ~2.5 seconds and we need to do some basic
 	// rendering stuff so that we don't break the TRCs on SubmitDone calls
-#ifndef __ORBIS__
 	Minecraft::start(name, sessionId);
-#endif
 }
 
 bool Minecraft::renderNames()
@@ -4853,21 +4741,6 @@ int Minecraft::InGame_SignInReturned(void *pParam,bool bContinue, int iPad)
 			// if this is a local game then profiles just need to be signed in
 			else if( g_NetworkManager.IsLocalGame() || (ProfileManager.IsSignedInLive(iPad) && ProfileManager.AllowedToPlayMultiplayer(iPad)) )
 			{
-#ifdef __ORBIS__
-				bool contentRestricted = false;
-				ProfileManager.GetChatAndContentRestrictions(iPad,false,NULL,&contentRestricted,NULL); // TODO!
-
-				if (!g_NetworkManager.IsLocalGame() && contentRestricted)
-				{
-					ui.RequestContentRestrictedMessageBox(IDS_NO_MULTIPLAYER_PRIVILEGE_TITLE, IDS_CONTENT_RESTRICTION, iPad);
-				}
-				else if(!g_NetworkManager.IsLocalGame() && !ProfileManager.HasPlayStationPlus(iPad))
-				{
-					pMinecraftClass->m_pPsPlusUpsell = new PsPlusUpsellWrapper(iPad);
-					pMinecraftClass->m_pPsPlusUpsell->displayUpsell();
-				}
-				else
-#endif
 					if( pMinecraftClass->level->isClientSide )
 					{
 					pMinecraftClass->addLocalPlayer(iPad);
@@ -4953,16 +4826,3 @@ ColourTable *Minecraft::getColourTable()
 	return colours;
 }
 
-#if defined __ORBIS__
-int Minecraft::MustSignInReturnedPSN(void *pParam, int iPad, C4JStorage::EMessageResult result)
-{
-    Minecraft* pMinecraft = (Minecraft *)pParam;
-
-    if(result == C4JStorage::EMessage_ResultAccept) 
-    {        
-		SQRNetworkManager_Orbis::AttemptPSNSignIn(&Minecraft::InGame_SignInReturned, pMinecraft, false, iPad);
-    }
-
-    return 0;
-}
-#endif

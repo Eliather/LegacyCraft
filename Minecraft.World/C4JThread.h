@@ -5,7 +5,7 @@ typedef int (C4JThreadStartFunc)(void* lpThreadParameter);
 
 class Level;
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 
 #define CPU_CORE_MAIN_THREAD 0
 
@@ -74,11 +74,7 @@ public:
 
 	private:
 		EMode	m_mode;
-	#ifdef __PS3__
-		sys_event_flag_t m_event; 
-	#elif defined __ORBIS__
-		SceKernelEventFlag m_event;
-	#elif defined __PSVITA__
+	#if defined __PSVITA__
 		SceUID m_event;
 	#else
 		HANDLE m_event;
@@ -103,18 +99,11 @@ public:
 		DWORD WaitForAll(int timeoutMs);
 		DWORD WaitForAny(int timeoutMs);
 		DWORD WaitForSingle(int index, int timeoutMs);
-#ifdef __PS3__
-		void Cancel();
-#endif
 
 	private:
 		int		m_size;
 		EMode	m_mode;
-#ifdef __PS3__
-		sys_event_flag_t	m_events; 
-#elif defined __ORBIS__
-		SceKernelEventFlag	m_events;
-#elif defined __PSVITA__
+#if defined __PSVITA__
 		SceUID m_events;
 #else
 		HANDLE*				m_events;
@@ -169,11 +158,6 @@ public:
 	static bool isMainThread();
 	static char* getCurrentThreadName() { return getCurrentThread()->getName(); }
 
-#ifdef __ORBIS__
-	static void PushAffinityAllCores();		 // PS4 only
-	static void PopAffinity();
-	static __thread SceKernelCpumask m_oldAffinityMask;
-#endif // __ORBIS__
 
 #ifdef _XBOX_ONE
 	static void StaticInit();
@@ -198,18 +182,7 @@ private:
 	static C4JThread	m_mainThread;
 #endif
 
-#ifdef __PS3__
-	sys_ppu_thread_t m_threadID;
-	Event			*m_completionFlag;
-	int				m_priority;
-	static void entryPoint(uint64_t);
-#elif defined __ORBIS__
-	ScePthreadAttr	m_threadAttr;
-	ScePthread		m_threadID;
-	Event			*m_completionFlag;
-	int				m_priority;
-	static void *entryPoint(void *);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	SceUID		m_threadID;
 	Event			*m_completionFlag;
 	int				m_priority;

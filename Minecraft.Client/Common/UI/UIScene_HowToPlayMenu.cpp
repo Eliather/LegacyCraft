@@ -74,16 +74,7 @@ UIScene_HowToPlayMenu::UIScene_HowToPlayMenu(int iPad, void *initData, UILayer *
 
 	for(unsigned int i = 0; i < eHTPButton_Max; ++i)
 	{
-#ifdef __PS3__
-		if(StorageManager.GetBootTypeDisc() || (app.GetProductSKU()==e_sku_SCEJ))
-		{
-			if(!(i==eHTPButton_WhatsNew) )
-			{
-				m_buttonListHowTo.addItem( app.GetString(m_uiHTPButtonNameA[i]) , i);
-			}
-		}
-		else
-#elif defined(__ORBIS__) || defined(_DURANGO) || defined(__PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 		if(true)
 		{
 			if(!(i==eHTPButton_WhatsNew) )
@@ -137,16 +128,7 @@ void UIScene_HowToPlayMenu::handleReload()
 {
 	for(unsigned int i = 0; i < eHTPButton_Max; ++i)
 	{
-#ifdef __PS3__
-		if(StorageManager.GetBootTypeDisc() || (app.GetProductSKU()==e_sku_SCEJ))
-		{
-			if(!(i==eHTPButton_WhatsNew) )
-			{
-				m_buttonListHowTo.addItem( app.GetString(m_uiHTPButtonNameA[i]) , i);
-			}
-		}
-		else
-#elif defined(__ORBIS__) || defined(_DURANGO) || defined(__PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 		if(true)
 		{
 			if(!(i==eHTPButton_WhatsNew) )
@@ -179,9 +161,6 @@ void UIScene_HowToPlayMenu::handleInput(int iPad, int key, bool repeat, bool pre
 		break;
 
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		if(pressed)
 		{
 			// Send the keypress to Flash as normal so gamepad/keyboard keep working.

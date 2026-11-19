@@ -149,6 +149,18 @@ namespace
 	static VkShaderModule        s_smMcStd = VK_NULL_HANDLE;
 	static VkShaderModule        s_smMcComp = VK_NULL_HANDLE;
 	static VkShaderModule        s_smMcFrag = VK_NULL_HANDLE;
+	static VkShaderModule        s_smCustomStd = VK_NULL_HANDLE;
+	static VkShaderModule        s_smCustomComp = VK_NULL_HANDLE;
+	static VkShaderModule        s_smCustomFrag = VK_NULL_HANDLE;
+	static uint32_t              s_customShaderGen = 0;
+	static int                   s_shaderMode = C4J_SHADER_MODE_DEFAULT;
+	static C4JShaderFrameParams  s_shaderFrameParams = {};
+	struct VKPSUniformBlock
+	{
+		PSConstantBufferData ps;
+		C4JShaderFrameParams shader;
+	};
+	static_assert(sizeof(VKPSUniformBlock) <= 256, "VKPSUniformBlock exceeds 256-byte PS UBO slot");
 	static VkDescriptorSetLayout s_worldDSL = VK_NULL_HANDLE;
 	static VkPipelineLayout      s_worldPLLayout = VK_NULL_HANDLE;
 	static VkSampler             s_samplers[4] = {};
@@ -273,6 +285,8 @@ namespace
 		uint8_t stencilRead;
 		uint8_t stencilWrite;
 		uint8_t depthBiasEnable;
+		uint32_t customShaderGen;
+		uint32_t _pad;
 
 		bool operator==(const WorldPipeKey &o) const { return memcmp(this, &o, sizeof(*this)) == 0; }
 	};
@@ -281,7 +295,7 @@ namespace
 		size_t operator()(const WorldPipeKey &k) const
 		{
 			const uint64_t *p = (const uint64_t*)&k;
-			return (size_t)(p[0] ^ (p[1] * 0x9E3779B97F4A7C15ULL));
+			return (size_t)(p[0] ^ (p[1] * 0x9E3779B97F4A7C15ULL) ^ (p[2] * 0xBF58476D1CE4E5B9ULL));
 		}
 	};
 	static std::unordered_map<WorldPipeKey, VkPipeline, WorldPipeKeyHash> s_worldPipes;
@@ -984,7 +998,7 @@ namespace
 		fs.descPoolUsed++;
 
 		VkDescriptorBufferInfo biVS = { uboChunk.buf, 0, sizeof(VSConstantBufferData) };
-		VkDescriptorBufferInfo biPS = { uboChunk.buf, 0, sizeof(PSConstantBufferData) };
+		VkDescriptorBufferInfo biPS = { uboChunk.buf, 0, sizeof(VKPSUniformBlock) };
 		VkDescriptorImageInfo  iiT0 = { s_samplers[smpIdx], view0, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 		VkDescriptorImageInfo  iiT1 = { s_samplers[3], view1, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL };
 		VkWriteDescriptorSet writes[4] = {
@@ -1049,10 +1063,14 @@ namespace
 		auto it = s_worldPipes.find(k);
 		if (it != s_worldPipes.end()) return it->second;
 
-		VkShaderModule vsMod = k.compressed ? s_smMcComp : s_smMcStd;
+		const bool useCustom = (k.customShaderGen != 0 && s_smCustomFrag != VK_NULL_HANDLE);
+		VkShaderModule vsMod = k.compressed
+			? ((useCustom && s_smCustomComp) ? s_smCustomComp : s_smMcComp)
+			: ((useCustom && s_smCustomStd) ? s_smCustomStd : s_smMcStd);
+		VkShaderModule fsMod = useCustom ? s_smCustomFrag : s_smMcFrag;
 		VkPipelineShaderStageCreateInfo stages[2] = {
 			{ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_VERTEX_BIT, vsMod, "main", NULL },
-			{ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT, s_smMcFrag, "main", NULL },
+			{ VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, NULL, 0, VK_SHADER_STAGE_FRAGMENT_BIT, fsMod, "main", NULL },
 		};
 
 		VkVertexInputBindingDescription vbStd = { 0, 32, VK_VERTEX_INPUT_RATE_VERTEX };
@@ -1408,9 +1426,10 @@ namespace
 		}
 
 		VSConstantBufferData *vsPtr = (VSConstantBufferData*)((uint8_t*)uboChunk->ptr + uboSlot);
-		PSConstantBufferData *psPtr = (PSConstantBufferData*)((uint8_t*)uboChunk->ptr + uboSlot + C4J_VK_UBO_PS_OFFSET);
+		VKPSUniformBlock *psBlock = (VKPSUniformBlock*)((uint8_t*)uboChunk->ptr + uboSlot + C4J_VK_UBO_PS_OFFSET);
 		FillVSConstants(s_tls, wvp, mv, vType, psType, *vsPtr);
-		FillPSConstants(s_tls, stateColor, td != NULL, ltd != NULL, alphaTestEnable, alphaFunc, alphaCutoff, psType, *psPtr);
+		FillPSConstants(s_tls, stateColor, td != NULL, ltd != NULL, alphaTestEnable, alphaFunc, alphaCutoff, psType, psBlock->ps);
+		psBlock->shader = s_shaderFrameParams;
 
 		int smpIdx = td ? ((td->linearFilter ? 2 : 0) + (td->clampWrap ? 1 : 0)) : 0;
 		VkImageView view0 = td ? td->view : s_defaultWhiteTex.view;
@@ -1445,6 +1464,8 @@ namespace
 		pk.stencilRead = s_tls.stencilReadMask;
 		pk.stencilWrite = s_tls.stencilWriteMask;
 		pk.depthBiasEnable = (s_tls.depthBiasSlope != 0.0f || s_tls.depthBiasConstant != 0.0f) ? 1 : 0;
+		pk.customShaderGen = (s_shaderMode == C4J_SHADER_MODE_CUSTOM && s_smCustomFrag != VK_NULL_HANDLE) ? s_customShaderGen : 0u;
+		pk._pad = 0u;
 
 		VkPipeline pipe = GetOrCreateWorldPipeline(pk);
 		if (!pipe) return;
@@ -1706,14 +1727,16 @@ namespace
 		for (int i = 0; i < 4; ++i)
 		{
 			VkSamplerCreateInfo sci = {};
+			const bool linear = (i >= 2);
 			sci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-			sci.magFilter = (i >= 2) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-			sci.minFilter = (i >= 2) ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-			sci.mipmapMode = (i >= 2) ? VK_SAMPLER_MIPMAP_MODE_LINEAR : VK_SAMPLER_MIPMAP_MODE_NEAREST;
+			sci.magFilter = linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+			sci.minFilter = linear ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
+			sci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 			sci.addressModeU = (i & 1) ? VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE : VK_SAMPLER_ADDRESS_MODE_REPEAT;
 			sci.addressModeV = sci.addressModeU;
 			sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-			sci.maxLod = 16.0f;
+			sci.mipLodBias = linear ? 0.0f : -1.0f;
+			sci.maxLod = linear ? 16.0f : 2.0f;
 			s_vk.vkCreateSampler(s_device, &sci, NULL, &s_samplers[i]);
 		}
 
@@ -1842,6 +1865,9 @@ namespace
 			if (s_smMcStd)       s_vk.vkDestroyShaderModule(s_device, s_smMcStd, NULL);
 			if (s_smMcComp)      s_vk.vkDestroyShaderModule(s_device, s_smMcComp, NULL);
 			if (s_smMcFrag)      s_vk.vkDestroyShaderModule(s_device, s_smMcFrag, NULL);
+			if (s_smCustomStd)   { s_vk.vkDestroyShaderModule(s_device, s_smCustomStd, NULL); s_smCustomStd = VK_NULL_HANDLE; }
+			if (s_smCustomComp)  { s_vk.vkDestroyShaderModule(s_device, s_smCustomComp, NULL); s_smCustomComp = VK_NULL_HANDLE; }
+			if (s_smCustomFrag)  { s_vk.vkDestroyShaderModule(s_device, s_smCustomFrag, NULL); s_smCustomFrag = VK_NULL_HANDLE; }
 
 			for (int i = 0; i < C4J_VK_FRAMES_IN_FLIGHT; ++i)
 			{
@@ -2770,6 +2796,118 @@ namespace
 		return ok;
 	}
 
+	static void VK_ShaderSetFrameParams(const C4JShaderFrameParams *params)
+	{
+		if (!params) return;
+		std::lock_guard<std::recursive_mutex> lock(s_vkMutex);
+		s_shaderFrameParams = *params;
+	}
+
+	static void VK_ShaderClearCustomProgram(void)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_vkMutex);
+		if (s_device)
+		{
+			s_vk.vkDeviceWaitIdle(s_device);
+			for (auto it = s_worldPipes.begin(); it != s_worldPipes.end(); )
+			{
+				if (it->first.customShaderGen != 0)
+				{
+					if (it->second) s_vk.vkDestroyPipeline(s_device, it->second, NULL);
+					it = s_worldPipes.erase(it);
+				}
+				else
+				{
+					++it;
+				}
+			}
+			if (s_smCustomStd)  { s_vk.vkDestroyShaderModule(s_device, s_smCustomStd, NULL); s_smCustomStd = VK_NULL_HANDLE; }
+			if (s_smCustomComp) { s_vk.vkDestroyShaderModule(s_device, s_smCustomComp, NULL); s_smCustomComp = VK_NULL_HANDLE; }
+			if (s_smCustomFrag) { s_vk.vkDestroyShaderModule(s_device, s_smCustomFrag, NULL); s_smCustomFrag = VK_NULL_HANDLE; }
+		}
+		if (s_shaderMode == C4J_SHADER_MODE_CUSTOM)
+			s_shaderMode = C4J_SHADER_MODE_DEFAULT;
+		InvalidateWorldPipelineCache();
+	}
+
+	static int VK_ShaderLoadCustomProgram(const C4JShaderProgramDesc *desc, char *errBuf, size_t errBufSize)
+	{
+		if (errBuf && errBufSize > 0) errBuf[0] = 0;
+		if (!desc || !desc->vkFragSpv || desc->vkFragSpvBytes == 0 || (desc->vkFragSpvBytes % 4) != 0)
+		{
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "Missing or invalid Vulkan fragment SPIR-V");
+			return 0;
+		}
+		std::lock_guard<std::recursive_mutex> lock(s_vkMutex);
+		if (!s_device)
+		{
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "Vulkan device not initialized");
+			return 0;
+		}
+
+		VkShaderModule newFrag = VK_NULL_HANDLE;
+		VkShaderModule newStd  = VK_NULL_HANDLE;
+		VkShaderModule newComp = VK_NULL_HANDLE;
+
+		VkShaderModuleCreateInfo smci = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, desc->vkFragSpvBytes, (const uint32_t*)desc->vkFragSpv };
+		if (s_vk.vkCreateShaderModule(s_device, &smci, NULL, &newFrag) != VK_SUCCESS || !newFrag)
+		{
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "Failed to create Vulkan fragment shader module");
+			return 0;
+		}
+		if (desc->vkVertStdSpv && desc->vkVertStdSpvBytes > 0 && (desc->vkVertStdSpvBytes % 4) == 0)
+		{
+			VkShaderModuleCreateInfo vsi = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, desc->vkVertStdSpvBytes, (const uint32_t*)desc->vkVertStdSpv };
+			s_vk.vkCreateShaderModule(s_device, &vsi, NULL, &newStd);
+		}
+		if (desc->vkVertCmpSpv && desc->vkVertCmpSpvBytes > 0 && (desc->vkVertCmpSpvBytes % 4) == 0)
+		{
+			VkShaderModuleCreateInfo vci = { VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, NULL, 0, desc->vkVertCmpSpvBytes, (const uint32_t*)desc->vkVertCmpSpv };
+			s_vk.vkCreateShaderModule(s_device, &vci, NULL, &newComp);
+		}
+
+		s_vk.vkDeviceWaitIdle(s_device);
+		for (auto it = s_worldPipes.begin(); it != s_worldPipes.end(); )
+		{
+			if (it->first.customShaderGen != 0)
+			{
+				if (it->second) s_vk.vkDestroyPipeline(s_device, it->second, NULL);
+				it = s_worldPipes.erase(it);
+			}
+			else
+			{
+				++it;
+			}
+		}
+		if (s_smCustomStd)  s_vk.vkDestroyShaderModule(s_device, s_smCustomStd, NULL);
+		if (s_smCustomComp) s_vk.vkDestroyShaderModule(s_device, s_smCustomComp, NULL);
+		if (s_smCustomFrag) s_vk.vkDestroyShaderModule(s_device, s_smCustomFrag, NULL);
+
+		s_smCustomStd  = newStd;
+		s_smCustomComp = newComp;
+		s_smCustomFrag = newFrag;
+		s_customShaderGen++;
+		if (s_customShaderGen == 0) s_customShaderGen = 1;
+		s_shaderMode = C4J_SHADER_MODE_CUSTOM;
+		InvalidateWorldPipelineCache();
+		return 1;
+	}
+
+	static void VK_ShaderSetMode(int mode)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_vkMutex);
+		if (mode == C4J_SHADER_MODE_CUSTOM && s_smCustomFrag == VK_NULL_HANDLE)
+			s_shaderMode = C4J_SHADER_MODE_DEFAULT;
+		else if (mode >= C4J_SHADER_MODE_OFF && mode <= C4J_SHADER_MODE_CUSTOM)
+			s_shaderMode = mode;
+		InvalidateWorldPipelineCache();
+	}
+
+	static int VK_ShaderGetMode(void)
+	{
+		return s_shaderMode;
+	}
+
 	static const C4JRenderBackendAPI s_vkAPI =
 	{
 		sizeof(C4JRenderBackendAPI),
@@ -2879,7 +3017,12 @@ namespace
 		VK_GDrawSetViewport4J,
 		VK_GDrawWrappedTextureCreate,
 		VK_GDrawWrappedTextureDestroy,
-		VK_CaptureBackBufferRGBA
+		VK_CaptureBackBufferRGBA,
+		VK_ShaderSetFrameParams,
+		VK_ShaderLoadCustomProgram,
+		VK_ShaderClearCustomProgram,
+		VK_ShaderSetMode,
+		VK_ShaderGetMode
 	};
 }
 

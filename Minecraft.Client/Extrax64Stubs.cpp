@@ -1,17 +1,9 @@
 #include "stdafx.h"
 #include <new>
 #include "Common/zlib/zlib.h"
-#ifndef __PS3__
 //#include <compressapi.h>
-#endif // __PS3__
 
-#ifdef __PS3__
-#include "PS3\Sentient\SentientManager.h"
-#include "StatsCounter.h"
-#include "PS3\Social\SocialManager.h"
-#include <libsn.h>
-#include <libsntuner.h>
-#elif defined _DURANGO
+#if defined _DURANGO
 #include "Durango\Sentient\SentientManager.h"
 #include "StatsCounter.h"
 #include "Durango\Social\SocialManager.h"
@@ -37,7 +29,7 @@
 #include <perf.h>
 #endif
 
-#if !defined(__PS3__) && !defined(__ORBIS__) && !defined(__PSVITA__)
+#if !defined(__PSVITA__)
 #ifdef _WINDOWS64
 C4JStorage StorageManager;
 C_4JProfile ProfileManager;
@@ -171,7 +163,7 @@ void PIXSetMarkerDeprecated(int a, char *b, ...) {}
 
 bool IsEqualXUID(PlayerUID a, PlayerUID b)
 {
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__) || defined(_DURANGO)
+#if defined(__PSVITA__) || defined(_DURANGO)
 	return (a == b);
 #else
 	return false;
@@ -254,7 +246,7 @@ HRESULT CXuiStringTable::Load(LPCWSTR szId) { return S_OK; }
 
 DWORD XUserAreUsersFriends( DWORD dwUserIndex, PPlayerUID pXuids, DWORD dwXuidCount, PBOOL pfResult, void *pOverlapped) { return 0; }
 
-#if defined __ORBIS__ || defined __PS3__ || defined _XBOX_ONE
+#if defined(_XBOX_ONE)
 #else
 HRESULT XMemDecompress(
          XMEMDECOMPRESSION_CONTEXT Context,
@@ -374,7 +366,7 @@ void XMemDestroyDecompressionContext(XMEMDECOMPRESSION_CONTEXT Context)
 #endif
 
 //#ifndef __PS3__
-#if !(defined _DURANGO || defined __PS3__ || defined __ORBIS__ || defined __PSVITA__)
+#if !(defined(_DURANGO) || defined(__PSVITA__))
 DWORD XGetLanguage() { 
 	unsigned char savedLang = UserData_Info::GetLanguageId();
 	if (savedLang != MINECRAFT_LANGUAGE_DEFAULT)
@@ -505,15 +497,6 @@ BOOL				C_4JProfile::AreXUIDSEqual(PlayerUID xuid1,PlayerUID xuid2) { return fal
 BOOL				C_4JProfile::XUIDIsGuest(PlayerUID xuid) { return false; }
 bool				C_4JProfile::AllowedToPlayMultiplayer(int iProf) { return true; }
 
-#if defined(__ORBIS__)
-bool				C_4JProfile::GetChatAndContentRestrictions(int iPad, bool thisQuadrantOnly, bool *pbChatRestricted,bool *pbContentRestricted,int *piAge)
-{
-	if(pbChatRestricted) *pbChatRestricted = false;
-	if(pbContentRestricted) *pbContentRestricted = false;
-	if(piAge) *piAge = 100;
-	return true;
-}
-#endif
 
 void				C_4JProfile::StartTrialGame() {}
 void				C_4JProfile::AllowedPlayerCreatedContent(int iPad, bool thisQuadrantOnly, BOOL *allAllowed, BOOL *friendsAllowed) {}

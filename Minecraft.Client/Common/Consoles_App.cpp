@@ -66,12 +66,6 @@
 #include "UI\UI.h"
 #include "UI\UIScene_PauseMenu.h"
 #endif
-#ifdef __PS3__
-#include <sys/tty.h>
-#endif
-#ifdef __ORBIS__
-#include <save_data_dialog.h>
-#endif
 
 #include "..\Common\Leaderboards\LeaderboardManager.h"
 
@@ -398,7 +392,7 @@ CMinecraftApp::CMinecraftApp()
 	m_bUseDPadForDebug = true;
 #endif
 
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 	for(int i=0;i<XUSER_MAX_COUNT;i++)
 	{
 		m_eOptionsStatusA[i]=C4JStorage::eOptions_Callback_Idle;
@@ -443,10 +437,7 @@ void CMinecraftApp::DebugPrintf(int user, const char *szFormat, ...)
 	va_start(ap, szFormat);
 	vsnprintf(buf, sizeof(buf), szFormat, ap);
 	va_end(ap);
-#ifdef __PS3__
-	unsigned int writelen;
-	sys_tty_write(SYS_TTYP_USER1 + ( user - 1 ), buf, strlen(buf), &writelen );
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	switch(user)
 	{
 	case 0:
@@ -521,7 +512,7 @@ void CMinecraftApp::SetAction(int iPad, eXuiAction action, LPVOID param)
 
 bool CMinecraftApp::IsAppPaused()
 {
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 	bool paused = m_bIsAppPaused;
 	EnterCriticalSection(&m_saveNotificationCriticalSection);
 	if( g_NetworkManager.IsLocalGame() && g_NetworkManager.GetPlayerCount() == 1 )
@@ -858,7 +849,7 @@ void CMinecraftApp::InitGameSettings()
 {
 	for(int i=0;i<XUSER_MAX_COUNT;i++)
 	{
-#if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 		GameSettingsA[i]=(GAME_SETTINGS *)StorageManager.GetGameDefinedProfileData(i);
 #else
 		GameSettingsA[i]=(GAME_SETTINGS *)ProfileManager.GetGameDefinedProfileData(i);
@@ -874,7 +865,7 @@ void CMinecraftApp::InitGameSettings()
 		// clear this for now - it will come from reading the system values
 		memset(pProfileSettings,0,sizeof(C_4JProfile::PROFILESETTINGS));
 		SetDefaultOptions(pProfileSettings,i);
-#elif defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__
+#elif defined(_DURANGO) || defined(__PSVITA__)
 		C4JStorage::PROFILESETTINGS *pProfileSettings=StorageManager.GetDashboardProfileSettings(i);
 		// 4J-PB - don't cause an options write to happen here
 		SetDefaultOptions(pProfileSettings,i,false);
@@ -883,7 +874,7 @@ void CMinecraftApp::InitGameSettings()
 	}
 }
 
-#if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 int CMinecraftApp::SetDefaultOptions(C4JStorage::PROFILESETTINGS *pSettings,const int iPad,bool bWriteProfile)
 #else
 int CMinecraftApp::SetDefaultOptions(C_4JProfile::PROFILESETTINGS *pSettings,const int iPad)
@@ -971,14 +962,14 @@ int CMinecraftApp::SetDefaultOptions(C_4JProfile::PROFILESETTINGS *pSettings,con
 	#endif
 //#endif
 
-#if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 	GameSettingsA[iPad]->bSettingsChanged=bWriteProfile;
 #endif
 
 	return 0;
 }
 
-#if ( defined  __PS3__  || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 int CMinecraftApp::DefaultOptionsCallback(LPVOID pParam,C4JStorage::PROFILESETTINGS *pSettings, const int iPad)
 #else
 int CMinecraftApp::DefaultOptionsCallback(LPVOID pParam,C_4JProfile::PROFILESETTINGS *pSettings, const int iPad)
@@ -999,30 +990,14 @@ int CMinecraftApp::DefaultOptionsCallback(LPVOID pParam,C_4JProfile::PROFILESETT
 	return 0;
 }
 
-#if ( defined  __PS3__  || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 
-#ifdef __ORBIS__
-int CMinecraftApp::OptionsDataCallback(LPVOID pParam,int iPad,unsigned short usVersion,C4JStorage::eOptionsCallback eStatus,int iBlocksRequired)
-{
-	CMinecraftApp *pApp=(CMinecraftApp *)pParam;
-	pApp->m_eOptionsStatusA[iPad]=eStatus;
-	pApp->m_eOptionsBlocksRequiredA[iPad]=iBlocksRequired;
-	return 0;
-}
-
-int CMinecraftApp::GetOptionsBlocksRequired(int iPad)
-{
-	return m_eOptionsBlocksRequiredA[iPad];
-}
-
-#else
 int CMinecraftApp::OptionsDataCallback(LPVOID pParam,int iPad,unsigned short usVersion,C4JStorage::eOptionsCallback eStatus)
 {
 	CMinecraftApp *pApp=(CMinecraftApp *)pParam;
 	pApp->m_eOptionsStatusA[iPad]=eStatus;
 	return 0;
 }
-#endif
 
 C4JStorage::eOptionsCallback CMinecraftApp::GetOptionsCallbackStatus(int iPad)
 {
@@ -2655,7 +2630,7 @@ void CMinecraftApp::CheckGameSettingsChanged(bool bOverride5MinuteTimer, int iPa
 		{
 			if(GameSettingsA[i]->bSettingsChanged)
 			{
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO || defined __PSVITA__ )
+#if defined(_DURANGO) || defined(__PSVITA__)
 				StorageManager.WriteToProfile(i,true, bOverride5MinuteTimer);
 #else
 				ProfileManager.WriteToProfile(i,true, bOverride5MinuteTimer);
@@ -2668,7 +2643,7 @@ void CMinecraftApp::CheckGameSettingsChanged(bool bOverride5MinuteTimer, int iPa
 	{
 		if(GameSettingsA[iPad]->bSettingsChanged)
 		{
-#if ( defined  __PS3__ || defined __ORBIS__ || defined _DURANGO || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 			StorageManager.WriteToProfile(iPad,true, bOverride5MinuteTimer);
 #else
 			ProfileManager.WriteToProfile(iPad,true, bOverride5MinuteTimer);
@@ -3094,7 +3069,7 @@ void CMinecraftApp::HandleXuiActions(void)
 					app.SetAutosaveTimerTime();
 					SetAction(i,eAppAction_Idle);
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 					app.SetXuiServerAction(ProfileManager.GetPrimaryPad(),eXuiServerAction_AutoSaveGame);
 
 					if(app.GetGameHostOption(eGameHostOption_DisableSaving)) StorageManager.SetSaveDisabled(true);
@@ -3143,7 +3118,7 @@ void CMinecraftApp::HandleXuiActions(void)
 					int iPlayerC=g_NetworkManager.GetPlayerCount();				
 
 					// Since the player is exiting, let's flush any profile writes for them, and hope we're not breaking TCR 136...
-#if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 					StorageManager.ForceQueuedProfileWrites(i);
 					LeaderboardManager::Instance()->OpenSession();
 					for (int j = 0; j < XUSER_MAX_COUNT; j++)
@@ -3243,7 +3218,7 @@ void CMinecraftApp::HandleXuiActions(void)
 				{
 					int iPlayerC=g_NetworkManager.GetPlayerCount();
 					// Since the player is exiting, let's flush any profile writes for them, and hope we're not breaking TCR 136...
-#if (defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 					StorageManager.ForceQueuedProfileWrites(i);
 #else
 					ProfileManager.ForceQueuedProfileWrites(i);
@@ -3317,39 +3292,6 @@ void CMinecraftApp::HandleXuiActions(void)
 				}
 				break;
 
-#ifdef __ORBIS__
-			case eAppAction_OptionsSaveNoSpace:
-				{
-					SetAction(i,eAppAction_Idle);
-
-					SceSaveDataDialogParam param;
-					SceSaveDataDialogSystemMessageParam sysParam;
-					SceSaveDataDialogItems items;
-					SceSaveDataDirName dirName;
-
-					sceSaveDataDialogParamInitialize(&param);
-					param.mode = SCE_SAVE_DATA_DIALOG_MODE_SYSTEM_MSG;
-					param.dispType = SCE_SAVE_DATA_DIALOG_TYPE_SAVE;
-					memset(&sysParam,0,sizeof(sysParam));
-					param.sysMsgParam = &sysParam;
-					param.sysMsgParam->sysMsgType = SCE_SAVE_DATA_DIALOG_SYSMSG_TYPE_NOSPACE_CONTINUABLE;
-					param.sysMsgParam->value = app.GetOptionsBlocksRequired(i);
-					memset(&items, 0, sizeof(items));
-					param.items = &items;
-					param.items->userId = ProfileManager.getUserID(i);
-
-					int ret = sceSaveDataDialogInitialize();
-					ret = sceSaveDataDialogOpen(&param);
-
-					app.SetOptionsSaveDataDialogRunning(true);//m_bOptionsSaveDataDialogRunning = true;
-					//pClass->m_eSaveIncompleteType = saveIncompleteType;
-
-					//StorageManager.SetSaveDisabled(true);
-					//pClass->EnterSaveNotificationSection();
-
-				}
-				break;
-#endif
 
 			case eAppAction_ExitWorld:
 
@@ -3376,7 +3318,7 @@ void CMinecraftApp::HandleXuiActions(void)
 				ui.HideAllGameUIElements();
 
 				// Since the player forced the exit, let's flush any profile writes, and hope we're not breaking TCR 136...
-#if (defined __PS3__ || defined __ORBIS__  || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 				StorageManager.ForceQueuedProfileWrites();
 				LeaderboardManager::Instance()->OpenSession();
 				for (int j = 0; j < XUSER_MAX_COUNT; j++)
@@ -3870,7 +3812,7 @@ void CMinecraftApp::HandleXuiActions(void)
 					SetAction(i,eAppAction_Idle);
 					// Check the player really wants to do this
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 					// Show save option is saves ARE disabled
 					if(ProfileManager.IsFullVersion() && StorageManager.GetSaveDisabled() && i==ProfileManager.GetPrimaryPad() && g_NetworkManager.IsHost() && GetGameStarted() )
 					{			
@@ -4101,11 +4043,7 @@ void CMinecraftApp::HandleXuiActions(void)
 							loadingParams->lpParam = NULL;			
 
 							UIFullscreenProgressCompletionData *completionData = new UIFullscreenProgressCompletionData();
-#ifdef __PS3__
-							completionData->bRequiresUserAction=FALSE;
-#else
 							completionData->bRequiresUserAction=TRUE;
-#endif
 							completionData->bShowBackground=TRUE;
 							completionData->bShowLogo=TRUE;
 							completionData->iPad=DEFAULT_XUI_MENU_USER;
@@ -4146,7 +4084,7 @@ void CMinecraftApp::HandleXuiActions(void)
 				break;
 			case eAppAction_SetDefaultOptions:
 				SetAction(i,eAppAction_Idle);
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 				SetDefaultOptions((C4JStorage::PROFILESETTINGS *)param,i);		
 #else
 				SetDefaultOptions((C_4JProfile::PROFILESETTINGS *)param,i);		
@@ -4577,12 +4515,8 @@ void CMinecraftApp::loadMediaArchive()
 {
 	wstring mediapath = L"";
 
-#ifdef __PS3__
-	mediapath = L"Common\\Media\\MediaPS3.arc";
-#elif _WINDOWS64
+#if _WINDOWS64
 	mediapath = L"Common\\Media\\MediaWindows64.arc";
-#elif __ORBIS__
-	mediapath = L"Common\\Media\\MediaOrbis.arc";
 #elif _DURANGO
 	mediapath = L"Common\\Media\\MediaDurango.arc";
 #elif __PSVITA__
@@ -4693,9 +4627,7 @@ int CMinecraftApp::EthernetDisconnectReturned(void *pParam,int iPad,const C4JSto
 	else
 	{
 		//  4J-PB - turn off the PSN store icon just in case this happened when we were in one of the DLC menus
-#ifdef __ORBIS__
-		sceNpCommerceHidePsStoreIcon();
-#elif defined __PSVITA__
+#if defined __PSVITA__
 		sceNpCommerce2HidePsStoreIcon();
 #endif
 		app.SetAction(iPad,eAppAction_EthernetDisconnectedReturned_Menus);
@@ -4789,7 +4721,7 @@ int CMinecraftApp::SignoutExitWorldThreadProc( void* lpParameter )
 			case DisconnectPacket::eDisconnect_NoUGC_Single_Local:
 				exitReasonStringId = IDS_NO_USER_CREATED_CONTENT_PRIVILEGE_SINGLE_LOCAL;
 				break;
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 			case DisconnectPacket::eDisconnect_ContentRestricted_AllLocal:
 				exitReasonStringId = IDS_CONTENT_RESTRICTION_MULTIPLAYER;
 				break;
@@ -4849,7 +4781,7 @@ int CMinecraftApp::UnlockFullInviteReturned(void *pParam,int iPad,C4JStorage::EM
 		if(ProfileManager.IsSignedInLive(iPad))
 		{
 			// 4J-PB - need to check this user can access the store
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 			bool bContentRestricted;
 			ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),true,NULL,&bContentRestricted,NULL);
 			if(bContentRestricted)
@@ -4864,17 +4796,6 @@ int CMinecraftApp::UnlockFullInviteReturned(void *pParam,int iPad,C4JStorage::EM
 				ProfileManager.DisplayFullVersionPurchase(false,iPad,eSen_UpsellID_Full_Version_Of_Game);
 			}
 		}
-#if defined(__PS3__)
-		else
-		{
-			// you're not signed in to PSN!
-			UINT uiIDA[2];
-			uiIDA[0]=IDS_PRO_NOTONLINE_ACCEPT;
-			uiIDA[1]=IDS_PRO_NOTONLINE_DECLINE;
-			ui.RequestMessageBox(IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, ProfileManager.GetPrimaryPad(),&CMinecraftApp::MustSignInFullVersionPurchaseReturned,&app, app.GetStringTable());
-
-		}
-#endif
 	}
 	else
 	{
@@ -4894,7 +4815,7 @@ int CMinecraftApp::UnlockFullSaveReturned(void *pParam,int iPad,C4JStorage::EMes
 		if(ProfileManager.IsSignedInLive(pMinecraft->player->GetXboxPad()))
 		{
 			// 4J-PB - need to check this user can access the store
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 			bool bContentRestricted;
 			ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),true,NULL,&bContentRestricted,NULL);
 			if(bContentRestricted)
@@ -4909,37 +4830,6 @@ int CMinecraftApp::UnlockFullSaveReturned(void *pParam,int iPad,C4JStorage::EMes
 				ProfileManager.DisplayFullVersionPurchase(false,pMinecraft->player->GetXboxPad(),eSen_UpsellID_Full_Version_Of_Game);
 			}
 		}
-#if defined(__PS3__)
-		else
-		{
-			// you're not signed in to PSN!
-			UINT uiIDA[2];
-			uiIDA[0]=IDS_PRO_NOTONLINE_ACCEPT;
-			uiIDA[1]=IDS_PRO_NOTONLINE_DECLINE;
-			ui.RequestMessageBox(IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, ProfileManager.GetPrimaryPad(),&CMinecraftApp::MustSignInFullVersionPurchaseReturned,&app, app.GetStringTable());
-		}
-#elif defined(__ORBIS__)
-		else
-		{		
-			// Determine why they're not "signed in live"
-			if (ProfileManager.isSignedInPSN(iPad))
-			{
-				// Signed in to PSN but not connected (no internet access)
-				assert(!ProfileManager.isConnectedToPSN(iPad));
-
-				UINT uiIDA[1];
-				uiIDA[0] = IDS_OK;
-				ui.RequestMessageBox( IDS_ERROR_NETWORK_TITLE, IDS_ERROR_NETWORK, uiIDA, 1, iPad, NULL, NULL, app.GetStringTable());
-			}
-			else
-			{		
-				// Not signed in to PSN
-				UINT uiIDA[1];
-				uiIDA[0] = IDS_PRO_NOTONLINE_ACCEPT;
-				ui.RequestMessageBox( IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 1, iPad, &CMinecraftApp::MustSignInFullVersionPurchaseReturned,&app, app.GetStringTable(), NULL, 0, false);
-			}
-		}
-#endif
 	}
 	else
 	{
@@ -4959,7 +4849,7 @@ int CMinecraftApp::UnlockFullExitReturned(void *pParam,int iPad,C4JStorage::EMes
 		if(ProfileManager.IsSignedInLive(pMinecraft->player->GetXboxPad()))
 		{
 			// 4J-PB - need to check this user can access the store
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 			bool bContentRestricted;
 			ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),true,NULL,&bContentRestricted,NULL);
 			if(bContentRestricted)
@@ -4972,13 +4862,13 @@ int CMinecraftApp::UnlockFullExitReturned(void *pParam,int iPad,C4JStorage::EMes
 #endif
 			{
 				ProfileManager.DisplayFullVersionPurchase(false,pMinecraft->player->GetXboxPad(),eSen_UpsellID_Full_Version_Of_Game);
-#if defined __ORBIS__ || defined __PS3__ || defined __PSVITA__
+#if defined(__PSVITA__)
 				// still need to exit the trial or we'll be in the Pause menu with input ignored
 				pApp->SetAction(pMinecraft->player->GetXboxPad(),eAppAction_ExitWorldTrial);
 #endif
 			}
 		}
-#if defined(__PS3__) || defined __PSVITA__
+#if defined(__PSVITA__)
 		else
 		{
 			// you're not signed in to PSN!
@@ -4986,29 +4876,6 @@ int CMinecraftApp::UnlockFullExitReturned(void *pParam,int iPad,C4JStorage::EMes
 			uiIDA[0]=IDS_PRO_NOTONLINE_ACCEPT;
 			uiIDA[1]=IDS_PRO_NOTONLINE_DECLINE;
 			ui.RequestMessageBox(IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, ProfileManager.GetPrimaryPad(),&CMinecraftApp::MustSignInFullVersionPurchaseReturnedExitTrial,&app, app.GetStringTable());
-		}
-#elif defined(__ORBIS__)
-		else
-		{		
-			// Determine why they're not "signed in live"
-			if (ProfileManager.isSignedInPSN(iPad))
-			{
-				// Signed in to PSN but not connected (no internet access)
-				assert(!ProfileManager.isConnectedToPSN(iPad));
-
-				UINT uiIDA[1];
-				uiIDA[0] = IDS_OK;
-				ui.RequestMessageBox( IDS_ERROR_NETWORK_TITLE, IDS_ERROR_NETWORK, uiIDA, 1, iPad, NULL, NULL, app.GetStringTable());
-				// still need to exit the trial or we'll be in the Pause menu with input ignored
-				pApp->SetAction(pMinecraft->player->GetXboxPad(),eAppAction_ExitWorldTrial);
-			}
-			else
-			{		
-				// Not signed in to PSN
-				UINT uiIDA[1];
-				uiIDA[0] = IDS_PRO_NOTONLINE_ACCEPT;
-				ui.RequestMessageBox( IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 1, iPad, &CMinecraftApp::MustSignInFullVersionPurchaseReturnedExitTrial,&app, app.GetStringTable(), NULL, 0, false);
-			}
 		}
 #endif
 	}
@@ -5032,7 +4899,7 @@ int CMinecraftApp::TrialOverReturned(void *pParam,int iPad,C4JStorage::EMessageR
 		if(ProfileManager.IsSignedInLive(pMinecraft->player->GetXboxPad()))
 		{
 			// 4J-PB - need to check this user can access the store
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 			bool bContentRestricted;
 			ProfileManager.GetChatAndContentRestrictions(ProfileManager.GetPrimaryPad(),true,NULL,&bContentRestricted,NULL);
 			if(bContentRestricted)
@@ -5049,31 +4916,14 @@ int CMinecraftApp::TrialOverReturned(void *pParam,int iPad,C4JStorage::EMessageR
 		}
 		else
 		{
-#if defined(__PS3__)
-
-			// you're not signed in to PSN!
-			UINT uiIDA[2];
-			uiIDA[0]=IDS_PRO_NOTONLINE_ACCEPT;
-			uiIDA[1]=IDS_PRO_NOTONLINE_DECLINE;
-			ui.RequestMessageBox(IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, ProfileManager.GetPrimaryPad(),&CMinecraftApp::MustSignInFullVersionPurchaseReturned,&app, app.GetStringTable());
-
-			// 4J Stu - We can't actually exit the game, so just exit back to the main menu
-			//pApp->SetAction(pMinecraft->player->GetXboxPad(),eAppAction_ExitWorldTrial);
-#else
 			pApp->SetAction(pMinecraft->player->GetXboxPad(),eAppAction_ExitTrial);
-#endif
 		}
 	}
 	else
 	{
 		TelemetryManager->RecordUpsellResponded(iPad, eSen_UpsellID_Full_Version_Of_Game, app.m_dwOfferID, eSen_UpsellOutcome_Declined);
 
-#if defined(__PS3__) || defined(__ORBIS__)
-		// 4J Stu - We can't actually exit the game, so just exit back to the main menu
-		pApp->SetAction(pMinecraft->player->GetXboxPad(),eAppAction_ExitWorldTrial);
-#else
 		pApp->SetAction(pMinecraft->player->GetXboxPad(),eAppAction_ExitTrial);
-#endif
 	}
 
 	return 0;
@@ -5108,10 +4958,6 @@ void CMinecraftApp::ClearSignInChangeUsersMask()
 }
 void CMinecraftApp::SignInChangeCallback(LPVOID pParam,bool bPrimaryPlayerChanged,unsigned int uiSignInData)
 {
-#ifdef __PS3__
-	// this is normally set in the main menu, but we can go online in the create world screens, and the primary player name isn't updated
-	Minecraft::GetInstance()->user->name = convStringToWstring( ProfileManager.GetGamertag(ProfileManager.GetPrimaryPad()));
-#endif
 
 	CMinecraftApp *pApp=(CMinecraftApp *)pParam;
 	// check if the primary player signed out
@@ -5207,20 +5053,6 @@ void CMinecraftApp::SignInChangeCallback(LPVOID pParam,bool bPrimaryPlayerChange
 							}
 						}
 					}
-#ifdef __ORBIS__
-					// check if any of the addition players have signed out of PSN (primary player is handled below)
-					if(!switchToOffline && i != ProfileManager.GetLockedProfile() && !g_NetworkManager.IsLocalGame())
-					{
-						if(g_NetworkManager.GetLocalPlayerByUserIndex(i)!=NULL)
-						{
-							if(ProfileManager.IsSignedInLive(i) == false)
-							{
-								pApp->DebugPrintf("Recommending removal of player at index %d because they're no longer signed into PSNd\n",i);
-								pApp->SetAction(i,eAppAction_ExitPlayer);
-							}
-						}
-					}
-#endif
 				}
 
 				// If it's an online game, and the primary profile is no longer signed into LIVE then we act as if disconnected
@@ -5239,7 +5071,7 @@ void CMinecraftApp::SignInChangeCallback(LPVOID pParam,bool bPrimaryPlayerChange
 				pApp->SetAction(iPrimaryPlayer,eAppAction_EthernetDisconnected);
 			}
 
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__ )
+#if defined(_DURANGO) || defined(__PSVITA__)
 			// 4J-JEV: Need to kick of loading of profile data for sub-sign in players.
 			for(unsigned int i = 0; i < XUSER_MAX_COUNT; ++i)
 			{
@@ -5360,14 +5192,12 @@ void CMinecraftApp::NotificationsCallback(LPVOID pParam,DWORD dwNotification, un
 	pClass->m_vNotifications.push_back(pNotification);
 }
 
-#if defined __PS3__ || defined __PSVITA__ || defined __ORBIS__
+#if defined(__PSVITA__)
 int CMinecraftApp::MustSignInFullVersionPurchaseReturned(void *pParam,int iPad,C4JStorage::EMessageResult result)
 {
 	if(result==C4JStorage::EMessage_ResultAccept) 
 	{
-#ifdef __PS3__
-		SQRNetworkManager_PS3::AttemptPSNSignIn(&CMinecraftApp::NowDisplayFullVersionPurchase, &app,true);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 		SQRNetworkManager_Vita::AttemptPSNSignIn(&CMinecraftApp::NowDisplayFullVersionPurchase, &app,true);
 #else // __PS4__
 		SQRNetworkManager_Orbis::AttemptPSNSignIn(&CMinecraftApp::NowDisplayFullVersionPurchase, &app,true);
@@ -5377,14 +5207,12 @@ int CMinecraftApp::MustSignInFullVersionPurchaseReturned(void *pParam,int iPad,C
 	return 0;
 }
 
-#if defined __PS3__ || defined __PSVITA__ || defined __ORBIS__
+#if defined(__PSVITA__)
 int CMinecraftApp::MustSignInFullVersionPurchaseReturnedExitTrial(void *pParam,int iPad,C4JStorage::EMessageResult result)
 {
 	if(result==C4JStorage::EMessage_ResultAccept) 
 	{
-#ifdef __PS3__
-		SQRNetworkManager_PS3::AttemptPSNSignIn(&CMinecraftApp::NowDisplayFullVersionPurchase, &app,true);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 		SQRNetworkManager_Vita::AttemptPSNSignIn(&CMinecraftApp::NowDisplayFullVersionPurchase, &app,true);
 #else // __PS4__
 		SQRNetworkManager_Orbis::AttemptPSNSignIn(&CMinecraftApp::NowDisplayFullVersionPurchase, &app,true);
@@ -5408,9 +5236,6 @@ void CMinecraftApp::UpsellReturnedCallback(LPVOID pParam, eUpsellType type, eUps
 {
 	ESen_UpsellID senType;
 	ESen_UpsellOutcome senResponse;
-#ifdef __PS3__
-	UINT uiIDA[2];
-#endif
 
 	// Map the eUpsellResponse to the enum we use for sentient
 	switch(result)
@@ -5421,21 +5246,6 @@ void CMinecraftApp::UpsellReturnedCallback(LPVOID pParam, eUpsellType type, eUps
 	case eUpsellResponse_Accepted_Purchase:
 		senResponse = eSen_UpsellOutcome_Accepted;
 		break;
-#ifdef __PS3__
-		// special case for people who are not signed in to the PSN while playing the trial game
-	case eUpsellResponse_UserNotSignedInPSN:
-		
-		uiIDA[0]=IDS_PRO_NOTONLINE_ACCEPT;
-		uiIDA[1]=IDS_PRO_NOTONLINE_DECLINE;
-		ui.RequestMessageBox(IDS_PRO_NOTONLINE_TITLE, IDS_PRO_NOTONLINE_TEXT, uiIDA, 2, ProfileManager.GetPrimaryPad(),&CMinecraftApp::MustSignInFullVersionPurchaseReturned,&app, app.GetStringTable());
-
-		return;
-
-	case eUpsellResponse_NotAllowedOnline: // On earning a trophy in the trial version, where the user is underage and can't go online to buy the game, but they selected to buy the game on the trophy upsell
-		uiIDA[0]=IDS_CONFIRM_OK;
-		ui.RequestMessageBox(IDS_ONLINE_SERVICE_TITLE, IDS_CONTENT_RESTRICTION, uiIDA, 1, ProfileManager.GetPrimaryPad(),NULL,&app, app.GetStringTable());
-		break;
-#endif	
 	case eUpsellResponse_Declined:
 	default:		
 		senResponse = eSen_UpsellOutcome_Declined;
@@ -5587,7 +5397,7 @@ void CMinecraftApp::MountNextDLC(int iPad)
 
 		ui.HandleDLCMountingComplete();
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 		// Check if the current texture pack is now installed
 		if(!Minecraft::GetInstance()->skins->isUsingDefaultSkin())
 		{
@@ -5606,7 +5416,7 @@ void CMinecraftApp::MountNextDLC(int iPad)
 }
 
 // 4J-JEV: For the sake of clarity in DLCMountedCallback.
-#if defined(_XBOX) || defined(__PS3__) || defined(_WINDOWS64)
+#if defined(_XBOX) || defined(_WINDOWS64)
 #define CONTENT_DATA_DISPLAY_NAME(a) (a.szDisplayName)
 #else
 #define CONTENT_DATA_DISPLAY_NAME(a) (a.wszDisplayName)
@@ -5614,7 +5424,7 @@ void CMinecraftApp::MountNextDLC(int iPad)
 
 int CMinecraftApp::DLCMountedCallback(LPVOID pParam,int iPad,DWORD dwErr,DWORD dwLicenceMask)
 {
-#if defined(_XBOX) || defined(_DURANGO) || defined(__PS3__) || defined(__ORBIS__) || defined(_WINDOWS64)  || defined (__PSVITA__) //Chris TODO
+#if defined(_XBOX) || defined(_DURANGO) || defined(_WINDOWS64) || defined(__PSVITA__)
 	app.DebugPrintf("--- CMinecraftApp::DLCMountedCallback\n");
 
 	if(dwErr!=ERROR_SUCCESS)
@@ -5641,7 +5451,7 @@ int CMinecraftApp::DLCMountedCallback(LPVOID pParam,int iPad,DWORD dwErr,DWORD d
 		{
 			app.DebugPrintf("Pack \"%ls\" is not installed, so adding it\n", CONTENT_DATA_DISPLAY_NAME(ContentData));
 
-#if defined(_XBOX) || defined(__PS3__) || defined(_WINDOWS64)
+#if defined(_XBOX) || defined(_WINDOWS64)
 			pack = new DLCPack(ContentData.szDisplayName,dwLicenceMask);
 #elif defined _XBOX_ONE
 			pack = new DLCPack(ContentData.wszDisplayName,ContentData.wszProductID,dwLicenceMask);
@@ -5709,7 +5519,7 @@ int CMinecraftApp::DLCMountedCallback(LPVOID pParam,int iPad,DWORD dwErr,DWORD d
  {
 	 DWORD dwFilesProcessed = 0;
 #ifndef _XBOX
-#if defined(__PS3__) || defined(__ORBIS__) || defined(_WINDOWS64) || defined (__PSVITA__)
+#if defined(_WINDOWS64) || defined(__PSVITA__)
 	 std::vector<std::string> dlcFilenames;
 #elif defined _DURANGO
 	 std::vector<std::wstring> dlcFilenames;
@@ -6183,7 +5993,7 @@ int CMinecraftApp::ExitAndJoinFromInviteSaveDialogReturned(void *pParam,int iPad
 			else
 #endif
 			{
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 				StorageManager.SetSaveDisabled(false);
 #endif
 				MinecraftServer::getInstance()->setSaveOnExit( true );
@@ -6290,7 +6100,7 @@ int CMinecraftApp::ExitAndJoinFromInviteDeclineSaveReturned(void *pParam,int iPa
 	// results switched for this dialog
 	if(result==C4JStorage::EMessage_ResultDecline) 
 	{
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 				StorageManager.SetSaveDisabled(false);
 #endif
 		MinecraftServer::getInstance()->setSaveOnExit( false );
@@ -6724,9 +6534,7 @@ wstring CMinecraftApp::GetActionReplacement(int iPad, unsigned char ucAction)
 
 	wchar_t string[128];
 
-#ifdef __PS3__
-	int size = 30;
-#elif defined _WIN64
+#if defined _WIN64
 	int size = 45;
 	if(ui.getScreenWidth() < 1920) size = 30;
 #else
@@ -6787,7 +6595,7 @@ wstring CMinecraftApp::GetVKReplacement(unsigned int uiVKey)
 	switch(uiVKey)
 	{
 	case VK_PAD_A:
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 		if( InputManager.IsCircleCrossSwapped() ) replacement = L"ButtonB";
 		else replacement = L"ButtonA";
 #else
@@ -6795,7 +6603,7 @@ wstring CMinecraftApp::GetVKReplacement(unsigned int uiVKey)
 #endif
 		break;
 	case VK_PAD_B:
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 		if( InputManager.IsCircleCrossSwapped() ) replacement = L"ButtonA";
 		else replacement = L"ButtonB";
 #else
@@ -6853,9 +6661,7 @@ wstring CMinecraftApp::GetVKReplacement(unsigned int uiVKey)
 	}
 	wchar_t string[128];
 
-#ifdef __PS3__
-	int size = 30;
-#elif defined _WIN64
+#if defined _WIN64
 	int size = 45;
 	if(ui.getScreenWidth() < 1920) size = 30;
 #else
@@ -6884,9 +6690,7 @@ wstring CMinecraftApp::GetIconReplacement(unsigned int uiIcon)
 #else
 	wchar_t string[128];
 
-#ifdef __PS3__
-	int size = 22;
-#elif defined _WIN64
+#if defined _WIN64
 	int size = 33;
 	if(ui.getScreenWidth() < 1920) size = 22;
 #else
@@ -6910,7 +6714,7 @@ wstring CMinecraftApp::GetIconReplacement(unsigned int uiIcon)
 #endif
 }
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 unordered_map<PlayerUID, MOJANG_DATA *, PlayerUID::Hash> CMinecraftApp::MojangData;
 unordered_map<int, char * >  CMinecraftApp::DLCTextures_PackID;
 unordered_map<string, DLC_INFO * >  CMinecraftApp::DLCInfo;
@@ -7016,7 +6820,6 @@ HRESULT CMinecraftApp::RegisterDLCData(WCHAR *pType, WCHAR *pBannerName, int iGe
 	pDLCData->uiSortIndex=uiSortIndex;
 	pDLCData->iConfig=iConfig;
 
-#ifndef __ORBIS__
 	// ignore the names if we don't recognize them
 	if(pBannerName!=L"")
 	{	
@@ -7027,7 +6830,6 @@ HRESULT CMinecraftApp::RegisterDLCData(WCHAR *pType, WCHAR *pBannerName, int iGe
 	{	
 		wcsncpy_s( pDLCData->wchDataFile, pDataFile, MAX_BANNERNAME_SIZE);
 	}
-#endif
 
 	if(pType!=NULL)
 	{	
@@ -7195,7 +6997,7 @@ HRESULT CMinecraftApp::RegisterDLCData(char *pchDLCName, unsigned int uiSortInde
 
 
 
-#if defined( __PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 bool CMinecraftApp::GetDLCFullOfferIDForSkinID(const wstring &FirstSkin,ULONGLONG *pullVal)
 {
 	AUTO_VAR(it, DLCInfo_SkinName.find(FirstSkin));
@@ -7463,7 +7265,7 @@ DLC_INFO *CMinecraftApp::GetDLCInfoForProductName(WCHAR *pwchProductName)
 	return NULL;
 }
 
-#elif defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#elif defined(__PSVITA__)
 #else
 
 DLC_INFO *CMinecraftApp::GetDLCInfoForFullOfferID(ULONGLONG ullOfferID_Full)
@@ -7585,11 +7387,7 @@ int CMinecraftApp::ExitGameFromRemoteSaveDialogReturned(void *pParam,int iPad,C4
 #ifndef _XBOX
 		// Inform fullscreen progress scene that it's not being cancelled after all
 		UIScene_FullscreenProgress *pScene = (UIScene_FullscreenProgress *)ui.FindScene(eUIScene_FullscreenProgress);
-#ifdef __PS3__
-		if(pScene!=NULL)
-#else
 		if (pScene != nullptr)
-#endif
 		{
 			pScene->SetWasCancelled(false);
 		}
@@ -8515,7 +8313,7 @@ unsigned char CMinecraftApp::m_szPNG[8]=
 
 unsigned int CMinecraftApp::FromBigEndian(unsigned int uiValue)
 {
-#if defined(__PS3__) || defined(_XBOX)
+#if defined(_XBOX)
 	// Keep it in big endian
 	return uiValue;
 #else
@@ -8862,7 +8660,7 @@ unsigned int CMinecraftApp::AddDLCRequest(eDLCMarketplaceType eType, bool bPromo
 
 unsigned int CMinecraftApp::AddTMSPPFileTypeRequest(eDLCContentType eType, bool bPromote)
 {
-#if !defined(__PS3__) && !defined(__ORBIS__) && !defined(__PSVITA__)
+#if !defined(__PSVITA__)
 	// lock access
 	EnterCriticalSection(&csTMSPPDownloadQueue);
 
@@ -9169,7 +8967,7 @@ bool CMinecraftApp::RetrieveNextDLCContent()
 	return false;
 }
 
-#if !defined(__PS3__) && !defined(__ORBIS__) && !defined(__PSVITA__)
+#if !defined(__PSVITA__)
 #ifdef _XBOX_ONE
 int CMinecraftApp::TMSPPFileReturned(LPVOID pParam,int iPad,int iUserData,LPVOID lpvData, WCHAR* wchFilename)
 {
@@ -9746,7 +9544,7 @@ byteArray CMinecraftApp::getArchiveFile(const wstring &filename)
 
 // DLC
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 int CMinecraftApp::GetDLCInfoCount() 
 { 
 	return (int)DLCInfo.size();
@@ -9781,7 +9579,7 @@ int CMinecraftApp::GetDLCInfoTexturesOffersCount()
 // AUTOSAVE
 void CMinecraftApp::SetAutosaveTimerTime(void)				
 {
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 	m_uiAutosaveTimer= GetTickCount()+1000*60;
 #else
 	m_uiAutosaveTimer= GetTickCount()+GetGameSettings(ProfileManager.GetPrimaryPad(),eGameSetting_Autosave)*1000*60*15;
@@ -9818,10 +9616,6 @@ bool CMinecraftApp::IsLocalMultiplayerAvailable()
 
 	bool available = RenderManager.IsHiDef() && connectedControllers > 1;
 
-#ifdef __ORBIS__
-	// Check for remote play
-	available = available && InputManager.IsLocalMultiplayerAvailable();
-#endif
 
 	return available;
 
@@ -10047,7 +9841,7 @@ if (dwSystemLanguage == MINECRAFT_LANGUAGE_DEFAULT)
 		break;
 
 
-#if defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ || defined _DURANGO
+#if defined(__PSVITA__) || defined(_DURANGO)
 	case XC_LANGUAGE_DANISH:
 		locales.push_back(eMCLang_daDA);
 		locales.push_back(eMCLang_daDK);

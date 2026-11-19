@@ -112,9 +112,6 @@ void Player::_init()
 	m_bCheckedForModelParts=false;
 	m_bCheckedDLCForModelParts=false;
 
-#if defined(__PS3__) || defined(__ORBIS__)
-	m_ePlayerNameValidState=ePlayerNameValid_NotSet;
-#endif
 
 	enderChestInventory = shared_ptr<PlayerEnderChestContainer>(new PlayerEnderChestContainer());
 
@@ -374,16 +371,6 @@ void Player::tick()
 			this->drop( shared_ptr<ItemInstance>(new ItemInstance( Item::pickAxe_diamond, 1 )) );
 #endif
 
-#ifdef __PS3__
-			// #ifdef _DEBUG
-			// 		// Drop some items so we have them in inventory to play with
-			// 		this->drop( shared_ptr<ItemInstance>( new ItemInstance(Tile::recordPlayer) ) );
-			// 		this->drop( shared_ptr<ItemInstance>( new ItemInstance(Item::map) ) );
-			// 		this->drop( shared_ptr<ItemInstance>( new ItemInstance(Item::record_01) ) );
-			// 		this->drop( shared_ptr<ItemInstance>( new ItemInstance(Item::record_02) ) );
-			// 		this->drop( shared_ptr<ItemInstance>(new ItemInstance( Item::pickAxe_diamond, 1 )) );
-			// #endif
-#endif
 
 #ifdef _DURANGO
 			// Drop some items so we have them in inventory to play with
@@ -2558,15 +2545,11 @@ int Player::getTexture()
 int Player::hash_fnct(const shared_ptr<Player> k)
 {
 	// TODO 4J Stu - Should we just be using the pointers and hashing them?
-#ifdef __PS3__
-	return (int)boost::hash_value( k->name ); // 4J Stu - Names are completely unique?
-#else
 #if defined(_MSC_VER)
 	return (int)std::hash_value( k->name ); // 4J Stu - Names are completely unique?
 #else
 	return (int)std::hash<std::wstring>()( k->name );
 #endif
-#endif //__PS3__
 }
 
 bool Player::eq_test(const shared_ptr<Player> x, const shared_ptr<Player> y)
@@ -2984,23 +2967,3 @@ void Player::SetAdditionalModelParts(vector<ModelPart *> *ppAdditionalModelParts
 	m_ppAdditionalModelParts=ppAdditionalModelParts;
 }
 
-#if defined(__PS3__) || defined(__ORBIS__)
-
-Player::ePlayerNameValidState Player::GetPlayerNameValidState(void)
-{
-	return m_ePlayerNameValidState;
-}
-
-void Player::SetPlayerNameValidState(bool bState) 
-{
-	if(bState)
-	{
-		m_ePlayerNameValidState=ePlayerNameValid_True;
-	}
-	else
-	{
-		m_ePlayerNameValidState=ePlayerNameValid_False;
-
-	}
-}
-#endif

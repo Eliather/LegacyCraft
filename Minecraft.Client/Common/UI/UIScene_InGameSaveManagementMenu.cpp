@@ -2,7 +2,7 @@
 #include "UI.h"
 #include "UIScene_InGameSaveManagementMenu.h"
 
-#if defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 #include <ces.h>
 #endif
 
@@ -46,7 +46,7 @@ UIScene_InGameSaveManagementMenu::UIScene_InGameSaveManagementMenu(int iPad, voi
 	m_controlSavesTimer.setVisible( true );
 
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 	m_spaceIndicatorSaves.init(L"",eControl_SpaceIndicator,0, (4LL *1024LL * 1024LL * 1024LL) );
 #elif defined(_WINDOWS64)
 	m_spaceIndicatorSaves.init(L"",eControl_SpaceIndicator,0, (4LL *1024LL * 1024LL * 1024LL) );
@@ -63,7 +63,7 @@ UIScene_InGameSaveManagementMenu::UIScene_InGameSaveManagementMenu(int iPad, voi
 	m_saveDetails = NULL;
 	m_iSaveDetailsCount = 0;
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__) || defined(_DURANGO)
+#if defined(__PSVITA__) || defined(_DURANGO)
 	// Always clear the saves when we enter this menu
 	StorageManager.ClearSavesInfo();
 #endif
@@ -225,8 +225,6 @@ void UIScene_InGameSaveManagementMenu::tick()
 				{
 #if defined(_XBOX_ONE)
 					m_spaceIndicatorSaves.addSave( m_pSaveDetails->SaveInfoA[i].totalSize );
-#elif defined(__ORBIS__)
-					m_spaceIndicatorSaves.addSave( m_pSaveDetails->SaveInfoA[i].blocksUsed * (32 * 1024) );
 #endif
 #ifdef _DURANGO
 					m_buttonListSaves.addItem(m_pSaveDetails->SaveInfoA[i].UTF16SaveTitle, L"");
@@ -299,14 +297,10 @@ void UIScene_InGameSaveManagementMenu::tick()
 				srcmax=MAX_SAVEFILENAME_LENGTH;
 				dstmax=MAX_SAVEFILENAME_LENGTH;
 
-#if defined(__PS3__)
-				L10nResult lres= UTF8stoUTF16s((uint8_t *)m_saveDetails[m_iRequestingThumbnailId].UTF8SaveFilename,&srcmax,u16Message,&dstmax);
-#else
 				SceCesUcsContext context;
 				sceCesUcsContextInit(&context);
 
 				sceCesUtf8StrToUtf16Str(&context, (uint8_t *)m_saveDetails[m_iRequestingThumbnailId].UTF8SaveFilename,srcmax,&srclen,u16Message,dstmax,&dstlen);
-#endif
 #endif
 				if( m_saveDetails[m_iRequestingThumbnailId].pbThumbnailData )
 				{
@@ -397,7 +391,7 @@ void UIScene_InGameSaveManagementMenu::handleInput(int iPad, int key, bool repea
 	case ACTION_MENU_CANCEL:
 		if(pressed)
 		{
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 			m_bExitScene=true;
 #else
 			navigateBack();
@@ -406,9 +400,6 @@ void UIScene_InGameSaveManagementMenu::handleInput(int iPad, int key, bool repea
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_UP:
 	case ACTION_MENU_DOWN:
 	case ACTION_MENU_PAGEUP:

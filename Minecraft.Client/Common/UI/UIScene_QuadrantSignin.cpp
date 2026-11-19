@@ -2,9 +2,6 @@
 #include "UI.h"
 #include "UIScene_QuadrantSignin.h"
 #include "..\..\Minecraft.h"
-#if defined(__ORBIS__)
-#include "Common\Network\Sony\SonyHttp.h"
-#endif
 
 UIScene_QuadrantSignin::UIScene_QuadrantSignin(int iPad, void *_initData, UILayer *parentLayer) : UIScene(iPad, parentLayer)
 {
@@ -52,7 +49,7 @@ UIScene_QuadrantSignin::UIScene_QuadrantSignin(int iPad, void *_initData, UILaye
 		}
 	}
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	if(InputManager.IsCircleCrossSwapped())
 	{
 		IggyDataValue result;
@@ -138,9 +135,6 @@ void UIScene_QuadrantSignin::handleInput(int iPad, int key, bool repeat, bool pr
 			}
 			break;
 		case ACTION_MENU_OK:
-#ifdef __ORBIS__
-		case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 			if(pressed)
 			{
 				m_bIgnoreInput = true;

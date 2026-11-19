@@ -13,6 +13,16 @@
 UIScene_CraftingMenu::UIScene_CraftingMenu(int iPad, void *_initData, UILayer *parentLayer) : UIScene(iPad, parentLayer)
 {
 	m_bIgnoreKeyPresses = false;
+#ifdef _WINDOWS64
+	memset(m_hSlotRects, 0, sizeof(m_hSlotRects));
+	memset(m_vSlotRects, 0, sizeof(m_vSlotRects));
+	memset(&m_outputSlotRect, 0, sizeof(m_outputSlotRect));
+	m_wasMouseLeftDown = Mouse::isButtonDown(0) || Mouse::isButtonPressed(0);
+	m_wasMouseRightDown = Mouse::isButtonDown(1) || Mouse::isButtonPressed(1);
+	m_lastMouseX = (S32)Mouse::getX();
+	m_lastMouseY = (S32)Mouse::getY();
+	m_ignoreCloseTicks = 2;
+#endif
 
 	CraftingPanelScreenInput* initData = (CraftingPanelScreenInput*)_initData;
 	m_iContainerType=initData->iContainerType;
@@ -163,9 +173,6 @@ UIScene_CraftingMenu::UIScene_CraftingMenu(int iPad, void *_initData, UILayer *p
 	// in this scene, we override the press sound with our own for crafting success or fail
 	ui.OverrideSFX(m_iPad,ACTION_MENU_A,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_OK,true);
-#ifdef __ORBIS__
-	ui.OverrideSFX(m_iPad,ACTION_MENU_TOUCHPAD_PRESS,true);
-#endif
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT_SCROLL,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_RIGHT_SCROLL,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT,true);
@@ -201,9 +208,6 @@ void UIScene_CraftingMenu::handleDestroy()
 
 	ui.OverrideSFX(m_iPad,ACTION_MENU_A,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_OK,false);
-#ifdef __ORBIS__
-	ui.OverrideSFX(m_iPad,ACTION_MENU_TOUCHPAD_PRESS,false);
-#endif
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT_SCROLL,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_RIGHT_SCROLL,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT,false);
@@ -251,11 +255,263 @@ wstring UIScene_CraftingMenu::getMoviePath()
 	}
 }
 
-#ifdef __PSVITA__
+#if defined(__PSVITA__) || defined(_WINDOWS64)
 UIControl* UIScene_CraftingMenu::GetMainPanel()
 {
 	return &m_controlMainPanel;
 }
+#endif
+
+void UIScene_CraftingMenu::tick()
+{
+	UIScene::tick();
+
+#ifdef _WINDOWS64
+	if (!hasFocus(m_iPad) || m_bIgnoreKeyPresses)
+	{
+		m_wasMouseLeftDown = Mouse::isButtonDown(0) || Mouse::isButtonPressed(0);
+		m_wasMouseRightDown = Mouse::isButtonDown(1) || Mouse::isButtonPressed(1);
+		return;
+	}
+
+	if (m_ignoreCloseTicks > 0)
+	{
+		--m_ignoreCloseTicks;
+	}
+	else if (Keyboard::isKeyPressed(Keyboard::KEY_C))
+	{
+		handleKeyDown(m_iPad, ACTION_MENU_B, false);
+		return;
+	}
+	else if (Keyboard::isKeyPressed(Keyboard::KEY_F))
+	{
+		m_bFilterCraftableOnly = !m_bFilterCraftableOnly;
+		m_iCurrentSlotHIndex = 0;
+		m_iCurrentSlotVIndex = 1;
+		CheckRecipesAvailable();
+		iVSlotIndexA[0] = (CanBeMadeA[m_iCurrentSlotHIndex].iCount > 0) ? (CanBeMadeA[m_iCurrentSlotHIndex].iCount - 1) : 0;
+		iVSlotIndexA[1] = 0;
+		iVSlotIndexA[2] = (CanBeMadeA[m_iCurrentSlotHIndex].iCount > 1) ? 1 : 0;
+		UpdateVerticalSlots();
+		UpdateHighlight();
+		ui.PlayUISFX(eSFX_Focus);
+		return;
+	}
+
+	if (Mouse::isGrabbed()) return;
+
+	/* Mouse wheel: scroll vertical sub-recipes if >1 variant, else scroll horizontal recipes */
+	const int wheel = Mouse::getWheelDelta();
+	if (wheel != 0)
+	{
+		if (CanBeMadeA[m_iCurrentSlotHIndex].iCount > 1)
+		{
+			handleKeyDown(m_iPad, (wheel > 0) ? ACTION_MENU_UP : ACTION_MENU_DOWN, false);
+		}
+		else
+		{
+			handleKeyDown(m_iPad, (wheel > 0) ? ACTION_MENU_LEFT : ACTION_MENU_RIGHT, false);
+		}
+	}
+
+	const bool isLeftDown = Mouse::isButtonDown(0) || Mouse::isButtonPressed(0);
+	const bool leftClicked = isLeftDown && !m_wasMouseLeftDown;
+	m_wasMouseLeftDown = isLeftDown;
+
+	const bool isRightDown = Mouse::isButtonDown(1) || Mouse::isButtonPressed(1);
+	const bool rightClicked = isRightDown && !m_wasMouseRightDown;
+	m_wasMouseRightDown = isRightDown;
+
+	if (rightClicked)
+	{
+		handleKeyDown(m_iPad, ACTION_MENU_Y, false);
+		return;
+	}
+
+	const S32 curMouseX = (S32)Mouse::getX();
+	const S32 curMouseY = (S32)Mouse::getY();
+	const bool mouseMoved = (curMouseX != m_lastMouseX || curMouseY != m_lastMouseY);
+	m_lastMouseX = curMouseX;
+	m_lastMouseY = curMouseY;
+
+	if (!mouseMoved && !leftClicked) return;
+
+	const float screenW = ui.getScreenWidth();
+	const float screenH = ui.getScreenHeight();
+	const S32 sceneW = getRenderWidth();
+	const S32 sceneH = getRenderHeight();
+	if (screenW <= 0.0f || screenH <= 0.0f || sceneW <= 0 || sceneH <= 0) return;
+
+	const float localX = ((float)curMouseX * (float)sceneW) / screenW;
+	const float localY = ((float)curMouseY * (float)sceneH) / screenH;
+
+	/* Derive exact horizontal row bounds from pixel-accurate customDraw slot rects */
+	float rowLeft = 0.0f, rowRight = 0.0f, rowTop = 0.0f, rowBottom = 0.0f;
+	float slotW = 0.0f, slotH = 0.0f;
+	int firstValidH = -1, lastValidH = -1;
+	for (int i = 0; i < m_iCraftablesMaxHSlotC; ++i)
+	{
+		if (m_hSlotRects[i].valid && m_hSlotRects[i].x1 > m_hSlotRects[i].x0)
+		{
+			if (firstValidH < 0) firstValidH = i;
+			lastValidH = i;
+			slotW = m_hSlotRects[i].x1 - m_hSlotRects[i].x0;
+			slotH = m_hSlotRects[i].y1 - m_hSlotRects[i].y0;
+			rowTop = m_hSlotRects[i].y0;
+			rowBottom = m_hSlotRects[i].y1;
+		}
+	}
+	if (firstValidH >= 0 && lastValidH > firstValidH)
+	{
+		const float stepX = (m_hSlotRects[lastValidH].x0 - m_hSlotRects[firstValidH].x0) / (float)(lastValidH - firstValidH);
+		rowLeft  = m_hSlotRects[firstValidH].x0 - (float)firstValidH * stepX;
+		rowRight = rowLeft + (float)(m_iCraftablesMaxHSlotC - 1) * stepX + slotW;
+	}
+	else if (m_vSlotRects[1].valid && m_vSlotRects[1].x1 > m_vSlotRects[1].x0)
+	{
+		slotW = m_vSlotRects[1].x1 - m_vSlotRects[1].x0;
+		slotH = m_vSlotRects[1].y1 - m_vSlotRects[1].y0;
+		rowTop = m_vSlotRects[1].y0;
+		rowBottom = m_vSlotRects[1].y1;
+		const float stepX = slotW * 1.12f;
+		rowLeft  = m_vSlotRects[1].x0 - (float)m_iCurrentSlotHIndex * stepX;
+		rowRight = rowLeft + (float)(m_iCraftablesMaxHSlotC - 1) * stepX + slotW;
+	}
+
+	const bool haveRow = (rowRight > rowLeft && slotH > 1.0f && m_iCraftablesMaxHSlotC > 0);
+	const int tabCount = (m_iContainerType == RECIPE_TYPE_3x3) ? m_iMaxGroup3x3 : m_iMaxGroup2x2;
+
+	/* 1. Top category tabs (6 tabs in 2x2, 7 tabs in 3x3) */
+	if (leftClicked && haveRow && tabCount > 0)
+	{
+		const float tabsLeft   = rowLeft  - slotW * 0.45f;
+		const float tabsRight  = rowRight + slotW * 0.45f;
+		const float tabsBottom = rowTop   - slotH * 1.48f;
+		const float tabsTop    = tabsBottom - slotH * 1.65f;
+		if (localX >= tabsLeft && localX <= tabsRight && localY >= tabsTop && localY <= tabsBottom)
+		{
+			int tabIdx = (int)(((localX - tabsLeft) * (float)tabCount) / (tabsRight - tabsLeft));
+			if (tabIdx < 0) tabIdx = 0;
+			if (tabIdx >= tabCount) tabIdx = tabCount - 1;
+			if (tabIdx != m_iGroupIndex)
+			{
+				showTabHighlight(m_iGroupIndex, false);
+				m_iGroupIndex = tabIdx;
+				showTabHighlight(m_iGroupIndex, true);
+				m_iCurrentSlotHIndex = 0;
+				m_iCurrentSlotVIndex = 1;
+				CheckRecipesAvailable();
+				iVSlotIndexA[0] = CanBeMadeA[m_iCurrentSlotHIndex].iCount - 1;
+				iVSlotIndexA[1] = 0;
+				iVSlotIndexA[2] = 1;
+				ui.PlayUISFX(eSFX_Focus);
+				UpdateVerticalSlots();
+				UpdateHighlight();
+				setGroupText(GetGroupNameText(m_pGroupA[m_iGroupIndex]));
+			}
+			return;
+		}
+	}
+
+	/* 2. Vertical selector slots & up/down arrows (top=UP, center=CRAFT, bottom=DOWN) */
+	if (leftClicked && CanBeMadeA[m_iCurrentSlotHIndex].iCount > 1)
+	{
+		if (m_vSlotRects[0].valid)
+		{
+			const float vx0 = m_vSlotRects[0].x0 - 6.0f;
+			const float vx1 = m_vSlotRects[0].x1 + 6.0f;
+			const float vy0 = m_vSlotRects[0].y0 - slotH * 0.65f; /* includes up arrow */
+			const float vy1 = m_vSlotRects[0].y1 + 4.0f;
+			if (localX >= vx0 && localX <= vx1 && localY >= vy0 && localY <= vy1)
+			{
+				handleKeyDown(m_iPad, ACTION_MENU_UP, false);
+				return;
+			}
+		}
+		if (m_vSlotRects[2].valid)
+		{
+			const float vx0 = m_vSlotRects[2].x0 - 6.0f;
+			const float vx1 = m_vSlotRects[2].x1 + 6.0f;
+			const float vy0 = m_vSlotRects[2].y0 - 4.0f;
+			const float vy1 = m_vSlotRects[2].y1 + slotH * 0.65f; /* includes down arrow */
+			if (localX >= vx0 && localX <= vx1 && localY >= vy0 && localY <= vy1)
+			{
+				handleKeyDown(m_iPad, ACTION_MENU_DOWN, false);
+				return;
+			}
+		}
+	}
+
+	/* 3. Center vertical slot (selected recipe) click -> craft */
+	if (leftClicked && m_vSlotRects[1].valid)
+	{
+		if (localX >= (m_vSlotRects[1].x0 - 4.0f) && localX <= (m_vSlotRects[1].x1 + 4.0f) &&
+			localY >= (m_vSlotRects[1].y0 - 4.0f) && localY <= (m_vSlotRects[1].y1 + 4.0f))
+		{
+			handleKeyDown(m_iPad, ACTION_MENU_A, false);
+			return;
+		}
+	}
+
+	/* 4. Horizontal recipe row (exact slot rects; hover selects, click selects or crafts) */
+	if (haveRow && localX >= (rowLeft - 4.0f) && localX <= (rowRight + 4.0f) &&
+		localY >= (rowTop - 4.0f) && localY <= (rowBottom + 4.0f))
+	{
+		int hitSlot = -1;
+		for (int i = 0; i < m_iCraftablesMaxHSlotC; ++i)
+		{
+			if (m_hSlotRects[i].valid &&
+				localX >= (m_hSlotRects[i].x0 - 4.0f) && localX <= (m_hSlotRects[i].x1 + 4.0f) &&
+				localY >= (m_hSlotRects[i].y0 - 4.0f) && localY <= (m_hSlotRects[i].y1 + 4.0f))
+			{
+				hitSlot = i;
+				break;
+			}
+		}
+		if (hitSlot < 0)
+		{
+			hitSlot = (int)(((localX - rowLeft) * (float)m_iCraftablesMaxHSlotC) / (rowRight - rowLeft));
+			if (hitSlot < 0) hitSlot = 0;
+			if (hitSlot >= m_iCraftablesMaxHSlotC) hitSlot = m_iCraftablesMaxHSlotC - 1;
+		}
+
+		if (hitSlot != m_iCurrentSlotHIndex)
+		{
+			int iOldHSlot = m_iCurrentSlotHIndex;
+			m_iCurrentSlotHIndex = hitSlot;
+			m_iCurrentSlotVIndex = 1;
+			iVSlotIndexA[0] = CanBeMadeA[m_iCurrentSlotHIndex].iCount - 1;
+			iVSlotIndexA[1] = 0;
+			iVSlotIndexA[2] = 1;
+			UpdateVerticalSlots();
+			UpdateHighlight();
+			if (CanBeMadeA[iOldHSlot].iCount > 0)
+			{
+				setShowCraftHSlot(iOldHSlot, true);
+			}
+			ui.PlayUISFX(eSFX_Focus);
+		}
+		else if (leftClicked)
+		{
+			handleKeyDown(m_iPad, ACTION_MENU_A, false);
+		}
+		return;
+	}
+
+	/* 5. Craft Output preview slot click -> craft */
+	if (leftClicked && m_outputSlotRect.valid)
+	{
+		if (localX >= (m_outputSlotRect.x0 - 6.0f) && localX <= (m_outputSlotRect.x1 + 6.0f) &&
+			localY >= (m_outputSlotRect.y0 - 6.0f) && localY <= (m_outputSlotRect.y1 + 6.0f))
+		{
+			handleKeyDown(m_iPad, ACTION_MENU_A, false);
+			return;
+		}
+	}
+#endif
+}
+
+#ifdef __PSVITA__
 
 void UIScene_CraftingMenu::handleTouchInput(unsigned int iPad, S32 x, S32 y, int iId, bool bPressed, bool bRepeat, bool bReleased)
 {
@@ -441,6 +697,42 @@ void UIScene_CraftingMenu::customDraw(IggyCustomDrawCallbackRegion *region)
 	bool decorations = true;
 	bool inventoryItem = false;
 	swscanf((wchar_t*)region->name,L"slot_%d",&slotId);
+#ifdef _WINDOWS64
+	if (slotId >= 0)
+	{
+		auto recordRegionRect = [&](SlotScreenRect &dst)
+		{
+			float mat[16] = {};
+			RenderManager.GDrawCalculateCustomDraw4J(region, mat);
+			const float sw = (float)getRenderWidth();
+			const float sh = (float)getRenderHeight();
+			const float left   = (sw + mat[3] * sw) * 0.5f;
+			const float right  = left + ((sw *  mat[0]) * 0.5f) * region->x1;
+			const float top    = (sh - mat[7] * sh) * 0.5f;
+			const float bottom = top  + ((sh * -mat[5]) * 0.5f) * region->y1;
+			if (right > left && bottom > top)
+			{
+				dst.x0 = left;
+				dst.y0 = top;
+				dst.x1 = right;
+				dst.y1 = bottom;
+				dst.valid = true;
+			}
+		};
+		if (slotId >= CRAFTING_H_SLOT_START && slotId < (CRAFTING_H_SLOT_START + m_iCraftablesMaxHSlotC))
+		{
+			recordRegionRect(m_hSlotRects[slotId - CRAFTING_H_SLOT_START]);
+		}
+		else if (slotId >= CRAFTING_V_SLOT_START && slotId < CRAFTING_V_SLOT_END)
+		{
+			recordRegionRect(m_vSlotRects[slotId - CRAFTING_V_SLOT_START]);
+		}
+		else if (slotId == CRAFTING_OUTPUT_SLOT_START)
+		{
+			recordRegionRect(m_outputSlotRect);
+		}
+	}
+#endif
 	if (slotId == -1)
 	{
 		app.DebugPrintf("This is not the control we are looking for\n");
@@ -571,6 +863,10 @@ void UIScene_CraftingMenu::hideAllHSlots()
 		m_hSlotsInfo[iIndex].item = nullptr;
 		m_hSlotsInfo[iIndex].alpha = 31;
 		m_hSlotsInfo[iIndex].show = false;
+		if((int)iIndex < m_iCraftablesMaxHSlotC)
+		{
+			m_slotListCraftingHSlots.showSlotRedBox(iIndex, false);
+		}
 	}
 }
 
@@ -581,7 +877,11 @@ void UIScene_CraftingMenu::hideAllVSlots()
 		m_vSlotsInfo[iIndex].item = nullptr;
 		m_vSlotsInfo[iIndex].alpha = 31;
 		m_vSlotsInfo[iIndex].show = false;
+		m_slotListCrafting3VSlots[iIndex].showSlotRedBox(0, false);
 	}
+	m_slotListCrafting2VSlots[0].showSlotRedBox(0, false);
+	m_slotListCrafting2VSlots[1].showSlotRedBox(0, false);
+	m_slotListCrafting1VSlots.showSlotRedBox(0, false);
 }
 
 void UIScene_CraftingMenu::hideAllIngredientsSlots()
@@ -611,6 +911,8 @@ void UIScene_CraftingMenu::setCraftHSlotItem(int iPad, int iIndex, shared_ptr<It
 	m_hSlotsInfo[iIndex].item = item;
 	m_hSlotsInfo[iIndex].alpha = uiAlpha;
 	m_hSlotsInfo[iIndex].show = true;
+	const bool missingMaterials = (item != NULL && uiAlpha < 31);
+	m_slotListCraftingHSlots.showSlotRedBox(iIndex, missingMaterials);
 }
 
 void UIScene_CraftingMenu::setCraftVSlotItem(int iPad, int iIndex, shared_ptr<ItemInstance> item, unsigned int uiAlpha)
@@ -618,6 +920,20 @@ void UIScene_CraftingMenu::setCraftVSlotItem(int iPad, int iIndex, shared_ptr<It
 	m_vSlotsInfo[iIndex].item = item;
 	m_vSlotsInfo[iIndex].alpha = uiAlpha;
 	m_vSlotsInfo[iIndex].show = true;
+	const bool missingMaterials = (item != NULL && uiAlpha < 31);
+	if(iIndex >= 0 && iIndex < m_iMaxDisplayedVSlotC)
+	{
+		m_slotListCrafting3VSlots[iIndex].showSlotRedBox(0, missingMaterials);
+	}
+	if(iIndex == 0)
+	{
+		m_slotListCrafting2VSlots[1].showSlotRedBox(0, missingMaterials);
+	}
+	else if(iIndex == 1)
+	{
+		m_slotListCrafting2VSlots[0].showSlotRedBox(0, missingMaterials);
+		m_slotListCrafting1VSlots.showSlotRedBox(0, missingMaterials);
+	}
 }
 
 void UIScene_CraftingMenu::setCraftingOutputSlotItem(int iPad, shared_ptr<ItemInstance> item)
@@ -675,6 +991,14 @@ void UIScene_CraftingMenu::setIngredientDescriptionText(int index, LPCWSTR text)
 void UIScene_CraftingMenu::setShowCraftHSlot(int iIndex, bool show)
 {
 	m_hSlotsInfo[iIndex].show = show;
+	if(!show)
+	{
+		m_slotListCraftingHSlots.showSlotRedBox(iIndex, false);
+	}
+	else
+	{
+		m_slotListCraftingHSlots.showSlotRedBox(iIndex, m_hSlotsInfo[iIndex].item != NULL && m_hSlotsInfo[iIndex].alpha < 31);
+	}
 }
 
 void UIScene_CraftingMenu::showTabHighlight(int iIndex, bool show)

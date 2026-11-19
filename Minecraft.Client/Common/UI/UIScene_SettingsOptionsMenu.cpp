@@ -58,7 +58,7 @@ UIScene_SettingsOptionsMenu::UIScene_SettingsOptionsMenu(int iPad, void *initDat
 	m_sliderAutosave.setAllPossibleLabels(9,autosaveLabels);
 	m_sliderAutosave.init(autosaveLabels[ucValue],eControl_Autosave,0,8,ucValue);
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 	removeControl(&m_sliderAutosave,true);
 #endif
 
@@ -193,9 +193,6 @@ void UIScene_SettingsOptionsMenu::handleInput(int iPad, int key, bool repeat, bo
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		sendInputToMovie(key, repeat, pressed, released);
 		break;
 	case ACTION_MENU_UP:

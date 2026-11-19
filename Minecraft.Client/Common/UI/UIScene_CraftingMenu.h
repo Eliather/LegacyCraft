@@ -54,19 +54,37 @@ private:
 
 	int m_iMenuInventoryStart;
 	int m_iMenuHotBarStart;
+#ifdef _WINDOWS64
+	struct SlotScreenRect
+	{
+		float x0, y0, x1, y1;
+		bool valid;
+	};
+	SlotScreenRect m_hSlotRects[m_iMaxHSlotC];
+	SlotScreenRect m_vSlotRects[m_iMaxDisplayedVSlotC];
+	SlotScreenRect m_outputSlotRect;
+	bool m_wasMouseLeftDown;
+	bool m_wasMouseRightDown;
+	S32  m_lastMouseX;
+	S32  m_lastMouseY;
+	int  m_ignoreCloseTicks;
+#endif
 
 public:
 	UIScene_CraftingMenu(int iPad, void *initData, UILayer *parentLayer);
 
 	virtual void handleDestroy();
+	virtual void tick();
 
 	virtual EUIScene getSceneType();
 
 	virtual void customDraw(IggyCustomDrawCallbackRegion *region);
 
+#if defined(__PSVITA__) || defined(_WINDOWS64)
+	virtual UIControl* GetMainPanel();
+#endif
 #ifdef __PSVITA__
 	virtual void handleTouchInput(unsigned int iPad, S32 x, S32 y, int iId, bool bPressed, bool bRepeat, bool bReleased);
-	virtual UIControl* GetMainPanel();
 	virtual void handleTouchBoxRebuild();
 	virtual void handleTimerComplete(int id);
 #endif

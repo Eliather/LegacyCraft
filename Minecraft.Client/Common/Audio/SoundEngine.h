@@ -118,11 +118,7 @@ public:
 private:
 	float getMasterMusicVolume();
 	// platform specific functions
-#ifdef __PS3__
-	int initAudioHardware(int iMinSpeakers);
-#else
 	int initAudioHardware(int iMinSpeakers)	{ return iMinSpeakers;}
-#endif
 	
 	int GetRandomishTrack(int iStart,int iEnd);
 
@@ -162,7 +158,4 @@ private:
 	int m_iStream_CD_1;
 	bool *m_bHeardTrackA;
 
-#ifdef __ORBIS__
-	int32_t m_hBGMAudio;
-#endif
 }; 

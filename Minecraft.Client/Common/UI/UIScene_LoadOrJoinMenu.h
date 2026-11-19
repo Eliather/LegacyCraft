@@ -5,10 +5,10 @@
 class LevelGenerationOptions;
 
 
-#if defined __PS3__ || defined __ORBIS__ || defined(__PSVITA__)
+#if defined(__PSVITA__)
 #define SONY_REMOTE_STORAGE_DOWNLOAD
 #endif 
-#if defined __PS3__ || __PSVITA__
+#if __PSVITA__
 #define SONY_REMOTE_STORAGE_UPLOAD
 #endif
 
@@ -20,7 +20,7 @@ private:
 	{
 		eControl_SavesList,
 		eControl_GamesList,
-#if defined(_XBOX_ONE) || defined(__ORBIS__) || defined(_WINDOWS64)
+#if defined(_XBOX_ONE) || defined(_WINDOWS64)
 		eControl_SpaceIndicator,
 #endif
 	};
@@ -52,7 +52,7 @@ protected:
 	UIControl_SaveList m_buttonListGames;
 	UIControl_Label m_labelSavesListTitle, m_labelJoinListTitle, m_labelNoGames;
 	UIControl m_controlSavesTimer, m_controlJoinTimer;
-#if defined(_XBOX_ONE) || defined(__ORBIS__) || defined(_WINDOWS64)
+#if defined(_XBOX_ONE) || defined(_WINDOWS64)
 	UIControl_SpaceIndicatorBar m_spaceIndicatorSaves;
 #endif
 
@@ -68,7 +68,7 @@ private:
 		UI_MAP_ELEMENT( m_controlSavesTimer, "SavesTimer")
 		UI_MAP_ELEMENT( m_controlJoinTimer, "JoinTimer")
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__) || defined(_WINDOWS64)
+#if defined(_XBOX_ONE) || defined(_WINDOWS64)
 		UI_MAP_ELEMENT( m_spaceIndicatorSaves, "SaveSizeBar")
 #endif
 	UI_END_MAP_ELEMENTS_AND_NAMES()
@@ -107,6 +107,7 @@ private:
 	bool m_bUpdateSaveSize;
 #ifdef _WINDOWS64
 	bool m_bUsingWindows64DirectDiskSaves;
+	bool m_wasMouseLeftDown;
 #endif
 
 public:
@@ -168,27 +169,21 @@ protected:
 	void handlePress(F64 controlId, F64 childId);
 	void LoadLevelGen(LevelGenerationOptions *levelGen);
 	void LoadSaveFromDisk(File *saveFile, ESavePlatform savePlatform = SAVE_FILE_PLATFORM_LOCAL);
-#if defined(__PS3__) || defined(__PSVITA__) || defined(__ORBIS__)
+#if defined(__PSVITA__)
 	void LoadSaveFromCloud();
 #endif
 public:
 	virtual void HandleDLCMountingComplete();
 
-#ifdef __ORBIS__
-	void LoadRemoteFileFromDisk(char* remoteFilename);
-#endif
 
 private:
 	void CheckAndJoinGame(int gameIndex);
-#if defined(__PS3__) || defined(__PSVITA__) || defined(__ORBIS__)
+#if defined(__PSVITA__)
 	static int MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EMessageResult result);
 	static int PSN_SignInReturned(void *pParam,bool bContinue, int iPad);
 	static void remoteStorageGetSaveCallback(LPVOID lpParam, SonyRemoteStorage::Status s, int error_code);
 #endif
  
-#ifdef __ORBIS__
-	//static int PSPlusReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
-#endif
 #ifdef _XBOX_ONE
 	typedef struct _SaveTransferStateContainer
 	{
@@ -300,7 +295,7 @@ private:
 	static int CrossSaveUploadFinishedCallback(void *pParam,int iPad,C4JStorage::EMessageResult result);
 #endif
 
-#if defined _XBOX_ONE || defined __ORBIS__
+#if defined(_XBOX_ONE)
 	static int CopySaveDialogReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
 	static int CopySaveThreadProc( LPVOID lpParameter );
 	static int CopySaveDataReturned( LPVOID lpParameter, bool success, C4JStorage::ESaveGameState state );

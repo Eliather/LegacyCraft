@@ -1,8 +1,5 @@
 #pragma once
 
-#if defined(__PS3__) || defined(__ORBIS__)
-#include "..\..\Common\Network\Sony\SQRNetworkManager.h"
-#endif
 
 
 // A struct that we store in the QoS data when we are hosting the session. Max size 1020 bytes.
@@ -32,7 +29,7 @@ typedef struct _GameSessionData
 		subTexturePackId = 0;
 	}
 } GameSessionData;
-#elif defined __PS3__ || defined __ORBIS__ || defined(__PSVITA__)
+#elif defined(__PSVITA__)
 typedef struct _GameSessionData
 {
 	unsigned short netVersion;										//   2 bytes
@@ -86,7 +83,7 @@ public:
 	SessionID sessionId;
 #ifdef _XBOX
 	XSESSION_SEARCHRESULT searchResult;
-#elif defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#elif defined(__PSVITA__)
 	SQRNetworkManager::SessionSearchResult searchResult;
 #elif defined(_DURANGO)
 	DQRNetworkManager::SessionSearchResult searchResult;

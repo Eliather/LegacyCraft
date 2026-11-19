@@ -3,9 +3,6 @@
 #include "McRegionLevelStorageSource.h"
 #include "File.h"
 
-#ifdef __PS3__
-#include <cell/cell_fs.h>
-#endif
 #ifdef __PSVITA__
 #include <fios2.h>
 #endif
@@ -280,35 +277,7 @@ vector<File *> *File::listFiles() const
 	if( !isDirectory() )
 		return vOutput;
 
-#ifdef __PS3__
-	const char *lpFileName=wstringtofilename(getPath());
-	char filePath[256];
-
-	std::string mountedPath = StorageManager.GetMountedPath(lpFileName);
-	if(mountedPath.length() > 0)
-	{
-		strcpy(filePath, mountedPath.c_str());
-	}
-	else if(lpFileName[0] == '/') // already fully qualified path
-		strcpy(filePath, lpFileName );
-	else
-		sprintf(filePath,"%s/%s",getUsrDirPath(), lpFileName );
-	int fd;
-	CellFsErrno err = cellFsOpendir(filePath , &fd);
-
-	CellFsDirectoryEntry de;
-	uint32_t count = 0;
-	err = cellFsGetDirectoryEntries(fd, &de, sizeof(CellFsDirectoryEntry), &count);
-	if(count != 0)
-	{
-		do
-		{
-			if(de.attribute.st_mode & CELL_FS_S_IFREG) vOutput->push_back( new File( *this, filenametowstring( de.entry_name.d_name ) ) );
-			err = cellFsGetDirectoryEntries(fd, &de, sizeof(CellFsDirectoryEntry), &count);
-		} while( count );
-	}
-	err = cellFsClose(fd);
-#elif defined __ORBIS__ || defined __PSVITA__
+#if defined(__PSVITA__)
 	const char *lpFileName=wstringtofilename(getPath());
 	char filePath[256];
 
@@ -423,40 +392,6 @@ vector<File *> *File::listFiles(FileFilter *filter) const
 
 	vector<File *> *vOutput = new vector<File *>();
 
-#ifdef __PS3__
-	const char *lpFileName=wstringtofilename(getPath());
-	char filePath[256];
-
-	std::string mountedPath = StorageManager.GetMountedPath(lpFileName);
-	if(mountedPath.length() > 0)
-	{
-		strcpy(filePath, mountedPath.c_str());
-	}
-	else if(lpFileName[0] == '/') // already fully qualified path
-		strcpy(filePath, lpFileName );
-	else
-		sprintf(filePath,"%s/%s",getUsrDirPath(), lpFileName );
-	int fd;
-	CellFsErrno err = cellFsOpendir(filePath, &fd);
-
-	CellFsDirectoryEntry de;
-	uint32_t count = 0;
-	err = cellFsGetDirectoryEntries(fd, &de, sizeof(CellFsDirectoryEntry), &count);
-	if(count != 0)
-	{
-		do
-		{
-			File thisFile = File( *this, filenametowstring( de.entry_name.d_name ) );
-			if( filter->accept( &thisFile ) )
-			{
-				File storageFile = thisFile;
-				if(de.attribute.st_mode & CELL_FS_S_IFREG) vOutput->push_back( &storageFile );
-			}
-			err = cellFsGetDirectoryEntries(fd, &de, sizeof(CellFsDirectoryEntry), &count);
-		} while( count );
-	}
-	err = cellFsClose(fd);
-#else
 
 #ifdef _UNICODE
 
@@ -502,7 +437,6 @@ vector<File *> *File::listFiles(FileFilter *filter) const
 		FindClose( hFind);
 	}
 #endif
-#endif
 	return vOutput;
 }
 
@@ -523,44 +457,7 @@ bool File::isDirectory() const
 //The length, in bytes, of the file denoted by this abstract pathname, or 0L if the file does not exist
 __int64 File::length()
 {
-#ifdef __PS3__
-	//extern const char* getPS3HomePath();
-	CellFsErrno err=0;
-	const char *lpFileName=wstringtofilename(getPath());
-	char filePath[256];
-
-	std::string mountedPath = StorageManager.GetMountedPath(lpFileName);
-	if(mountedPath.length() > 0)
-	{
-		strcpy(filePath, mountedPath.c_str());
-	}
-	else if(lpFileName[0] == '/') // already fully qualified path
-		strcpy(filePath, lpFileName );
-	else
-		sprintf(filePath,"%s/%s",getUsrDirPath(), lpFileName );
-
-#ifndef _CONTENT_PACKAGE
-	//printf("+++File::length - %s\n",filePath);
-#endif
-	// check if the file exists first
-	CellFsStat statData;
-	err=cellFsStat(filePath, &statData);
-
-	if( err != CELL_FS_SUCCEEDED)
-	{
-		//printf("+++File::length FAILED with %d\n",err);
-		return 0;
-	}
-	if(statData.st_mode == CELL_FS_S_IFDIR)
-	{
-		//printf("+++File::length FAILED with %d\n",err);
-		return 0;
-	}
-
-	//printf("+++File::length - %ll\n",statData.st_size);
-
-	return statData.st_size;
-#elif defined __ORBIS__ || defined __PSVITA__
+#if defined(__PSVITA__)
 
 	char filePath[256];
 	const char *lpFileName=wstringtofilename(getPath());

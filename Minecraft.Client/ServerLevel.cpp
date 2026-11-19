@@ -60,9 +60,6 @@ void ServerLevel::staticCtor()
 
 	m_updateThread = new C4JThread(runUpdate, NULL, "Tile update");
 	m_updateThread->SetProcessor(CPU_CORE_TILE_UPDATE);
-#ifdef __ORBIS__
-	m_updateThread->SetPriority(THREAD_PRIORITY_BELOW_NORMAL);	// On Orbis, this core is also used for Matching 2, and that priority of that seems to be always at default no matter what we set it to. Prioritise this below Matching 2.
-#endif
 	m_updateThread->Run();
 
     RANDOM_BONUS_ITEMS =  WeighedTreasureArray(20);
@@ -883,7 +880,7 @@ void ServerLevel::save(bool force, ProgressListener *progressListener, bool bAut
 		progressListener->progressStagePercentage(1);
 	}
 
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 	// Our autosave is a minimal save. All the chunks are saves by the constant save process
 	if(bAutosave)
 	{
@@ -1454,9 +1451,6 @@ int ServerLevel::runUpdate(void* lpParam)
 			LeaveCriticalSection(&m_updateCS[iLev]);
 		}
 		PIXEndNamedEvent();
-#ifdef __PS3__
-		Sleep(10);
-#endif //__PS3__
 	}
 
 	ShutdownManager::HasFinished(ShutdownManager::eRunUpdateThread);

@@ -33,14 +33,8 @@
 #define PM_ORIGIN_X 24
 #define PM_ORIGIN_Y 34
 
-#ifdef __ORBIS__
-#include "Orbis\Iggy\include\iggyperfmon.h"
-#include "Orbis\Iggy\include\iggyperfmon_orbis.h"
-#elif defined _DURANGO
+#if defined _DURANGO
 #include "Durango\Iggy\include\iggyperfmon.h"
-#elif defined __PS3__
-#include "PS3\Iggy\include\iggyperfmon.h"
-#include "PS3\Iggy\include\iggyperfmon_ps3.h"
 #elif defined __PSVITA__
 #include "PSVita\Iggy\include\iggyperfmon.h"
 #include "PSVita\Iggy\include\iggyperfmon_psp2.h"
@@ -144,7 +138,7 @@ namespace
 		case eUIFontProfile_Japanese:
 			if(s_japaneseFont == NULL)
 			{
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 				s_japaneseFont = new UITTFFont("Common/Media/font/JPN/DF-DotDotGothic16.ttf", "Mojangles_TTF_JPN", 0x203B);
 #else
 				s_japaneseFont = new UITTFFont("Common/Media/font/JPN/DFGMaruGothic-Md.ttf", "Mojangles_TTF_JPN", 0x2022);
@@ -155,7 +149,7 @@ namespace
 		case eUIFontProfile_Chinese:
 			if(s_chineseFont == NULL)
 			{
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 				s_chineseFont = new UITTFFont("Common/Media/font/CHT/DFTT_R5.TTC", "Mojangles_TTF_CHT", 0x203B);
 #else
 				s_chineseFont = new UITTFFont("Common/Media/font/CHT/DFHeiMedium-B5.ttf", "Mojangles_TTF_CHT", 0x2022);
@@ -166,7 +160,7 @@ namespace
 		case eUIFontProfile_Korean:
 			if(s_koreanFont == NULL)
 			{
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 				s_koreanFont = new UITTFFont("Common/Media/font/KOR/candadite2.ttf", "Mojangles_TTF_KOR", 0x203B);
 #else
 				s_koreanFont = new UITTFFont("Common/Media/font/KOR/BOKMSD.ttf", "Mojangles_TTF_KOR", 0x2022);
@@ -283,7 +277,7 @@ UIController::UIController()
 	InitializeCriticalSection(&m_Allocatorlock);
 #endif
 
-#if defined _WINDOWS64 || defined _DURANGO || defined __ORBIS__
+#if defined(_WINDOWS64) || defined(_DURANGO)
 	m_fScreenWidth = 1920.0f;
 	m_fScreenHeight = 1080.0f;
 	m_bScreenWidthSetup = true;
@@ -493,9 +487,7 @@ void UIController::loadSkins()
 {
 	wstring platformSkinPath = L"";
 
-#ifdef __PS3__
-	platformSkinPath = L"skinPS3.swf";
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	platformSkinPath = L"skinVita.swf";
 #elif defined _WINDOWS64
 	if(m_fScreenHeight > 720.0f)
@@ -519,16 +511,6 @@ void UIController::loadSkins()
 	{
 		platformSkinPath = L"skinDurango.swf";	
 	}
-#elif defined __ORBIS__
-	if(m_fScreenHeight==1080.0f)
-	{
-		platformSkinPath = L"skinHDOrbis.swf";	
-	}
-	else
-	{
-		platformSkinPath = L"skinOrbis.swf";	
-	}
-
 #endif
 #if defined(_WINDOWS64)
 	m_iggyLibraries[eLibrary_Platform] = loadSkin(platformSkinPath, L"platformskinHD.swf");
@@ -544,7 +526,7 @@ void UIController::loadSkins()
 	}
 #endif
 
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	m_iggyLibraries[eLibrary_GraphicsDefault] = loadSkin(L"skinGraphics.swf", L"skinGraphics.swf");
 	m_iggyLibraries[eLibrary_GraphicsHUD] = loadSkin(L"skinGraphicsHud.swf", L"skinGraphicsHud.swf");
 	m_iggyLibraries[eLibrary_GraphicsInGame] = loadSkin(L"skinGraphicsInGame.swf", L"skinGraphicsInGame.swf");
@@ -557,7 +539,7 @@ void UIController::loadSkins()
 	m_iggyLibraries[eLibrary_Default] = loadSkin(L"skin.swf", L"skin.swf");
 #endif
 
-#if ( defined(_WINDOWS64) || defined(_DURANGO) || defined(__ORBIS__) )
+#if defined(_WINDOWS64) || defined(_DURANGO)
 
 #if defined(_WINDOWS64)
 #ifndef _FINAL_BUILD
@@ -770,15 +752,37 @@ void UIController::handleInput()
 		{
 			const S32 mouseX = (S32)Mouse::getX();
 			const S32 mouseY = (S32)Mouse::getY();
-			const S32 screenW = (S32)getScreenWidth();
-			const S32 screenH = (S32)getScreenHeight();
+			const bool mouseActive = Mouse::isButtonDown(0) || Mouse::isButtonPressed(0);
+			static S32 s_lastHoverMouseX = -99999;
+			static S32 s_lastHoverMouseY = -99999;
+			const bool mouseMoved = (mouseX != s_lastHoverMouseX || mouseY != s_lastHoverMouseY);
 
-			// FIX: Try ALL groups when updating mouse focus, not just Fullscreen + player group.
-			// Submenus can live in any group/layer so we need to check them all.
-			bool mouseHitControl = false;
-			for(int g = eUIGroup_COUNT - 1; g >= 0 && !mouseHitControl; --g)
+			// Only update hover focus when the mouse actually moves or clicks/drags,
+			// so mouse wheel scrolling and arrow keys are never fought by a stationary cursor.
+			if(mouseMoved || mouseActive)
 			{
-				mouseHitControl = FocusMouseControl(m_groups[g], mouseX, mouseY, screenW, screenH);
+				s_lastHoverMouseX = mouseX;
+				s_lastHoverMouseY = mouseY;
+
+				const S32 screenW = (S32)getScreenWidth();
+				const S32 screenH = (S32)getScreenHeight();
+
+				// Lower EUIGroup indices render on top (eUIGroup_Fullscreen = 0 is topmost).
+				// If Fullscreen has a modal Alert/Error dialog (e.g. UIScene_MessageBox),
+				// do not fall through to player groups underneath it.
+				const bool fullscreenHasModal =
+					(m_groups[eUIGroup_Fullscreen] != NULL) &&
+					(m_groups[eUIGroup_Fullscreen]->GetTopScene(eUILayer_Error) != NULL ||
+					 m_groups[eUIGroup_Fullscreen]->GetTopScene(eUILayer_Alert) != NULL);
+				bool mouseHitControl = false;
+				for(int g = 0; g < (int)eUIGroup_COUNT && !mouseHitControl; ++g)
+				{
+					mouseHitControl = FocusMouseControl(m_groups[g], mouseX, mouseY, screenW, screenH);
+					if(g == (int)eUIGroup_Fullscreen && fullscreenHasModal)
+					{
+						break;
+					}
+				}
 			}
 		}
 #endif
@@ -841,6 +845,13 @@ static bool IsMouseHitControlType(UIControl::eUIControlType controlType)
 		controlType != UIControl::ePlayerSkinPreview &&
 		controlType != UIControl::eProgress &&
 		controlType != UIControl::eSlotList;
+}
+
+static bool IsCraftingScene(UIScene *scene)
+{
+	if(scene == NULL) return false;
+	EUIScene t = scene->getSceneType();
+	return (t == eUIScene_Crafting2x2Menu || t == eUIScene_Crafting3x3Menu);
 }
 
 static bool IsAbstractContainerScene(UIScene *scene)
@@ -1274,11 +1285,32 @@ static bool FocusMouseControlInScene(UIScene *pScene, S32 mouseX, S32 mouseY, S3
 			if(control->getControlType() == UIControl::eButtonList)
 			{
 				UIControl_ButtonList *pButtonList = (UIControl_ButtonList *)control;
-				if(!pButtonList->CanTouchTrigger(localX, localY))
+				if(pButtonList->getItemCount() <= 0)
 				{
 					continue;
 				}
+				// Focus the item under the cursor first (CanTouchTrigger only returns true
+				// for an already-selected item in Flash, which blocked hover and single-click).
 				pButtonList->SetTouchFocus(localX, localY, false);
+				if(!Mouse::isButtonPressed(0) && !pButtonList->CanTouchTrigger(localX, localY))
+				{
+					// Still allow hover focus to stick on the list control itself.
+					if(pScene->getControlFocus() != control->getId() && pScene->getSceneType() != eUIScene_NameInput)
+					{
+						pScene->SetFocusToElement(control->getId());
+					}
+					return true;
+				}
+			}
+
+			if(control->getControlType() == UIControl::eTexturePackList && Mouse::isButtonPressed(0))
+			{
+				UIControl_TexturePackList *pTexturePackList = (UIControl_TexturePackList *)control;
+				if(pScene->getControlFocus() != control->getId())
+				{
+					pScene->SetFocusToElement(control->getId());
+				}
+				pTexturePackList->SetTouchFocus(localX - x1, localY - y1, false);
 			}
 
 			if(pScene->getControlFocus() != control->getId() && pScene->getSceneType() != eUIScene_NameInput)
@@ -1311,13 +1343,21 @@ static bool FocusMouseControl(UIGroup *pGroup, S32 mouseX, S32 mouseY, S32 scree
 	S32 viewportH = 0;
 	GetViewportRect(pGroup->GetViewportType(), screenW, screenH, viewportX, viewportY, viewportW, viewportH);
 
-	// FIX: Check layers from top to bottom (highest index first) so that
-	// alert/error dialogs on top layers capture the click before layers beneath them.
-	for(int i = (int)eUILayer_COUNT - 1; i >= 0; --i)
+	// Lower EUILayer indices render on top (eUILayer_Error=2, eUILayer_Alert=3 are above eUILayer_Scene=6).
+	for(int i = 0; i < (int)eUILayer_COUNT; ++i)
 	{
-		if(FocusMouseControlInScene(pGroup->GetTopScene((EUILayer)i), mouseX, mouseY, viewportX, viewportY, viewportW, viewportH))
+		UIScene *topScene = pGroup->GetTopScene((EUILayer)i);
+		if(topScene != NULL)
 		{
-			return true;
+			if(FocusMouseControlInScene(topScene, mouseX, mouseY, viewportX, viewportY, viewportW, viewportH))
+			{
+				return true;
+			}
+			// Modal Error/Alert dialogs block mouse interaction with scenes beneath them.
+			if(i == (int)eUILayer_Error || i == (int)eUILayer_Alert)
+			{
+				return false;
+			}
 		}
 	}
 
@@ -1484,8 +1524,9 @@ void UIController::handleKeyPress(unsigned int iPad, unsigned int key)
 
 		const bool textInputFocused = IsFocusedTextInput(menuScene);
 		const bool isContainerScene = IsAbstractContainerScene(menuScene);
+		const bool isCraftingScene = IsCraftingScene(menuScene);
 
-		if(!mouseGrabbed)
+		if(!mouseGrabbed && !isCraftingScene)
 		{
 			if(key == ACTION_MENU_OK)
 			{
@@ -1496,13 +1537,19 @@ void UIController::handleKeyPress(unsigned int iPad, unsigned int key)
 					const S32 screenW = (S32)getScreenWidth();
 					const S32 screenH = (S32)getScreenHeight();
 
-					// FIX: Try ALL groups top-down when a click lands, not just
-					// Fullscreen + player group. This is what makes submenu buttons
-					// actually register the click after focus has been set correctly.
+					// Lower EUIGroup indices render on top (eUIGroup_Fullscreen = 0 is topmost).
+					const bool fullscreenHasModal =
+						(m_groups[eUIGroup_Fullscreen] != NULL) &&
+						(m_groups[eUIGroup_Fullscreen]->GetTopScene(eUILayer_Error) != NULL ||
+						 m_groups[eUIGroup_Fullscreen]->GetTopScene(eUILayer_Alert) != NULL);
 					bool mouseHitControl = false;
-					for(int g = (int)eUIGroup_COUNT - 1; g >= 0 && !mouseHitControl; --g)
+					for(int g = 0; g < (int)eUIGroup_COUNT && !mouseHitControl; ++g)
 					{
 						mouseHitControl = FocusMouseControl(m_groups[g], mouseX, mouseY, screenW, screenH);
+						if(g == (int)eUIGroup_Fullscreen && fullscreenHasModal)
+						{
+							break;
+						}
 					}
 
 					// FIX: For non-container scenes that have mouse-hittable controls (e.g. PauseMenu, MainMenu),
@@ -1729,13 +1776,8 @@ void UIController::setupCustomDrawGameState()
 	RenderManager.StartFrame();
 	PIXEndNamedEvent();
 	gdraw_D3D11_setViewport_4J();
-#elif defined __PS3__
-	RenderManager.StartFrame();
 #elif defined __PSVITA__
 	RenderManager.StartFrame();
-#elif defined __ORBIS__
-	RenderManager.StartFrame(false);
-	gdraw_orbis_setViewport_4J();
 #endif
 	RenderManager.Set_matrixDirty();
 
@@ -1760,14 +1802,6 @@ void UIController::setupCustomDrawMatrices(UIScene *scene, CustomDrawData *custo
 	float sceneHeight = (float)scene->getRenderHeight();
 
 	LONG left, right, top, bottom;
-#ifdef __PS3__
-	if(!RenderManager.IsHiDef() && !RenderManager.IsWidescreen())
-	{
-		left = m_tileOriginX + (sceneWidth + customDrawRegion->mat[(0*4)+3]*sceneWidth);
-		right = left + ( (sceneWidth * customDrawRegion->mat[0]) ) * customDrawRegion->x1;
-	}
-	else
-#endif
 	{
 		left = m_tileOriginX + (sceneWidth + customDrawRegion->mat[(0*4)+3]*sceneWidth)/2;
 		right = left + ( (sceneWidth * customDrawRegion->mat[0])/2 ) * customDrawRegion->x1;
@@ -1806,11 +1840,7 @@ void UIController::setupCustomDrawGameStateAndMatrices(UIScene *scene, CustomDra
 
 void UIController::endCustomDrawGameState()
 {
-#ifdef __ORBIS__
-	RenderManager.Clear(GL_DEPTH_BUFFER_BIT);
-#else
 	RenderManager.Clear(GL_DEPTH_BUFFER_BIT, &m_customRenderingClearRect);
-#endif
 	glDepthMask(false);
 	glDisable(GL_ALPHA_TEST);
 }
@@ -1851,11 +1881,11 @@ GDrawTexture * RADLINK UIController::TextureSubstitutionCreateCallback ( void * 
 			Textures *t = Minecraft::GetInstance()->textures;
 			int id = t->getTexture(&image,C4JRender::TEXTURE_FORMAT_RxGyBzAw,false);
 
-#if (defined __ORBIS__ || defined _DURANGO )
+#if defined(_DURANGO)
 			*width = 96;
 			*height = 96;
 #elif defined _WINDOWS64
-			if(WideStringEndsWith((wchar_t *)texture_name, L"_SaveListThumb") || WideStringEndsWith((wchar_t *)texture_name, L"_LoadMenuIcon"))
+			if(WideStringEndsWith((wchar_t *)texture_name, L"_SaveListThumb") || WideStringEndsWith((wchar_t *)texture_name, L"_LoadMenuIcon") || wcsncmp((wchar_t *)texture_name, L"tpack", 5) == 0)
 			{
 				*width = 96;
 				*height = 96;
@@ -2413,7 +2443,7 @@ void UIController::SetTooltips( unsigned int iPad, int iA, int iB, int iX, int i
 	if(iX==IDS_TOOLTIPS_SELECTDEVICE) iX=-1;
 	if(iX==IDS_TOOLTIPS_CHANGEDEVICE) iX=-1;
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	if(iY==IDS_TOOLTIPS_VIEW_GAMERCARD) iY=-1;
 	if(iY==IDS_TOOLTIPS_VIEW_GAMERPROFILE) iY=-1;
 #endif
@@ -2686,9 +2716,7 @@ void UIController::UpdatePlayerBasePositions()
 		}
 		else
 		{
-#ifndef __ORBIS__
 			m_groups[idx+1]->SetViewportType(C4JRender::VIEWPORT_TYPE_FULLSCREEN);
-#endif
 			DisplayGamertag(idx,false);
 		}
 	}
@@ -2775,7 +2803,7 @@ void UIController::ShowAutosaveCountdownTimer(bool show)
 
 void UIController::UpdateAutosaveCountdownTimer(unsigned int uiSeconds)
 {
-#if !(defined(_XBOX_ONE) || defined(__ORBIS__))
+#if !defined(_XBOX_ONE)
 	WCHAR wcAutosaveCountdown[100]; 
 	swprintf( wcAutosaveCountdown, 100, app.GetString(IDS_AUTOSAVE_COUNTDOWN),uiSeconds);
 	if(m_groups[(int)eUIGroup_Fullscreen]->getPressStartToPlay()) m_groups[(int)eUIGroup_Fullscreen]->getPressStartToPlay()->setTrialTimer(wcAutosaveCountdown);
@@ -2870,13 +2898,8 @@ void UIController::ClearPressStart()
 	m_iPressStartQuadrantsMask = 0;
 }
 
-#ifndef __PS3__
 C4JStorage::EMessageResult UIController::RequestMessageBox(UINT uiTitle, UINT uiText, UINT *uiOptionA,UINT uiOptionC, DWORD dwPad,
 														   int( *Func)(LPVOID,int,const C4JStorage::EMessageResult),LPVOID lpParam, C4JStringTable *pStringTable, WCHAR *pwchFormatString,DWORD dwFocusButton, bool bIsError)
-#else
-C4JStorage::EMessageResult UIController::RequestMessageBox(UINT uiTitle, UINT uiText, UINT *uiOptionA,UINT uiOptionC, DWORD dwPad,
-														   int( *Func)(LPVOID,int,const C4JStorage::EMessageResult),LPVOID lpParam, StringTable *pStringTable, WCHAR *pwchFormatString,DWORD dwFocusButton, bool bIsError)
-#endif
 {
 	MessageBoxInfo param;
 	param.uiTitle = uiTitle;
@@ -2923,10 +2946,7 @@ C4JStorage::EMessageResult UIController::RequestUGCMessageBox(UINT title, UINT m
 	if (message == -1) message = IDS_NO_USER_CREATED_CONTENT_PRIVILEGE_CREATE;
 	if (iPad == -1) iPad = ProfileManager.GetPrimaryPad();
 
-#ifdef __ORBIS__
-	ProfileManager.DisplaySystemMessage( SCE_MSG_DIALOG_SYSMSG_TYPE_TRC_PSN_UGC_RESTRICTION, iPad );
-	return C4JStorage::EMessage_ResultAccept; 
-#elif defined(__PSVITA__)
+#if defined(__PSVITA__)
 	ProfileManager.ShowSystemMessage( SCE_MSG_DIALOG_SYSMSG_TYPE_TRC_PSN_CHAT_RESTRICTION, iPad );
 	UINT uiIDA[1];
 	uiIDA[0]=IDS_CONFIRM_OK;
@@ -2951,10 +2971,7 @@ C4JStorage::EMessageResult UIController::RequestContentRestrictedMessageBox(UINT
 	}
 	if (iPad == -1) iPad = ProfileManager.GetPrimaryPad();
 
-#ifdef __ORBIS__
-	ProfileManager.DisplaySystemMessage( SCE_MSG_DIALOG_SYSMSG_TYPE_TRC_PSN_UGC_RESTRICTION, iPad );
-	return C4JStorage::EMessage_ResultAccept; 
-#elif defined(__PSVITA__)
+#if defined(__PSVITA__)
 	ProfileManager.ShowSystemMessage( SCE_MSG_DIALOG_SYSMSG_TYPE_TRC_PSN_AGE_RESTRICTION, iPad );
 	return C4JStorage::EMessage_ResultAccept;
 #else
@@ -2966,7 +2983,7 @@ C4JStorage::EMessageResult UIController::RequestContentRestrictedMessageBox(UINT
 
 void UIController::setFontCachingCalculationBuffer(int length)
 {
-#if defined __ORBIS__ || defined _DURANGO || defined _WIN64
+#if defined(_DURANGO) || defined(_WIN64)
 	static const int CHAR_SIZE = 24;
 #else
 	static const int CHAR_SIZE = 16;
@@ -2992,11 +3009,7 @@ UIScene *UIController::FindScene(EUIScene sceneType)
 	for (int i = 0; i < eUIGroup_COUNT; i++)
 	{
 		pScene = m_groups[i]->FindScene(sceneType);
-#ifdef __PS3__
-		if (pScene != NULL) return pScene;
-#else
 		if (pScene != nullptr) return pScene;
-#endif
 	}
 
 	return pScene;

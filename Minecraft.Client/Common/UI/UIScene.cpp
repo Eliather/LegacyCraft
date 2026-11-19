@@ -274,18 +274,7 @@ void UIScene::loadMovie()
 	EnterCriticalSection(&UIController::ms_reloadSkinCS);		// MGH - added to prevent crash loading Iggy movies while the skins were being reloaded
 	wstring moviePath = getMoviePath();
 
-#ifdef __PS3__
-	if(RenderManager.IsWidescreen())
-	{
-		moviePath.append(L"720.swf");
-		m_loadedResolution = eSceneResolution_720;
-	}
-	else
-	{
-		moviePath.append(L"480.swf");
-		m_loadedResolution = eSceneResolution_480;
-	}
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	moviePath.append(L"Vita.swf");
 	m_loadedResolution = eSceneResolution_Vita;
 #elif defined _WINDOWS64
@@ -650,7 +639,7 @@ void UIScene::customDrawSlotControl(IggyCustomDrawCallbackRegion *region, int iP
 
 				if(!useCommandBuffers || m_needsCacheRendered)
 				{
-#if (!defined __PS3__) && (!defined __PSVITA__)
+#if !defined(__PSVITA__)
 					if(useCommandBuffers) RenderManager.CBuffStart(list, true);
 #endif
 					PIXBeginNamedEvent(0,"Draw uncached");
@@ -670,15 +659,11 @@ void UIScene::customDrawSlotControl(IggyCustomDrawCallbackRegion *region, int iP
 						delete drawData;
 					}
 					PIXEndNamedEvent();
-#ifndef __PS3__
 					if(useCommandBuffers) RenderManager.CBuffEnd();
-#endif
 				}
 				m_cachedSlotDraw.clear();
 
-#ifndef __PS3__
 				if(useCommandBuffers) RenderManager.CBuffCall(list);
-#endif
 
 				// Finish GDraw and anything else that needs to be finalised
 				ui.endCustomDraw(region);
@@ -929,9 +914,6 @@ int UIScene::convertGameActionToIggyKeycode(int action)
 	int keycode = -1;
 	switch(action)
 	{
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_A:
 		keycode = IGGY_KEYCODE_ENTER;
 		break;

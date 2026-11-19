@@ -213,15 +213,10 @@ public:
 	void			InitGameSettings();
 	static int		OldProfileVersionCallback(LPVOID pParam,unsigned char *pucData, const unsigned short usVersion, const int iPad);
 
-#if ( defined  __PS3__  || defined __ORBIS__ || defined _DURANGO || defined __PSVITA__ )
+#if defined(_DURANGO) || defined(__PSVITA__)
 	static int		DefaultOptionsCallback(LPVOID pParam,C4JStorage::PROFILESETTINGS *pSettings, const int iPad);
 	int				SetDefaultOptions(C4JStorage::PROFILESETTINGS *pSettings,const int iPad,bool bWriteProfile=true);
-#ifdef __ORBIS__
-	static int		OptionsDataCallback(LPVOID pParam,int iPad,unsigned short usVersion,C4JStorage::eOptionsCallback eStatus,int iBlocksRequired);
-	int				GetOptionsBlocksRequired(int iPad);
-#else
 	static int		OptionsDataCallback(LPVOID pParam,int iPad,unsigned short usVersion,C4JStorage::eOptionsCallback eStatus);
-#endif
 
 	C4JStorage::eOptionsCallback GetOptionsCallbackStatus(int iPad);
 
@@ -307,11 +302,11 @@ public:
 
 	static void		UpsellReturnedCallback(LPVOID pParam, eUpsellType type, eUpsellResponse result, int iUserData);
 
-#if defined __PS3__ || defined __PSVITA__ || defined __ORBIS__
+#if defined(__PSVITA__)
 	static int NowDisplayFullVersionPurchase(void *pParam, bool bContinue, int iPad);
 	static int MustSignInFullVersionPurchaseReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
 #endif
-#if defined __PS3__ || defined __PSVITA__ || defined __ORBIS__
+#if defined(__PSVITA__)
 	static int MustSignInFullVersionPurchaseReturnedExitTrial(void *pParam,int iPad,C4JStorage::EMessageResult result);
 #endif
 
@@ -362,9 +357,7 @@ public:
 	bool IsFileInTPD(int iConfig);
 	void GetTPD(int iConfig,PBYTE *ppbData,DWORD *pdwBytes);
 	int GetTPDSize() {return m_MEM_TPD.size();}
-#ifndef __PS3__
 	int GetTPConfigVal(WCHAR *pwchDataFile);
-#endif
 
 	bool DefaultCapeExists();
 	//void InstallDefaultCape(); // attempt  to install the default cape once per game launch
@@ -600,7 +593,7 @@ public:
 	MOJANG_DATA *GetMojangDataForXuid(PlayerUID xuid);
 	static HRESULT RegisterConfigValues(WCHAR *pType, int iValue);
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	HRESULT RegisterDLCData(char *pchDLCName, unsigned int uiSortIndex, char *pchImageURL);
 	bool GetDLCFullOfferIDForSkinID(const wstring &FirstSkin,ULONGLONG *pullVal);
 	DLC_INFO *GetDLCInfoForTrialOfferID(ULONGLONG ullOfferID_Trial);
@@ -640,7 +633,7 @@ private:
 
 	std::vector <SCreditTextItemDef *> vDLCCredits;
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 	static unordered_map<PlayerUID,MOJANG_DATA *, PlayerUID::Hash > MojangData;
 	static unordered_map<int, char * >  DLCTextures_PackID; // for mash-up packs & texture packs
 	static unordered_map<string,DLC_INFO * > DLCInfo; 
@@ -771,7 +764,7 @@ public:
 	void			ClearTMSPPFilesRetrieved();
 	unsigned int	AddTMSPPFileTypeRequest(eDLCContentType eType, bool bPromote=false);
 	int				GetDLCInfoTexturesOffersCount();
-#if defined( __PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	DLC_INFO *GetDLCInfo(int iIndex);	
 	DLC_INFO *GetDLCInfo(char *);
 	DLC_INFO *GetDLCInfoFromTPackID(int iTPID);
@@ -883,12 +876,9 @@ private:
 	vector <PBYTE> m_vTMSPPData;
 #endif
 
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO  || defined __PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 	C4JStorage::eOptionsCallback m_eOptionsStatusA[XUSER_MAX_COUNT];
 
-#ifdef __ORBIS__
-	int m_eOptionsBlocksRequiredA[XUSER_MAX_COUNT];
-#endif
 #endif
 
 
@@ -914,8 +904,6 @@ public:
 #ifdef _XBOX
 // 	bool m_bTransferSavesToXboxOne;
 // 	unsigned int m_uiTransferSlotC;
-	
-#elif defined (__PS3__)
 	
 #elif defined _DURANGO
 	

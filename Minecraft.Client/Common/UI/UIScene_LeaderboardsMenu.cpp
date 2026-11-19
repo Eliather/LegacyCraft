@@ -79,7 +79,7 @@ UIScene_LeaderboardsMenu::UIScene_LeaderboardsMenu(int iPad, void *initData, UIL
 
 	ReadStats(-1);
 
-#if ( defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ )
+#if defined(__PSVITA__)
 	addTimer( PLAYER_ONLINE_TIMER_ID, PLAYER_ONLINE_TIMER_TIME );
 #endif
 }
@@ -729,13 +729,7 @@ void UIScene_LeaderboardsMenu::CopyLeaderboardEntry(LeaderboardManager::ReadScor
 		}
 	}
 
-#ifdef __PS3__
-	// m_name can be unicode characters somehow for Japan - should use m_onlineID
-	wstring wstr=convStringToWstring(statsRow->m_uid.getOnlineID());
-	swprintf(leaderboardEntry->m_gamerTag, XUSER_NAME_SIZE, L"%ls",wstr.c_str());
-#else
 	memcpy(leaderboardEntry->m_gamerTag, statsRow->m_name.data(), statsRow->m_name.size() * sizeof(wchar_t));
-#endif
 
 	// Copy the other columns
 	for( unsigned int i=0 ; i<statsRow->m_statsSize ; i++ )
@@ -1010,7 +1004,7 @@ void UIScene_LeaderboardsMenu::handleRequestMoreData(F64 startIndex, bool up)
 
 void UIScene_LeaderboardsMenu::handleTimerComplete(int id)
 {
-#if ( defined __PS3__ || defined __ORBIS__  || defined __PSVITA__)
+#if defined(__PSVITA__)
 	switch(id)
 	{
 	case PLAYER_ONLINE_TIMER_ID:

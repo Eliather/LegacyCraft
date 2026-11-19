@@ -60,14 +60,6 @@
 #include "FrustumCuller.h"
 #include "..\Minecraft.World\BasicTypeContainers.h"
 
-#ifdef __PS3__
-#include "PS3\SPU_Tasks\LevelRenderer_cull\LevelRenderer_cull.h"
-#include "PS3\SPU_Tasks\LevelRenderer_FindNearestChunk\LevelRenderer_FindNearestChunk.h"
-#include "C4JSpursJob.h"
-
-static LevelRenderer_cull_DataIn g_cullDataIn[4] __attribute__((__aligned__(16)));
-static LevelRenderer_FindNearestChunk_DataIn g_findNearestChunkDataIn __attribute__((__aligned__(16)));
-#endif
 
 const unsigned int HALO_RING_RADIUS = 100;
 
@@ -280,10 +272,6 @@ LevelRenderer::LevelRenderer(Minecraft *mc, Textures *textures)
 	destroyedTileManager = new DestroyedTileManager();
 
 	dirtyChunksLockFreeStack.Initialize();
-#ifdef __PS3__
-	m_jobPort_CullSPU = new C4JSpursJobQueue::Port("C4JSpursJob_LevelRenderer_cull");
-	m_jobPort_FindNearestChunk = new C4JSpursJobQueue::Port("C4JSpursJob_LevelRenderer_FindNearestChunk");
-#endif // __PS3__
 }
 
 void LevelRenderer::renderStars()
@@ -803,22 +791,6 @@ int LevelRenderer::renderChunks(int from, int to, int layer, double alpha)
 	RenderManager.SetCameraPosition((float)-xOff, (float)-yOff, (float)-zOff);
 #endif
 
-#if defined __PS3__ && !defined DISABLE_SPU_CODE
-	// pre- calc'd on the SPU
-	int count = 0;
-	waitForCull_SPU();
-	if(layer == 0)
-	{
-		count = g_cullDataIn[playerIndex].numToRender_layer0;
-		RenderManager.CBuffCallMultiple(g_cullDataIn[playerIndex].listArray_layer0, count);
-	}
-	else // layer == 1
-	{
-		count = g_cullDataIn[playerIndex].numToRender_layer1;
-		RenderManager.CBuffCallMultiple(g_cullDataIn[playerIndex].listArray_layer1, count);
-	}
-
-#else // __PS3__
 
 #ifdef __PSVITA__
 	// AP - alpha cut out is expensive on vita. First render all the non-alpha cut outs
@@ -897,7 +869,6 @@ int LevelRenderer::renderChunks(int from, int to, int layer, double alpha)
 	RenderManager.StateSetForceLOD(-1);	// AP - back to normal mipmapping
 #endif
 
-#endif // __PS3__
 
 	glPopMatrix();
 	mc->gameRenderer->turnOffLightLayer(alpha);		// 4J - brought forward from 1.8.2
@@ -1257,7 +1228,7 @@ void LevelRenderer::renderSky(float alpha)
 
 void LevelRenderer::renderHaloRing(float alpha)
 {
-#if !defined(__PS3__) && !defined(__ORBIS__) && !defined(__PSVITA__)
+#if !defined(__PSVITA__)
 	if (!mc->level->dimension->isNaturalDimension()) return;
 
 	glDisable(GL_ALPHA_TEST);
@@ -1940,46 +1911,6 @@ bool LevelRenderer::updateDirtyChunks()
 	{
 		lastDirtyChunkFound = System::currentTimeMillis();
 		PIXBeginNamedEvent(0,"Finding nearest chunk\n");
-#if defined __PS3__ && !defined DISABLE_SPU_CODE
-		// find the nearest chunk with a spu task, copy all the data over here for uploading to SPU
-		g_findNearestChunkDataIn.numGlobalChunks = getGlobalChunkCount();
-		g_findNearestChunkDataIn.pGlobalChunkFlags = globalChunkFlags;
-		g_findNearestChunkDataIn.onlyRebuild = onlyRebuild;
-		g_findNearestChunkDataIn.lowerOffset = (int)&((LevelChunk*)0)->lowerBlocks;		// dodgy bit of class structure poking, as we don't want to try and get the whole of LevelChunk copmpiling on SPU
-		g_findNearestChunkDataIn.upperOffset = (int)&((LevelChunk*)0)->upperBlocks;
-		g_findNearestChunkDataIn.xChunks = xChunks;
-		g_findNearestChunkDataIn.yChunks = yChunks;
-		g_findNearestChunkDataIn.zChunks = zChunks;
-
-		for(int i=0;i<4;i++)
-		{
-			g_findNearestChunkDataIn.chunks[i] = (LevelRenderer_FindNearestChunk_DataIn::ClipChunk*)chunks[i].data;
-			g_findNearestChunkDataIn.chunkLengths[i] = chunks[i].length;
-			g_findNearestChunkDataIn.level[i] = level[i];
-			g_findNearestChunkDataIn.playerData[i].bValid = mc->localplayers[i] != NULL;
-			if(mc->localplayers[i] != NULL)
-			{
-				g_findNearestChunkDataIn.playerData[i].x = mc->localplayers[i]->x;
-				g_findNearestChunkDataIn.playerData[i].y = mc->localplayers[i]->y;
-				g_findNearestChunkDataIn.playerData[i].z = mc->localplayers[i]->z;
-
-			}
-			if(level[i] != NULL)
-			{
-				g_findNearestChunkDataIn.multiplayerChunkCache[i].XZOFFSET = ((MultiPlayerChunkCache*)(level[i]->chunkSource))->XZOFFSET;
-				g_findNearestChunkDataIn.multiplayerChunkCache[i].XZSIZE = ((MultiPlayerChunkCache*)(level[i]->chunkSource))->XZSIZE;
-				g_findNearestChunkDataIn.multiplayerChunkCache[i].cache = (void**)((MultiPlayerChunkCache*)(level[i]->chunkSource))->cache;
-			}
-
-		}
-
-		// 		assert(sizeof(LevelRenderer_FindNearestChunk_DataIn::Chunk) == sizeof(Chunk));
-		C4JSpursJob_LevelRenderer_FindNearestChunk findJob(&g_findNearestChunkDataIn);
-		m_jobPort_FindNearestChunk->submitJob(&findJob);
-		m_jobPort_FindNearestChunk->waitForCompletion();
-		nearChunk = (ClipChunk*)g_findNearestChunkDataIn.nearChunk;
-		veryNearCount = g_findNearestChunkDataIn.veryNearCount;
-#else // __PS3__
 
 #ifdef _LARGE_WORLDS
 		int maxNearestChunks = MAX_CONCURRENT_CHUNK_REBUILDS;
@@ -2105,7 +2036,6 @@ bool LevelRenderer::updateDirtyChunks()
 			}
 //			app.DebugPrintf("[%d,%d,%d]\n",nearestCount == 0,considered,wouldBeNearButEmpty);
 		}
-#endif // __PS3__
 		PIXEndNamedEvent();
 	}
 
@@ -2525,91 +2455,11 @@ bool inline clip(float *bb, float *frustum)
 	return true;
 }
 
-#ifdef __PS3__
-int g_listArray_layer0[4][LevelRenderer_cull_DataIn::sc_listSize]__attribute__((__aligned__(16)));	// 8000
-int g_listArray_layer1[4][LevelRenderer_cull_DataIn::sc_listSize]__attribute__((__aligned__(16)));
-float g_zDepth_layer0[4][LevelRenderer_cull_DataIn::sc_listSize]__attribute__((__aligned__(16)));	// 8000
-float g_zDepth_layer1[4][LevelRenderer_cull_DataIn::sc_listSize]__attribute__((__aligned__(16)));
-
-volatile bool g_useIdent = false;
-volatile float g_maxDepthRender = 1000;
-volatile float g_maxHeightRender = -1000;
-volatile float g_offMulVal = 1;
-
-void LevelRenderer::cull_SPU(int playerIndex, Culler *culler, float a)
-{
-	if(m_bSPUCullStarted[playerIndex])
-	{
-		return; // running already
-	}
-
-	FrustumCuller *fc = (FrustumCuller *)culler;
-	FrustumData *fd = fc->frustum;
-	float fdraw[6 * 4];
-	for( int i = 0; i < 6; i++ )
-	{
-		double fx = fd->m_Frustum[i][0];
-		double fy = fd->m_Frustum[i][1];
-		double fz = fd->m_Frustum[i][2];
-		fdraw[i * 4 + 0] = (float)fx;
-		fdraw[i * 4 + 1] = (float)fy;
-		fdraw[i * 4 + 2] = (float)fz;
-		fdraw[i * 4 + 3] = (float)(fd->m_Frustum[i][3] + ( fx * -fc->xOff ) + ( fy * - fc->yOff ) + ( fz * -fc->zOff ));
-	}
-
-	memcpy(&g_cullDataIn[playerIndex].fdraw, fdraw, sizeof(fdraw));
-	g_cullDataIn[playerIndex].numClipChunks = chunks[playerIndex].length;
-	g_cullDataIn[playerIndex].pClipChunks = (ClipChunk_SPU*)chunks[playerIndex].data;
-	g_cullDataIn[playerIndex].numGlobalChunks = getGlobalChunkCount();
-	g_cullDataIn[playerIndex].pGlobalChunkFlags = globalChunkFlags;
-	g_cullDataIn[playerIndex].chunkLists = chunkLists;
-	g_cullDataIn[playerIndex].listArray_layer0 = g_listArray_layer0[playerIndex];
-	g_cullDataIn[playerIndex].listArray_layer1 = g_listArray_layer1[playerIndex];
-	g_cullDataIn[playerIndex].zDepth_layer0 = g_zDepth_layer0[playerIndex];
-	g_cullDataIn[playerIndex].zDepth_layer1 = g_zDepth_layer1[playerIndex];
-	g_cullDataIn[playerIndex].maxDepthRender = g_maxDepthRender;
-	g_cullDataIn[playerIndex].maxHeightRender = g_maxHeightRender;
-
-	if(g_useIdent)
-		g_cullDataIn[playerIndex].clipMat = Vectormath::Aos::Matrix4::identity();
-	else
-	{
-		memcpy(&g_cullDataIn[playerIndex].clipMat, &fc->frustum->modl[0], sizeof(float) * 16);
-		g_cullDataIn[playerIndex].clipMat[3][0] = -fc->xOff;
-		g_cullDataIn[playerIndex].clipMat[3][1] = -fc->yOff;
-		g_cullDataIn[playerIndex].clipMat[3][2] = -fc->zOff;
-	}
-
-
-	C4JSpursJob_LevelRenderer_cull cullJob(&g_cullDataIn[playerIndex]);
-	C4JSpursJob_LevelRenderer_zSort sortJob(&g_cullDataIn[playerIndex]);
-
-	m_jobPort_CullSPU->submitJob(&cullJob);
-	m_jobPort_CullSPU->submitSync();
-	// 	static int doSort = false;
-	// 	if(doSort)
-	{	 
-		m_jobPort_CullSPU->submitJob(&sortJob);
-	}
-	// 	doSort ^= 1;
-	m_bSPUCullStarted[playerIndex] = true;
-}
-void LevelRenderer::waitForCull_SPU()
-{
-	m_jobPort_CullSPU->waitForCompletion();
-	int playerIndex = mc->player->GetXboxPad();	// 4J added
-	m_bSPUCullStarted[playerIndex] = false;
-}
-#endif // __PS3__
 
 void LevelRenderer::cull(Culler *culler, float a)
 {
 	int playerIndex = mc->player->GetXboxPad();	// 4J added
 
-#if defined __PS3__ && !defined DISABLE_SPU_CODE
-	cull_SPU(playerIndex, culler, a);
-	return;
-#endif // __PS3__
 
 
 	FrustumCuller *fc = (FrustumCuller *)culler;
@@ -3712,9 +3562,6 @@ void LevelRenderer::staticCtor()
 		else if((i%3) == 1)
 		{
 			rebuildThreads[i]->SetProcessor(CPU_CORE_CHUNK_REBUILD_B);
-#ifdef __ORBIS__
-			rebuildThreads[i]->SetPriority(THREAD_PRIORITY_BELOW_NORMAL);	// On Orbis, this core is also used for Matching 2, and that priority of that seems to be always at default no matter what we set it to. Prioritise this below Matching 2.
-#endif
 		}
 		else if((i%3) == 2) rebuildThreads[i]->SetProcessor(CPU_CORE_CHUNK_REBUILD_C);
 

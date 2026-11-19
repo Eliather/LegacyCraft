@@ -9,6 +9,7 @@
 #include <string.h>
 #include <math.h>
 #include <vector>
+#include <string>
 #include <unordered_map>
 #include <mutex>
 #include <memory>
@@ -175,13 +176,30 @@ namespace
 		GLint u_UseProjection = -1;
 		GLint u_Texture = -1;
 		GLint u_Lightmap = -1;
+		GLint u_SunDir = -1;
+		GLint u_CameraPos = -1;
+		GLint u_SkyColor = -1;
+		GLint u_ShaderFogColor = -1;
+		GLint u_WorldMeta = -1;
+		GLint u_WaterTint = -1;
+		GLint u_TorchTint = -1;
 		VSConstantBufferData lastVS = {};
 		PSConstantBufferData lastPS = {};
+		C4JShaderFrameParams lastShader = {};
+		bool lastShaderValid = false;
 		bool lastValid = false;
 	};
 
+	static ProgramUniforms s_progVanillaStd;
+	static ProgramUniforms s_progVanillaComp;
+	static ProgramUniforms s_progOpaqueStd;
+	static ProgramUniforms s_progOpaqueComp;
 	static ProgramUniforms s_progStd;
 	static ProgramUniforms s_progComp;
+	static ProgramUniforms s_customProgStd;
+	static ProgramUniforms s_customProgComp;
+	static C4JShaderFrameParams s_shaderFrameParams = {};
+	static int                  s_shaderMode = C4J_SHADER_MODE_OFF;
 	static GLuint s_worldVAO = 0;
 	static GLuint s_ringVBO = 0;
 	static GLsizeiptr s_ringVBOOffset = 0;
@@ -222,8 +240,14 @@ namespace
 	static void InvalidateStateCache()
 	{
 		s_cacheValid = false;
+		s_progVanillaStd.lastValid = false;
+		s_progVanillaComp.lastValid = false;
+		s_progOpaqueStd.lastValid = false;
+		s_progOpaqueComp.lastValid = false;
 		s_progStd.lastValid = false;
 		s_progComp.lastValid = false;
+		s_customProgStd.lastValid = false;
+		s_customProgComp.lastValid = false;
 		s_cachedProg = 0;
 		s_cachedVAO = 0;
 		s_cachedVBO = 0;
@@ -315,6 +339,8 @@ namespace
 		"out vec4 v_UV;\n"
 		"out vec2 v_LightUV;\n"
 		"out float v_FogDist;\n"
+		"out vec3 v_ViewPos;\n"
+		"out vec3 v_WorldPos;\n"
 		"out vec4 v_Col;\n"
 		"vec3 UnpackSignedNormal(uint n) {\n"
 		"    int nx = int(n & 0xFFu); if (nx >= 128) nx -= 256;\n"
@@ -326,6 +352,8 @@ namespace
 		"    vec4 pos4 = vec4(a_Pos, 1.0);\n"
 		"    gl_Position = u_WVP * pos4;\n"
 		"    vec4 viewPos = u_MV * pos4;\n"
+		"    v_ViewPos = viewPos.xyz;\n"
+		"    v_WorldPos = pos4.xyz;\n"
 		"    v_FogDist = length(viewPos.xyz);\n"
 		"    vec4 baseCol = vec4(\n"
 		"        float((a_Col >> 24u) & 0xFFu) / 255.0,\n"
@@ -373,11 +401,15 @@ namespace
 		"out vec4 v_UV;\n"
 		"out vec2 v_LightUV;\n"
 		"out float v_FogDist;\n"
+		"out vec3 v_ViewPos;\n"
+		"out vec3 v_WorldPos;\n"
 		"out vec4 v_Col;\n"
 		"void main() {\n"
 		"    vec4 pos4 = vec4(vec3(a_CompA.xyz) / 1024.0, 1.0);\n"
 		"    gl_Position = u_WVP * pos4;\n"
 		"    vec4 viewPos = u_MV * pos4;\n"
+		"    v_ViewPos = viewPos.xyz;\n"
+		"    v_WorldPos = pos4.xyz;\n"
 		"    v_FogDist = length(viewPos.xyz);\n"
 		"    vec2 uv = vec2(a_CompB.xy) / 8192.0;\n"
 		"    if (uv.x > 1.0 && uv.x <= 2.0) uv.x -= 1.0;\n"
@@ -391,8 +423,8 @@ namespace
 		"    v_Col = vec4(r, g, b, 1.0);\n"
 		"}\n";
 
-	static const char *s_glslFS =
-		"#version 130\n"
+	static const char *s_glslFSVanilla =
+		"#version 150\n"
 		"uniform sampler2D u_Texture;\n"
 		"uniform sampler2D u_Lightmap;\n"
 		"uniform vec4 u_StateColor;\n"
@@ -409,6 +441,8 @@ namespace
 		"in vec4 v_UV;\n"
 		"in vec2 v_LightUV;\n"
 		"in float v_FogDist;\n"
+		"in vec3 v_ViewPos;\n"
+		"in vec3 v_WorldPos;\n"
 		"in vec4 v_Col;\n"
 		"out vec4 o_Color;\n"
 		"bool PassAlphaTest(float a) {\n"
@@ -430,8 +464,104 @@ namespace
 		"    if (u_HasLightmap != 0) {\n"
 		"        finalCol.rgb *= texture(u_Lightmap, v_LightUV).rgb;\n"
 		"    }\n"
+		"    if (u_AlphaFunc != 8 && !PassAlphaTest(finalCol.a)) discard;\n"
+		"    if (u_FogColor.w > 0.5) {\n"
+		"        float fogFactor = (u_FogMode == 2)\n"
+		"            ? exp(-u_FogDensity * v_FogDist)\n"
+		"            : (u_FogFar - v_FogDist) / max(u_FogFar - u_FogNear, 0.0001);\n"
+		"        finalCol.rgb = mix(u_FogColor.rgb, finalCol.rgb, clamp(fogFactor, 0.0, 1.0));\n"
+		"    }\n"
+		"    o_Color = finalCol;\n"
+		"}\n";
+
+	static const char *s_glslFS =
+		"#version 130\n"
+		"uniform sampler2D u_Texture;\n"
+		"uniform sampler2D u_Lightmap;\n"
+		"uniform vec4 u_StateColor;\n"
+		"uniform int  u_HasTexture;\n"
+		"uniform int  u_HasLightmap;\n"
+		"uniform int  u_AlphaFunc;\n"
+		"uniform float u_AlphaCutoff;\n"
+		"uniform vec4 u_FogColor;\n"
+		"uniform int  u_FogMode;\n"
+		"uniform float u_FogNear;\n"
+		"uniform float u_FogFar;\n"
+		"uniform float u_FogDensity;\n"
+		"uniform int  u_UseProjection;\n"
+		"uniform vec4 u_SunDir;\n"
+		"uniform vec4 u_CameraPos;\n"
+		"uniform vec4 u_SkyColor;\n"
+		"uniform vec4 u_ShaderFogColor;\n"
+		"uniform vec4 u_WorldMeta;\n"
+		"uniform vec4 u_WaterTint;\n"
+		"uniform vec4 u_TorchTint;\n"
+		"in vec4 v_UV;\n"
+		"in vec2 v_LightUV;\n"
+		"in float v_FogDist;\n"
+		"in vec3 v_ViewPos;\n"
+		"in vec3 v_WorldPos;\n"
+		"in vec4 v_Col;\n"
+		"out vec4 o_Color;\n"
+		"bool PassAlphaTest(float a) {\n"
+		"    if (u_AlphaFunc == 5) return a > u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 7) return a >= u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 2) return a < u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 4) return a <= u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 3) return abs(a - u_AlphaCutoff) < 0.001;\n"
+		"    if (u_AlphaFunc == 6) return abs(a - u_AlphaCutoff) >= 0.001;\n"
+		"    if (u_AlphaFunc == 1) return false;\n"
+		"    return true;\n"
+		"}\n"
+		"vec3 ToneMapFast(vec3 c) {\n"
+		"    float lum = dot(c, vec3(0.299, 0.587, 0.114));\n"
+		"    return clamp(c * (1.07 / (1.0 + 0.16 * lum)), 0.0, 1.0);\n"
+		"}\n"
+		"void main() {\n"
+		"    vec4 finalCol = v_Col * u_StateColor;\n"
+		"    if (u_HasTexture != 0) {\n"
+		"        vec2 texUV = (u_UseProjection != 0 && abs(v_UV.w) > 1e-5) ? (v_UV.xy / v_UV.w) : v_UV.xy;\n"
+		"        finalCol *= texture(u_Texture, texUV);\n"
+		"    }\n"
+		"    if (u_HasLightmap != 0) {\n"
+		"        finalCol.rgb *= texture(u_Lightmap, v_LightUV).rgb;\n"
+		"    }\n"
 		"    if (u_AlphaFunc != 8 && !PassAlphaTest(finalCol.a)) {\n"
 		"        discard;\n"
+		"    }\n"
+		"    if (u_HasLightmap != 0) {\n"
+		"        float lmBlock = clamp((v_LightUV.x - 0.03125) * 1.07, 0.0, 1.0);\n"
+		"        float lmSky   = clamp((v_LightUV.y - 0.03125) * 1.07, 0.0, 1.0);\n"
+		"        float dayFac  = clamp(u_SunDir.w, 0.0, 1.0);\n"
+		"        float rainFac = clamp(u_SkyColor.w, 0.0, 1.0);\n"
+		"        vec3 surfN = cross(dFdx(v_WorldPos), dFdy(v_WorldPos));\n"
+		"        surfN *= inversesqrt(max(dot(surfN, surfN), 1e-10));\n"
+		"        vec3 lightDirW = u_SunDir.xyz;\n"
+		"        float ndl = abs(dot(surfN, lightDirW)) * 0.65 + 0.35;\n"
+		"        float sunBounce = (0.88 + 0.22 * ndl) * (1.0 - 0.40 * rainFac);\n"
+		"        vec3 sunTint = mix(vec3(0.76, 0.84, 1.04), vec3(1.06, 1.01, 0.94), dayFac);\n"
+		"        vec3 skyAmb = mix(vec3(1.0), sunTint * sunBounce, lmSky * lmSky);\n"
+		"        finalCol.rgb *= skyAmb;\n"
+		"        float torchPow = (lmBlock * lmBlock) * u_TorchTint.w;\n"
+		"        finalCol.rgb += finalCol.rgb * u_TorchTint.rgb * torchPow;\n"
+		"#ifndef C4J_OPAQUE_ONLY\n"
+		"        if (finalCol.a > 0.15 && finalCol.a < 0.92 && u_HasTexture != 0) {\n"
+		"            vec3 viewN = cross(dFdx(v_ViewPos), dFdy(v_ViewPos));\n"
+		"            viewN *= inversesqrt(max(dot(viewN, viewN), 1e-10));\n"
+		"            if (viewN.z < 0.0) viewN = -viewN;\n"
+		"            vec3 viewDir = normalize(-v_ViewPos);\n"
+		"            float om = 1.0 - clamp(dot(viewN, viewDir), 0.0, 1.0);\n"
+		"            float fresnel = om * om * om;\n"
+		"            float timeSec = u_CameraPos.w;\n"
+		"            float wave = 0.5 + 0.5 * sin(timeSec * 2.4 + v_WorldPos.x * 1.9 + v_WorldPos.z * 1.5);\n"
+		"            vec3 reflCol = mix(u_WaterTint.rgb, u_SkyColor.rgb, 0.65);\n"
+		"            finalCol.rgb = mix(finalCol.rgb, reflCol, fresnel * 0.48 * lmSky);\n"
+		"            float s = clamp(dot(reflect(-vec3(0.2, 0.85, 0.48), viewN), viewDir), 0.0, 1.0);\n"
+		"            float s2 = s * s; float s4 = s2 * s2; float s8 = s4 * s4; float s16 = s8 * s8;\n"
+		"            finalCol.rgb += sunTint * (s16 * (0.4 + 0.6 * wave) * 0.45 * lmSky * (1.0 - rainFac));\n"
+		"        }\n"
+		"#endif\n"
+		"        finalCol.rgb = ToneMapFast(finalCol.rgb);\n"
 		"    }\n"
 		"    if (u_FogColor.a > 0.5) {\n"
 		"        float fogFactor = 1.0;\n"
@@ -530,6 +660,15 @@ namespace
 		out.u_UseProjection  = pglGetUniformLocation(prog, "u_UseProjection");
 		out.u_Texture        = pglGetUniformLocation(prog, "u_Texture");
 		out.u_Lightmap       = pglGetUniformLocation(prog, "u_Lightmap");
+		out.u_SunDir         = pglGetUniformLocation(prog, "u_SunDir");
+		out.u_CameraPos      = pglGetUniformLocation(prog, "u_CameraPos");
+		out.u_SkyColor       = pglGetUniformLocation(prog, "u_SkyColor");
+		out.u_ShaderFogColor = pglGetUniformLocation(prog, "u_ShaderFogColor");
+		out.u_WorldMeta      = pglGetUniformLocation(prog, "u_WorldMeta");
+		out.u_WaterTint      = pglGetUniformLocation(prog, "u_WaterTint");
+		out.u_TorchTint      = pglGetUniformLocation(prog, "u_TorchTint");
+		out.lastValid        = false;
+		out.lastShaderValid  = false;
 
 		pglUseProgram(prog);
 		if (out.u_Texture >= 0) pglUniform1i(out.u_Texture, 0);
@@ -727,7 +866,17 @@ namespace
 		}
 
 		const bool isCompressed = (vType == 1);
-		ProgramUniforms &pu = isCompressed ? s_progComp : s_progStd;
+		const bool inWorldPass = (s_shaderFrameParams.worldMeta[3] > 0.5f);
+		const bool useVanilla = (!inWorldPass || s_shaderMode == C4J_SHADER_MODE_OFF || tex1 == 0);
+		const bool useCustom = (!useVanilla && s_shaderMode == C4J_SHADER_MODE_CUSTOM) &&
+			s_customProgStd.prog != 0 && s_customProgComp.prog != 0;
+		ProgramUniforms &pu = useVanilla
+			? (isCompressed ? s_progVanillaComp : s_progVanillaStd)
+			: (useCustom
+				? (isCompressed ? s_customProgComp : s_customProgStd)
+				: (blendEnable
+					? (isCompressed ? s_progComp : s_progStd)
+					: (isCompressed ? s_progOpaqueComp : s_progOpaqueStd)));
 
 		VSConstantBufferData vsConsts = {};
 		FillVSConstants(s_tls, wvp, mv, vType, psType, vsConsts);
@@ -832,6 +981,19 @@ namespace
 			}
 		}
 
+		if (!pu.lastShaderValid || memcmp(&pu.lastShader, &s_shaderFrameParams, sizeof(s_shaderFrameParams)) != 0)
+		{
+			if (pu.u_SunDir >= 0)         pglUniform4fv(pu.u_SunDir, 1, s_shaderFrameParams.sunDir);
+			if (pu.u_CameraPos >= 0)      pglUniform4fv(pu.u_CameraPos, 1, s_shaderFrameParams.cameraPos);
+			if (pu.u_SkyColor >= 0)       pglUniform4fv(pu.u_SkyColor, 1, s_shaderFrameParams.skyColor);
+			if (pu.u_ShaderFogColor >= 0) pglUniform4fv(pu.u_ShaderFogColor, 1, s_shaderFrameParams.fogColor);
+			if (pu.u_WorldMeta >= 0)      pglUniform4fv(pu.u_WorldMeta, 1, s_shaderFrameParams.worldMeta);
+			if (pu.u_WaterTint >= 0)      pglUniform4fv(pu.u_WaterTint, 1, s_shaderFrameParams.waterTint);
+			if (pu.u_TorchTint >= 0)      pglUniform4fv(pu.u_TorchTint, 1, s_shaderFrameParams.torchTint);
+			pu.lastShader = s_shaderFrameParams;
+			pu.lastShaderValid = true;
+		}
+
 		if (!s_cacheValid || s_cachedTex0 != tex0)
 		{
 			pglActiveTexture(GL_TEXTURE0);
@@ -848,6 +1010,11 @@ namespace
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, texLinear ? GL_LINEAR : GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, texClamp ? GL_CLAMP_TO_EDGE : GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, texClamp ? GL_CLAMP_TO_EDGE : GL_REPEAT);
+			if (hasMips)
+			{
+				glTexParameterf(GL_TEXTURE_2D, 0x8501 /* GL_TEXTURE_LOD_BIAS */, texLinear ? 0.0f : -1.0f);
+				glTexParameterf(GL_TEXTURE_2D, 0x813B /* GL_TEXTURE_MAX_LOD */, texLinear ? 1000.0f : 2.0f);
+			}
 			if (td0) { td0->appliedLinear = (int)texLinear; td0->appliedClamp = (int)texClamp; }
 		}
 		if (!s_cacheValid || s_cachedTex1 != tex1)
@@ -1170,7 +1337,15 @@ namespace
 			return 0;
 		}
 
-		if (!BuildProgram(s_glslVSStd, s_glslFS, false, s_progStd) ||
+		std::string glslFSOpaque = "#version 150\n#define C4J_OPAQUE_ONLY 1\n";
+		const char *fsBody = strchr(s_glslFS, '\n');
+		glslFSOpaque += (fsBody ? (fsBody + 1) : s_glslFS);
+
+		if (!BuildProgram(s_glslVSStd, s_glslFSVanilla, false, s_progVanillaStd) ||
+			!BuildProgram(s_glslVSComp, s_glslFSVanilla, true, s_progVanillaComp) ||
+			!BuildProgram(s_glslVSStd, glslFSOpaque.c_str(), false, s_progOpaqueStd) ||
+			!BuildProgram(s_glslVSComp, glslFSOpaque.c_str(), true, s_progOpaqueComp) ||
+			!BuildProgram(s_glslVSStd, s_glslFS, false, s_progStd) ||
 			!BuildProgram(s_glslVSComp, s_glslFS, true, s_progComp))
 		{
 			return 0;
@@ -1263,8 +1438,14 @@ namespace
 		if (s_quadIBO && pglDeleteBuffers) { pglDeleteBuffers(1, &s_quadIBO); s_quadIBO = 0; }
 		if (s_fanIBO  && pglDeleteBuffers) { pglDeleteBuffers(1, &s_fanIBO);  s_fanIBO = 0; }
 		if (s_worldVAO && pglDeleteVertexArrays) { pglDeleteVertexArrays(1, &s_worldVAO); s_worldVAO = 0; }
-		if (s_progStd.prog && pglDeleteProgram)  { pglDeleteProgram(s_progStd.prog); s_progStd.prog = 0; }
-		if (s_progComp.prog && pglDeleteProgram) { pglDeleteProgram(s_progComp.prog); s_progComp.prog = 0; }
+		if (s_progVanillaStd.prog && pglDeleteProgram)  { pglDeleteProgram(s_progVanillaStd.prog); s_progVanillaStd.prog = 0; }
+		if (s_progVanillaComp.prog && pglDeleteProgram) { pglDeleteProgram(s_progVanillaComp.prog); s_progVanillaComp.prog = 0; }
+		if (s_progOpaqueStd.prog && pglDeleteProgram)   { pglDeleteProgram(s_progOpaqueStd.prog); s_progOpaqueStd.prog = 0; }
+		if (s_progOpaqueComp.prog && pglDeleteProgram)  { pglDeleteProgram(s_progOpaqueComp.prog); s_progOpaqueComp.prog = 0; }
+		if (s_progStd.prog && pglDeleteProgram)         { pglDeleteProgram(s_progStd.prog); s_progStd.prog = 0; }
+		if (s_progComp.prog && pglDeleteProgram)       { pglDeleteProgram(s_progComp.prog); s_progComp.prog = 0; }
+		if (s_customProgStd.prog && pglDeleteProgram)  { pglDeleteProgram(s_customProgStd.prog); s_customProgStd.prog = 0; }
+		if (s_customProgComp.prog && pglDeleteProgram) { pglDeleteProgram(s_customProgComp.prog); s_customProgComp.prog = 0; }
 
 		if (s_hglrc)
 		{
@@ -2019,6 +2200,82 @@ namespace
 		return 1;
 	}
 
+	static void GL_ShaderSetFrameParams(const C4JShaderFrameParams *params)
+	{
+		if (!params) return;
+		std::lock_guard<std::recursive_mutex> lock(s_glMutex);
+		s_shaderFrameParams = *params;
+	}
+
+	static void GL_ShaderClearCustomProgram(void)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_glMutex);
+		if (s_customProgStd.prog && pglDeleteProgram)  { pglDeleteProgram(s_customProgStd.prog); }
+		if (s_customProgComp.prog && pglDeleteProgram) { pglDeleteProgram(s_customProgComp.prog); }
+		s_customProgStd = {};
+		s_customProgComp = {};
+		if (s_shaderMode == C4J_SHADER_MODE_CUSTOM)
+			s_shaderMode = C4J_SHADER_MODE_DEFAULT;
+		InvalidateStateCache();
+	}
+
+	static int GL_ShaderLoadCustomProgram(const C4JShaderProgramDesc *desc, char *errBuf, size_t errBufSize)
+	{
+		if (errBuf && errBufSize > 0) errBuf[0] = 0;
+		if (!desc || !desc->glslFragSource || desc->glslFragSource[0] == 0)
+		{
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "Missing GLSL fragment shader source");
+			return 0;
+		}
+		std::lock_guard<std::recursive_mutex> lock(s_glMutex);
+		if (!s_hglrc || !pglCreateShader)
+		{
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "OpenGL context not initialized");
+			return 0;
+		}
+
+		const char *vsStd = (desc->glslVertSource && desc->glslVertSource[0]) ? desc->glslVertSource : s_glslVSStd;
+		const char *vsComp = s_glslVSComp;
+		const char *fsSrc = desc->glslFragSource;
+
+		ProgramUniforms newStd = {};
+		ProgramUniforms newComp = {};
+		if (!BuildProgram(vsStd, fsSrc, false, newStd))
+		{
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "GLSL standard shader compile/link failed (see console)");
+			return 0;
+		}
+		if (!BuildProgram(vsComp, fsSrc, true, newComp))
+		{
+			pglDeleteProgram(newStd.prog);
+			if (errBuf && errBufSize > 0) snprintf(errBuf, errBufSize, "GLSL compressed shader compile/link failed (see console)");
+			return 0;
+		}
+
+		if (s_customProgStd.prog && pglDeleteProgram)  pglDeleteProgram(s_customProgStd.prog);
+		if (s_customProgComp.prog && pglDeleteProgram) pglDeleteProgram(s_customProgComp.prog);
+		s_customProgStd = newStd;
+		s_customProgComp = newComp;
+		s_shaderMode = C4J_SHADER_MODE_CUSTOM;
+		InvalidateStateCache();
+		return 1;
+	}
+
+	static void GL_ShaderSetMode(int mode)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_glMutex);
+		if (mode == C4J_SHADER_MODE_CUSTOM && (!s_customProgStd.prog || !s_customProgComp.prog))
+			s_shaderMode = C4J_SHADER_MODE_DEFAULT;
+		else if (mode >= C4J_SHADER_MODE_OFF && mode <= C4J_SHADER_MODE_CUSTOM)
+			s_shaderMode = mode;
+		InvalidateStateCache();
+	}
+
+	static int GL_ShaderGetMode(void)
+	{
+		return s_shaderMode;
+	}
+
 	static const C4JRenderBackendAPI s_glAPI =
 	{
 		sizeof(C4JRenderBackendAPI),
@@ -2128,7 +2385,12 @@ namespace
 		GL_GDrawSetViewport4J,
 		GL_GDrawWrappedTextureCreate,
 		GL_GDrawWrappedTextureDestroy,
-		GL_CaptureBackBufferRGBA
+		GL_CaptureBackBufferRGBA,
+		GL_ShaderSetFrameParams,
+		GL_ShaderLoadCustomProgram,
+		GL_ShaderClearCustomProgram,
+		GL_ShaderSetMode,
+		GL_ShaderGetMode
 	};
 }
 

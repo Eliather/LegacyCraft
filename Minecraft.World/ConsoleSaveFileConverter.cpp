@@ -78,7 +78,7 @@ void ConsoleSaveFileConverter::ConvertSave(ConsoleSaveFile *sourceSave, ConsoleS
 	}
 
 	// MGH added - find any player data files and copy them across
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	vector<FileEntry *>* playerFiles = sourceSave->getValidPlayerDatFiles();
 #else
 	vector<FileEntry *> *playerFiles = sourceSave->getFilesWithPrefix( DirectoryLevelStorage::getPlayerDir() );

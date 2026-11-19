@@ -52,9 +52,6 @@ UIScene_TradingMenu::UIScene_TradingMenu(int iPad, void *_initData, UILayer *par
 	// in this scene, we override the press sound with our own for crafting success or fail
 	ui.OverrideSFX(m_iPad,ACTION_MENU_A,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_OK,true);
-#ifdef __ORBIS__
-	ui.OverrideSFX(m_iPad,ACTION_MENU_TOUCHPAD_PRESS,true);
-#endif
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT_SCROLL,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_RIGHT_SCROLL,true);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT,true);
@@ -98,9 +95,6 @@ void UIScene_TradingMenu::handleDestroy()
 
 	ui.OverrideSFX(m_iPad,ACTION_MENU_A,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_OK,false);
-#ifdef __ORBIS__
-	ui.OverrideSFX(m_iPad,ACTION_MENU_TOUCHPAD_PRESS,false);
-#endif
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT_SCROLL,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_RIGHT_SCROLL,false);
 	ui.OverrideSFX(m_iPad,ACTION_MENU_LEFT,false);

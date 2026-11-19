@@ -97,6 +97,9 @@ private:
 	bool m_bMultiplayerAllowed;
 	bool m_bIgnoreInput;
 	bool m_tabIndex;
+#ifdef _WINDOWS64
+	bool m_wasMouseLeftDown;
+#endif
 
 public:
 	UIScene_LaunchMoreOptionsMenu(int iPad, void *initData, UILayer *parentLayer);
@@ -112,15 +115,22 @@ protected:
 
 public:
 	virtual void tick();
+	virtual UIControl *GetMainPanel();
 	virtual void handleDestroy();
 	// INPUT
 	virtual void handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled);
 	virtual void handleFocusChange(F64 controlId, F64 childId);
 	virtual void handleTimerComplete(int id);
 	static int KeyboardCompleteSeedCallback(LPVOID lpParam,const bool bRes);
+#ifdef _WINDOWS64
+	static void ModalCompleteSeedCallback(void *lpParam, bool confirmed, const std::wstring &text);
+#endif
 	virtual void handlePress(F64 controlId, F64 childId);
 	virtual void handleSliderMove(F64 sliderId, F64 currentValue);
 
 protected:
 	void handleCheckboxToggled(F64 controlId, bool selected);
+#ifdef _WINDOWS64
+	void updateTabMouseVisibility();
+#endif
 };

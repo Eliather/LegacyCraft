@@ -13,36 +13,10 @@ UIScene_EULA::UIScene_EULA(int iPad, void *initData, UILayer *parentLayer) : UIS
 
 	m_buttonConfirm.init(app.GetString(IDS_TOOLTIPS_ACCEPT),eControl_Confirm);
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	wstring EULA = app.GetString(IDS_EULA);
 	EULA.append(L"\r\n");
 
-#if defined(__PS3__)
-	if(app.IsEuropeanSKU())
-	{
-		EULA.append(app.GetString(IDS_EULA_SCEE));
-		// if it's the BD build
-		if(StorageManager.GetBootTypeDisc())
-		{
-			EULA.append(app.GetString(IDS_EULA_SCEE_BD));
-		}
-	}
-	else if(app.IsAmericanSKU())
-	{
-		EULA.append(app.GetString(IDS_EULA_SCEA));
-	}
-#elif defined __ORBIS__
-	if(app.IsEuropeanSKU())
-	{
-		EULA.append(app.GetString(IDS_EULA_SCEE));
-		// 4J-PB - we can't tell if it's a disc or digital version, so let's show this anyway
-		EULA.append(app.GetString(IDS_EULA_SCEE_BD));		
-	}
-	else if(app.IsAmericanSKU())
-	{
-		EULA.append(app.GetString(IDS_EULA_SCEA));
-	}
-#endif
 #else
 	wstring EULA = L"";
 #endif
@@ -106,18 +80,11 @@ void UIScene_EULA::handleInput(int iPad, int key, bool repeat, bool pressed, boo
 {
 	if(m_bIgnoreInput) return;
 
-#ifdef __ORBIS__
-	// ignore all players except player 0 - it's their profile that is currently being used
-	if(iPad!=0) return;
-#endif
 	
 	ui.AnimateKeyPress(m_iPad, key, repeat, pressed, released);
 
 	switch(key)
 	{
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_OK:
 	case ACTION_MENU_DOWN:
 	case ACTION_MENU_UP:

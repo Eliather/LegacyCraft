@@ -106,12 +106,7 @@ HRESULT CScene_TextEntry::InterpretString(wstring &wsText)
 	int iCommand=-1;
 	WCHAR wchSep[2];
 
-#ifdef __PS3__
-	// 4J Stu - The Xbox version uses swscanf_s which isn't available in GCC.
-	swscanf(wsText.c_str(), L"%40s", wchCommand);
-#else
 	swscanf_s(wsText.c_str(), L"%s", wchCommand,40);
-#endif
 
 	AUTO_VAR(it, m_CommandSet.find(wchCommand));
 	if(it != m_CommandSet.end())
@@ -126,12 +121,7 @@ HRESULT CScene_TextEntry::InterpretString(wstring &wsText)
 			{
 				int x,z;
 				
-#ifdef __PS3__
-				// 4J Stu - The Xbox version uses swscanf_s which isn't available in GCC.
-				swscanf(wsText.c_str(), L"%40s%c%d%c%d", wchCommand,wchSep,&x,wchSep,&z);
-#else
 				swscanf_s(wsText.c_str(), L"%s%c%d%c%d", wchCommand,40,wchSep,2,&x,wchSep,2, &z);
-#endif
 
 				app.DebugPrintf("eCommand_Teleport x=%d z=%d\n",x,z);
 
@@ -149,12 +139,7 @@ HRESULT CScene_TextEntry::InterpretString(wstring &wsText)
 			{		
 				int iItem,iCount;
 				
-#ifdef __PS3__
-				// 4J Stu - The Xbox version uses swscanf_s which isn't available in GCC.
-				swscanf(wsText.c_str(), L"%40s%c%d%c%d", wchCommand,wchSep,&iItem,wchSep,&iCount);
-#else
 				swscanf_s(wsText.c_str(), L"%s%c%d%c%d", wchCommand,40,wchSep,2,&iItem,wchSep,2, &iCount);
-#endif
 				app.DebugPrintf("eCommand_Give, item=%d count=%d\n",iItem,iCount);
 				Minecraft *pMinecraft=Minecraft::GetInstance();
 				for(int i=0;i<iCount;i++)

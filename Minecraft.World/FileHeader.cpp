@@ -381,7 +381,7 @@ vector<FileEntry *> *FileHeader::getFilesWithPrefix(const wstring &prefix)
 	return files;
 }
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 
 static bool isHexChar(wchar_t wc)
 {
@@ -541,11 +541,7 @@ vector<FileEntry *> *FileHeader::getDatFilesWithOnlineID(const PlayerUID& pUID)
 
 	wcscat(onlineIDW, L".dat");
 
-#ifdef __ORBIS__
-	onlineIDSize = wcslen(onlineIDW);
-#else
 	static const int onlineIDStart = 24;   // 24 characters into the filename
-#endif
 
 	char tempStr[128];
 	for( unsigned int i = 0; i < datFiles->size(); ++i )
@@ -554,12 +550,7 @@ vector<FileEntry *> *FileHeader::getDatFilesWithOnlineID(const PlayerUID& pUID)
 		wcstombs(tempStr,filenameOnly, 128);
 		app.DebugPrintf("file : %s\n", tempStr);
 
-#ifdef __ORBIS__
-		int onlineIDStart = wcslen(filenameOnly) - onlineIDSize;
-		if(onlineIDStart > 0)
-#else
 		if(wcslen(filenameOnly) > onlineIDStart)
-#endif
 		{
 			if(wcsncmp(&filenameOnly[onlineIDStart], onlineIDW, onlineIDSize) == 0)
 			{	

@@ -402,37 +402,7 @@ void MobRenderer::renderNameTag(shared_ptr<Mob> mob, const wstring& OriginalName
 	wstring playerName;
 	WCHAR wchName[2];
 
-#if defined(__PS3__) || defined(__ORBIS__)
-	// Check we have all the font characters for this player name
-	switch(player->GetPlayerNameValidState())
-	{
-	case Player::ePlayerNameValid_NotSet:
-		if(font->AllCharactersValid(OriginalName))
-		{
-			playerName=OriginalName;
-			player->SetPlayerNameValidState(true);
-		}
-		else
-		{
-			memset(wchName,0,sizeof(WCHAR)*2);
-			swprintf(wchName, 2, L"%d",player->getPlayerIndex()+1);		
-			playerName=wchName;
-			player->SetPlayerNameValidState(false);
-		}
-		break;
-	case Player::ePlayerNameValid_True:
-		playerName=OriginalName;
-		break;
-	case Player::ePlayerNameValid_False:
-		memset(wchName,0,sizeof(WCHAR)*2);
-		swprintf(wchName, 2, L"%d",player->getPlayerIndex()+1);		
-		playerName=wchName;	
-		break;
-	}
-
-#else
 	playerName=OriginalName;
-#endif
 
 	if( textOpacity > 0.0f )
 	{

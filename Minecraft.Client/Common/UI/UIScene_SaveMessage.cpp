@@ -61,7 +61,7 @@ void UIScene_SaveMessage::updateTooltips()
 void UIScene_SaveMessage::handleInput(int iPad, int key, bool repeat, bool pressed, bool released, bool &handled)
 {
 	if(m_bIgnoreInput) return;
-#if defined (__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 	// ignore all players except player 0 - it's their profile that is currently being used
 	if(iPad!=0) return;
 #endif
@@ -71,9 +71,6 @@ void UIScene_SaveMessage::handleInput(int iPad, int key, bool repeat, bool press
 	switch(key)
 	{
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		sendInputToMovie(key, repeat, pressed, released);
 		break;
 		// #ifdef __PS3__
@@ -110,7 +107,7 @@ void UIScene_SaveMessage::handlePress(F64 controlId, F64 childId)
 
 		m_bIgnoreInput=true;
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 		// wait for the profile to be read - this has been kicked off earlier, so should be read by now
 		addTimer(PROFILE_LOADED_TIMER_ID,PROFILE_LOADED_TIMER_TIME);
 #else
@@ -126,7 +123,7 @@ void UIScene_SaveMessage::handleTimerComplete(int id)
 	{
 	case PROFILE_LOADED_TIMER_ID:
 		{
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 			C4JStorage::eOptionsCallback eStatus=app.GetOptionsCallbackStatus(0);
 
 			switch(eStatus)
@@ -169,7 +166,7 @@ void UIScene_SaveMessage::handleTimerComplete(int id)
 	}
 }
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 int UIScene_SaveMessage::DeleteOptionsDialogReturned(void *pParam,int iPad,C4JStorage::EMessageResult result)
 {
 	//UIScene_SaveMessage* pClass = (UIScene_SaveMessage*)pParam;

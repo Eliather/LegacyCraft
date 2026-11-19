@@ -76,31 +76,7 @@ BufferedImage::BufferedImage(const wstring& File, bool filenameHasExtension /*=f
 		}
 #else
 
-#ifdef __PS3__
-
-		char *pchUsrDir;
-		if(app.GetBootedFromDiscPatch())
-		{
-			const char *pchTextureName=wstringtofilename(File);
-			pchUsrDir = app.GetBDUsrDirPath(pchTextureName);
-		}
-		else
-		{
-			pchUsrDir=getUsrDirPath();
-		}
-
-		wstring wstr (pchUsrDir, pchUsrDir+strlen(pchUsrDir));
-
-		if(bTitleUpdateTexture)
-		{
-			// Make the content package point to to the UPDATE: drive is needed
-			wDrive= wstr + L"\\Common\\res\\TitleUpdate\\";
-		}
-		else
-		{
-			wDrive= wstr + L"/Common/";
-		}
-#elif __PSVITA__
+#if __PSVITA__
 
 		/*char *pchUsrDir=getUsrDirPath();
 

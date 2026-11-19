@@ -4,10 +4,6 @@
 
 #ifdef _XBOX
 
-#elif defined (__PS3__)
-#undef __in
-#undef __out
-#include "..\..\PS3\Miles\include\mss.h"
 #elif defined (__PSVITA__)
 #include "..\..\PSVITA\Miles\include\mss.h"
 #elif defined _DURANGO

@@ -20,33 +20,7 @@
 // #endif
 // #endif
 
-#ifdef __PS3__
-
-#include "Ps3Types.h"
-#include "Ps3Stubs.h"
-#include "PS3Maths.h"
-
-#elif defined __ORBIS__
-#define AUTO_VAR(_var, _val) auto _var = _val
-#include <stdio.h>
-#include <stdlib.h>
-#include <float.h>
-#include <cfloat>
-#include <math.h>
-#include <cmath>
-#include <scebase.h>
-#include <kernel.h>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector> 
-#include <fios2.h>
-#include <message_dialog.h>
-#include <game_live_streaming.h>
-#include "OrbisTypes.h"
-#include "OrbisStubs.h"
-#include "OrbisMaths.h"
-#define HRESULT_SUCCEEDED(hr) (((HRESULT)(hr)) >= 0)
-#elif defined __PSVITA__
+#if defined __PSVITA__
 #include <stdio.h>
 #include <stdlib.h>
 #include <float.h>
@@ -126,19 +100,6 @@ typedef XUID GameSessionUID;
 #include "extraX64.h"
 #endif
 
-#ifdef __PS3__
-#include <cell/rtc.h>
-#include <cell/l10n.h>
-#include <cell/pad.h>
-#include <cell/cell_fs.h>
-#include <sys/process.h>
-#include <sys/ppu_thread.h>
-#include <cell/sysmodule.h>
-#include <sysutil/sysutil_common.h>
-#include <sysutil/sysutil_savedata.h>
-#include <sysutil/sysutil_sysparam.h>
-
-#endif
 
 // C RunTime Header Files
 #include <stdlib.h>
@@ -181,12 +142,6 @@ typedef XUID GameSessionUID;
 	#include "xbox\4JLibs\inc\4J_Render.h"
 	#include "xbox\4JLibs\inc\4J_XTMS.h"
 	#include "xbox\4JLibs\inc\4J_Storage.h"
-#elif defined (__PS3__)
-
-	#include "PS3\4JLibs\inc\4J_Input.h"
-	#include "PS3\4JLibs\inc\4J_Profile.h"
-	#include "PS3\4JLibs\inc\4J_Render.h"
-	#include "PS3\4JLibs\inc\4J_Storage.h"
 #elif defined _DURANGO
 	#include "Durango\4JLibs\inc\4J_Input.h"
 	#include "Durango\4JLibs\inc\4J_Profile.h"
@@ -255,21 +210,6 @@ typedef XUID GameSessionUID;
 	#include "Xbox\Audio\SoundEngine.h"
 	#include "Xbox\Xbox_UIController.h"
 
-#elif defined (__PS3__)
-	#include "extraX64client.h"
-	#include "PS3\Sentient\MinecraftTelemetry.h"
-	#include "PS3\Sentient\DynamicConfigurations.h"
-	#include "PS3\Sentient\SentientTelemetryCommon.h"
-	#include "PS3Media\strings.h"
-	#include "PS3\PS3_App.h"
-	#include "PS3\GameConfig\Minecraft.spa.h"
-	#include "PS3Media\4J_strings.h"
-	#include "PS3\XML\ATGXmlParser.h"
-	#include "PS3\Social\SocialManager.h"
-	#include "Common\Audio\SoundEngine.h"
-	#include "PS3\Iggy\include\iggy.h"
-	#include "PS3\Iggy\gdraw\gdraw_ps3gcm.h"
-	#include "PS3\PS3_UIController.h"
 #elif defined _DURANGO
 	#include "Durango\Sentient\MinecraftTelemetry.h"
 	#include "DurangoMedia\strings.h"
@@ -353,7 +293,7 @@ typedef XUID GameSessionUID;
 
 #ifdef _XBOX
 //#include "Xbox\Xbox_App.h"
-#elif !defined(__PS3__)
+#else
 #include "extraX64client.h"
 #endif
 

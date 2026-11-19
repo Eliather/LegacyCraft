@@ -129,9 +129,6 @@ void UIScene_SignEntryMenu::handleInput(int iPad, int key, bool repeat, bool pre
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_UP:
 	case ACTION_MENU_DOWN:
 		sendInputToMovie(key, repeat, pressed, released);
@@ -200,7 +197,7 @@ void UIScene_SignEntryMenu::handleDestroy()
 #endif
 
 	// another player destroyed the anvil, so shut down the keyboard if it is displayed
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO)
+#if defined(_DURANGO)
 	InputManager.DestroyKeyboard();
 #endif
 }

@@ -47,7 +47,7 @@ ArchiveFile::ArchiveFile(File file)
 
 	FileInputStream fis(file);
 
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined(_XBOX_ONE) || defined(_WINDOWS64)
 	byteArray readArray(file.length());
 	fis.read(readArray,0,file.length());
 
@@ -63,7 +63,7 @@ ArchiveFile::ArchiveFile(File file)
 
 	dis.close();
 	fis.close();
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined(_XBOX_ONE) || defined(_WINDOWS64)
 	bais.reset();
 #endif
 	app.DebugPrintf("Finished loading archive file\n");
@@ -115,7 +115,7 @@ byteArray ArchiveFile::getFile(const wstring &filename)
 	{
 		PMetaData data = it->second;
 
-#if defined _XBOX_ONE || defined __ORBIS__ || defined _WINDOWS64
+#if defined(_XBOX_ONE) || defined(_WINDOWS64)
 		out = byteArray(data->filesize );
 
 		memcpy( out.data, m_cachedData + data->ptr, data->filesize );

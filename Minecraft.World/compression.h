@@ -59,11 +59,8 @@ private:
 
 	HRESULT DecompressWithType(void *pDestination, unsigned int *pDestSize, void *pSource, unsigned int SrcSize);
 
-#if defined __ORBIS__ || defined __PS3__
-#else
 	XMEMCOMPRESSION_CONTEXT compressionContext;
 	XMEMDECOMPRESSION_CONTEXT decompressionContext;
-#endif
 	CRITICAL_SECTION rleCompressLock;
 	CRITICAL_SECTION rleDecompressLock;
 
@@ -77,10 +74,8 @@ private:
 
 //extern Compression gCompression;
 
-#if defined __ORBIS__ || defined _DURANGO || defined _WIN64 || defined __PSVITA__
+#if defined(_DURANGO) || defined(_WIN64) || defined(__PSVITA__)
 #define APPROPRIATE_COMPRESSION_TYPE Compression::eCompressionType_ZLIBRLE
-#elif defined __PS3__
-#define APPROPRIATE_COMPRESSION_TYPE Compression::eCompressionType_PS3ZLIB
 #else
 #define APPROPRIATE_COMPRESSION_TYPE Compression::eCompressionType_LZXRLE
 #endif

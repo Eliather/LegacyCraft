@@ -16,6 +16,8 @@ namespace UserData_Info
 		unsigned char resolutionMode;
 		unsigned char rendererBackend;
 		unsigned char vsyncEnabled;
+		unsigned char shaderEnabled;
+		std::wstring shaderPackName;
 	};
 
 	void EnsureLoaded();
@@ -34,6 +36,8 @@ namespace UserData_Info
 	unsigned char GetResolutionMode();
 	unsigned char GetRendererBackend();
 	bool GetVsyncEnabled();
+	bool GetShaderEnabled();
+	std::wstring GetShaderPackName();
 
 	void SetPlayerName(const std::wstring &playerName);
 	void SetSkinSlim(bool skinSlim);
@@ -46,4 +50,6 @@ namespace UserData_Info
 	void SetResolutionMode(unsigned char resolutionMode);
 	void SetRendererBackend(unsigned char rendererBackend);
 	void SetVsyncEnabled(bool vsyncEnabled);
+	void SetShaderEnabled(bool shaderEnabled);
+	void SetShaderPackName(const std::wstring &shaderPackName);
 }

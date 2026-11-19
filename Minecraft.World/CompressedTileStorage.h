@@ -85,9 +85,6 @@ public:
 	static void staticCtor();
 
 	void compress(int upgradeBlock = -1);
-#ifdef __PS3__
-	void compress_SPU(int upgradeBlock = -1);
-#endif
 
 public:
 	void queueForDelete(unsigned char *data);

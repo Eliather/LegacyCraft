@@ -4,14 +4,6 @@
 #include "TextureManager.h"
 #include "Texture.h"
 
-#ifdef __PS3__
-#include "PS3\SPU_Tasks\Texture_blit\Texture_blit.h"
-#include "C4JSpursJob.h"
-static const int sc_maxTextureBlits = 256;
-static Texture_blit_DataIn g_textureBlitDataIn[sc_maxTextureBlits] __attribute__((__aligned__(16)));
-static int g_currentTexBlit = 0;
-C4JSpursJobQueue::Port* g_texBlitJobQueuePort;
-#endif //__PS3__
 
 #define MAX_MIP_LEVELS 5
 
@@ -22,10 +14,6 @@ Texture::Texture(const wstring &name, int mode, int width, int height, int depth
 
 void Texture::_init(const wstring &name, int mode, int width, int height, int depth, int wrapMode, int format, int minFilter, int magFilter, bool mipMap)
 {
-#ifdef __PS3__
-	if(g_texBlitJobQueuePort == NULL)
-		g_texBlitJobQueuePort = new C4JSpursJobQueue::Port("C4JSpursJob_Texture_blit");
-#endif
 	this->name = name;
 	this->mode = mode;
 	this->width = width;
@@ -117,11 +105,7 @@ void Texture::_init(const wstring &name, int mode, int width, int height, int de
 			{
 				tempBytes[index] = 0;
 			}
-#ifdef __PS3__
-			data[0] = new ByteBuffer_IO(tempBytes.length);
-#else
 			data[0] = ByteBuffer::allocateDirect(tempBytes.length);
-#endif // __{S3__
 			data[0]->clear();
 			data[0]->put(tempBytes);
 			data[0]->position(0)->limit(tempBytes.length);
@@ -143,11 +127,7 @@ void Texture::_init(const wstring &name, int mode, int width, int height, int de
 						tempBytes[index] = 0;
 					}
 
-#ifdef __PS3__
-					data[level] = new ByteBuffer_IO(tempBytes.length);
-#else
 					data[level] = ByteBuffer::allocateDirect(tempBytes.length);
-#endif // __PS3__
 					data[level]->clear();
 					data[level]->put(tempBytes);
 					data[level]->position(0)->limit(tempBytes.length);
@@ -412,35 +392,7 @@ void Texture::blit(int x, int y, Texture *source, bool rotated)
 		{
 			srcBuffer->position(0);
 
-#if defined __PS3__ && !defined DISABLE_SPU_CODE
-			if(g_texBlitJobQueuePort->hasCompleted())
-			{
-				// all outstanding blits have completed, so reset to the start of the blit list
-				g_currentTexBlit = 0;
-			}
-			Texture_blit_DataIn& dataIn = g_textureBlitDataIn[g_currentTexBlit];
-			g_currentTexBlit++;
-			if(g_currentTexBlit >= sc_maxTextureBlits)
-			{
-				app.DebugPrintf("ran out of tex blit slots, stalling for completion\n");
-				g_texBlitJobQueuePort->waitForCompletion();
-				g_currentTexBlit = 0;
-			}
-			dataIn.pSrcData = srcBuffer->getBuffer();
-			dataIn.pDstData = data[level]->getBuffer();
-			dataIn.yy = yy;
-			dataIn.xx = xx;
-			dataIn.hh = hh;
-			dataIn.ww = ww;
-			dataIn.shh = shh;
-			dataIn.sww = sww;
-			dataIn.rotated = rotated;
-
-			C4JSpursJob_Texture_blit blitJob(&dataIn);
-			g_texBlitJobQueuePort->submitJob(&blitJob);
-// 			p.waitForCompletion();
-
-#elif __PSVITA__
+#if __PSVITA__
 			unsigned int *src = (unsigned int *) srcBuffer->getBuffer();
 			unsigned int *dst = (unsigned int *) data[level]->getBuffer();
 
@@ -668,11 +620,7 @@ void Texture::transferFromImage(BufferedImage *image)
 	}
 
 	MemSect(51);
-#ifdef __PS3__
-	data[0] = new ByteBuffer_IO(tempBytes.length);
-#else
 	data[0] = ByteBuffer::allocateDirect(tempBytes.length);
-#endif // __{S3__
 	MemSect(0);
 	data[0]->clear();
 	data[0]->put(tempBytes);
@@ -746,11 +694,7 @@ void Texture::transferFromImage(BufferedImage *image)
 			}
 
 			MemSect(51);
-#ifdef __PS3__
-			data[level] = new ByteBuffer_IO(tempBytes.length);
-#else
 			data[level] = ByteBuffer::allocateDirect(tempBytes.length);
-#endif // __{S3__
 			MemSect(0);
 			data[level]->clear();
 			data[level]->put(tempBytes);
@@ -778,6 +722,29 @@ int Texture::crispBlend(int c0, int c1)
 	int a0 = (int) (((c0 & 0xff000000) >> 24)) & 0xff;
 	int a1 = (int) (((c1 & 0xff000000) >> 24)) & 0xff;
 
+	// Translucent pixels (e.g. water, ice, portal): preserve smooth alpha and RGB across mip levels
+	if ((a0 > 0 && a0 < 255) || (a1 > 0 && a1 < 255))
+	{
+		int a = (a0 + a1) / 2;
+		int w0 = (a0 > 0) ? a0 : 1;
+		int w1 = (a1 > 0) ? a1 : 1;
+		int r = ((((c0 >> 16) & 0xff) * w0) + (((c1 >> 16) & 0xff) * w1)) / (w0 + w1);
+		int g = ((((c0 >>  8) & 0xff) * w0) + (((c1 >>  8) & 0xff) * w1)) / (w0 + w1);
+		int b = ((( c0        & 0xff) * w0) + (( c1        & 0xff) * w1)) / (w0 + w1);
+		return (a << 24) | (r << 16) | (g << 8) | b;
+	}
+
+	// Fully opaque pixels: gamma-2.0 (sRGB-aware) average so mip levels keep the exact perceived brightness of mip 0
+	if (a0 == 255 && a1 == 255)
+	{
+		int r0 = (c0 >> 16) & 0xff, g0 = (c0 >> 8) & 0xff, b0 = c0 & 0xff;
+		int r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
+		int r = (int)(sqrtf((float)(r0 * r0 + r1 * r1) * 0.5f) + 0.5f);
+		int g = (int)(sqrtf((float)(g0 * g0 + g1 * g1) * 0.5f) + 0.5f);
+		int b = (int)(sqrtf((float)(b0 * b0 + b1 * b1) * 0.5f) + 0.5f);
+		return (255 << 24) | (r << 16) | (g << 8) | b;
+	}
+
 	int a = 255;
 	if (a0 + a1 < 255)
 	{
@@ -787,14 +754,11 @@ int Texture::crispBlend(int c0, int c1)
 	}
 	else if (a0 > a1)
 	{
-		a0 = 255;
-		a1 = 1;
+		return (255 << 24) | (c0 & 0x00ffffff);
 	}
 	else
 	{
-		a0 = 1;
-		a1 = 255;
-
+		return (255 << 24) | (c1 & 0x00ffffff);
 	}
 
 	int r0 = ((c0 >> 16) & 0xff) * a0;

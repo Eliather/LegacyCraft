@@ -797,33 +797,6 @@ void Tesselator::vertex(float x, float y, float z)
 
 
 
-#ifdef __PS3__
-		float tex2U = ((int16_t*)&_tex2)[1] + 8;
-		float tex2V = ((int16_t*)&_tex2)[0] + 8;
-		float colVal1 = ((col&0xff000000)>>24)/256.0f;
-		float colVal2 = ((col&0x00ff0000)>>16)/256.0f;
-		float colVal3 = ((col&0x0000ff00)>>8)/256.0f;
-
-// 		pShortData[0] = convertFloatToHFloat(x + xo);
-// 		pShortData[1] = convertFloatToHFloat(y + yo);
-// 		pShortData[2] = convertFloatToHFloat(z + zo);
-// 		pShortData[3] = convertFloatToHFloat(uu);
-// 		pShortData[4] = convertFloatToHFloat(tex2U + colVal1);
-// 		pShortData[5] = convertFloatToHFloat(tex2V + colVal2);
-// 		pShortData[6] = convertFloatToHFloat(colVal3);
-// 		pShortData[7] = convertFloatToHFloat(v);
-
-		pShortData[0] = (((int)((x + xo ) * 1024.0f))&0xffff);
-		pShortData[1] = (((int)((y + yo ) * 1024.0f))&0xffff);
-		pShortData[2] = (((int)((z + zo ) * 1024.0f))&0xffff);
-		pShortData[3] = ipackedcol;
-		pShortData[4] = (((int)(uu * 8192.0f))&0xffff);
-		pShortData[5] = (((int)(v * 8192.0f))&0xffff);
-		pShortData[6] = (((int)(tex2U * (8192.0f/256.0f)))&0xffff);
-		pShortData[7] = (((int)(tex2V * (8192.0f/256.0f)))&0xffff);
-
-		p += 4;
-#else
 		pShortData[0] = (((int)((x + xo ) * 1024.0f))&0xffff);
 		pShortData[1] = (((int)((y + yo ) * 1024.0f))&0xffff);
 		pShortData[2] = (((int)((z + zo ) * 1024.0f))&0xffff);
@@ -832,7 +805,7 @@ void Tesselator::vertex(float x, float y, float z)
 		pShortData[5] = (((int)(v * 8192.0f))&0xffff);
 		int16_t u2 = ((int16_t*)&_tex2)[0];
 		int16_t v2 = ((int16_t*)&_tex2)[1];
-#if defined _XBOX_ONE || defined __ORBIS__
+#if defined(_XBOX_ONE)
 		// Optimisation - pack the second UVs into a single short (they could actually go in a byte), which frees up a short to store the x offset for this chunk in the vertex itself.
 		// This means that when rendering chunks, we don't need to update the vertex constants that specify the location for a chunk, when only the x offset has changed.
 		pShortData[6] = ( u2 << 8 ) | v2;
@@ -856,7 +829,6 @@ void Tesselator::vertex(float x, float y, float z)
 		p += 4;
 #endif
 
-#endif
 
 #endif
 
@@ -939,15 +911,7 @@ void Tesselator::vertex(float x, float y, float z)
 #ifdef _XBOX
 			_array->data[p + 7] = ( ( _tex2 >> 16 ) & 0xffff ) | ( _tex2 << 16 );
 #else
-	#ifdef __PS3__
-			int16_t tex2U = ((int16_t*)&_tex2)[1] + 8;
-			int16_t tex2V = ((int16_t*)&_tex2)[0] + 8;
-			int16_t* pShortArray = (int16_t*)&_array->data[p + 7];
-			pShortArray[0] = tex2U;
-			pShortArray[1] = tex2V;
-	#else
 			_array->data[p + 7] = _tex2;
-	#endif
 #endif
 		}
 		else
@@ -993,47 +957,12 @@ void Tesselator::noColor()
     _noColor = true;
 }
 
-#ifdef __PS3__
-uint32_t _ConvertF32toX11Y11Z10N(float x, float y, float z)
-{
-	//                      11111111111 X 0x000007FF
-	//           1111111111100000000000 Y 0x003FF800
-	// 11111111110000000000000000000000 Z 0xFFC00000
-	// ZZZZZZZZZZYYYYYYYYYYYXXXXXXXXXXX
-	// #defines for X11Y11Z10N format
-#define X11Y11Z10N_X_MASK 0x000007FF
-#define X11Y11Z10N_X_BITS 11
-#define X11Y11Z10N_X_SHIFT 0
-
-#define X11Y11Z10N_Y_MASK 0x003FF800
-#define X11Y11Z10N_Y_BITS 11
-#define X11Y11Z10N_Y_SHIFT 11
-
-#define X11Y11Z10N_Z_MASK 0xFFC00000
-#define X11Y11Z10N_Z_BITS 10
-#define X11Y11Z10N_Z_SHIFT 22
-
-#ifndef _CONTENT_PACKAGE
-	if (x<-1.0f || x>1.0f)	{ printf("Value (%5.3f) should be in range [-1..1].  Conversion will clamp to X11Y11Z10N.\n", x); }
-	if (y<-1.0f || y>1.0f)	{ printf("Value (%5.3f) should be in range [-1..1].  Conversion will clamp to X11Y11Z10N.\n", y); }
-	if (z<-1.0f || z>1.0f)	{ printf("Value (%5.3f) should be in range [-1..1].  Conversion will clamp to X11Y11Z10N.\n", z); }
-#endif
-
-	const uint32_t uX = ((int32_t(max(min(((x)*2047.f - 1.f)*0.5f, 1023.f), -1024.f)) & (X11Y11Z10N_X_MASK >> X11Y11Z10N_X_SHIFT)) << X11Y11Z10N_X_SHIFT);
-	const uint32_t uY = ((int32_t(max(min(((y)*2047.f - 1.f)*0.5f, 1023.f), -1024.f)) & (X11Y11Z10N_Y_MASK >> X11Y11Z10N_Y_SHIFT)) << X11Y11Z10N_Y_SHIFT);
-	const uint32_t uZ = ((int32_t(max(min(((z)*1023.f - 1.f)*0.5f,  511.f), -512.f )) & (X11Y11Z10N_Z_MASK >> X11Y11Z10N_Z_SHIFT)) << X11Y11Z10N_Z_SHIFT);
-	const uint32_t xyz = uX | uY | uZ;
-	return xyz;
-}
-#endif // __PS3__
 
 void Tesselator::normal(float x, float y, float z)
 {
     hasNormal = true;
 
-#ifdef __PS3__
-	_normal = _ConvertF32toX11Y11Z10N(x,y,z);
-#elif __PSVITA__
+#if __PSVITA__
 	// AP - casting a negative value to 'byte' on Vita results in zero. changed to a signed 8 value
 	int8_t xx = (int8_t) (x * 127);
 	int8_t yy = (int8_t) (y * 127);
@@ -1068,13 +997,5 @@ void Tesselator::addOffset(float x, float y, float z)
 
 bool Tesselator::hasMaxVertices()
 {
-#ifdef __ORBIS__
-	// On PS4, the way we push data to the command buffer has a maximum size of a single command packet of 2^16 bytes,
-	// and the effective maximum size will be slightly less than that due to packet headers and padding.
-	int bytes = vertices * (useCompactFormat360?16:32);
-
-	return bytes > 60 * 1024;
-#else
 	return false;
-#endif
 }

@@ -55,7 +55,7 @@ public:
 	static void OnPlayerChanged(void *callbackParam, INetworkPlayer *pPlayer, bool leaving);
 
 private:
-#if defined(__PS3__) || defined (__PSVITA__) || defined(__ORBIS__)
+#if defined(__PSVITA__)
 	static int MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EMessageResult result);
 	static int ViewInvites_SignInReturned(void *pParam,bool bContinue, int iPad);
 #endif

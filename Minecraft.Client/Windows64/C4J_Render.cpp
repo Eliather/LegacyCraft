@@ -804,3 +804,9 @@ void  C4JRender::GDrawEndCustomDraw(void *region) { if (s_api && s_api->GDraw_En
 void  C4JRender::GDrawSetViewport4J() { if (s_api && s_api->GDraw_SetViewport_4J) s_api->GDraw_SetViewport_4J(); }
 void *C4JRender::GDrawWrappedTextureCreate(int textureId) { return (s_api && s_api->GDraw_WrappedTextureCreate) ? s_api->GDraw_WrappedTextureCreate(textureId) : NULL; }
 void  C4JRender::GDrawWrappedTextureDestroy(void *handle) { if (s_api && s_api->GDraw_WrappedTextureDestroy) s_api->GDraw_WrappedTextureDestroy(handle); }
+
+void C4JRender::ShaderSetFrameParams(const C4JShaderFrameParams *params) { if (s_api && s_api->ShaderSetFrameParams) s_api->ShaderSetFrameParams(params); }
+bool C4JRender::ShaderLoadCustomProgram(const C4JShaderProgramDesc *desc, char *errBuf, size_t errBufLen) { return (s_api && s_api->ShaderLoadCustomProgram) ? (s_api->ShaderLoadCustomProgram(desc, errBuf, errBufLen) != 0) : false; }
+void C4JRender::ShaderClearCustomProgram() { if (s_api && s_api->ShaderClearCustomProgram) s_api->ShaderClearCustomProgram(); }
+void C4JRender::ShaderSetMode(int mode) { if (s_api && s_api->ShaderSetMode) s_api->ShaderSetMode(mode); }
+int  C4JRender::ShaderGetMode() { return (s_api && s_api->ShaderGetMode) ? s_api->ShaderGetMode() : 0; }

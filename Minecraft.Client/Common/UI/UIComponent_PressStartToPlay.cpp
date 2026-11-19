@@ -21,12 +21,7 @@ UIComponent_PressStartToPlay::UIComponent_PressStartToPlay(int iPad, void *initD
 	m_labelTrialTimer.init(L"");
 	m_labelTrialTimer.setVisible(false);
 
-#ifdef __ORBIS__
-	wstring text = app.GetString(IDS_PRESS_X_TO_JOIN);
-	text = replaceAll(text, L"{*CONTROLLER_VK_A*}",					app.GetVKReplacement(VK_PAD_A) );
-
-	m_labelPressStart.init(text.c_str());
-#elif defined _XBOX_ONE
+#if defined _XBOX_ONE
 	wstring text = app.GetString(IDS_PRESS_START_TO_JOIN);
 	text = replaceAll(text, L"{*CONTROLLER_VK_START*}",			app.GetVKReplacement(VK_PAD_START) );
 	m_labelPressStart.init(text.c_str());

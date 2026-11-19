@@ -334,9 +334,6 @@ void McRegionChunkStorage::staticCtor()
 		else if(i == 1)
 		{
 			s_saveThreads[i]->SetProcessor(CPU_CORE_SAVE_THREAD_B);
-#ifdef __ORBIS__
-			s_saveThreads[i]->SetPriority(THREAD_PRIORITY_BELOW_NORMAL);	// On Orbis, this core is also used for Matching 2, and that priority of that seems to be always at default no matter what we set it to. Prioritise this below Matching 2.
-#endif
 		}
 		else if(i == 2) s_saveThreads[i]->SetProcessor(CPU_CORE_SAVE_THREAD_C);
 

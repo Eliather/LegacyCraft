@@ -27,7 +27,7 @@ private:
 	enum eActions
 	{
 		eAction_None=0,
-#if defined(__PS3__) || defined(__PSVITA__) || defined(__ORBIS__)
+#if defined(__PSVITA__)
 		eAction_ViewLeaderboardsPSN,
 		eAction_ViewInvitesPSN,
 		eAction_SaveGamePSN,

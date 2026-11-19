@@ -92,7 +92,13 @@ namespace
 	/* Pipeline resources */
 	static ID3D11VertexShader *s_pVSStandard = NULL;
 	static ID3D11VertexShader *s_pVSCompressed = NULL;
+	static ID3D11PixelShader  *s_pPSVanilla = NULL;
+	static ID3D11PixelShader  *s_pPSOpaque = NULL;
 	static ID3D11PixelShader  *s_pPS = NULL;
+	static ID3D11VertexShader *s_pCustomVSStandard = NULL;
+	static ID3D11VertexShader *s_pCustomVSCompressed = NULL;
+	static ID3D11PixelShader  *s_pCustomPS = NULL;
+	static ID3D11PixelShader  *s_cachedPS = NULL;
 	static ID3D11InputLayout  *s_pInputLayoutStandard = NULL;
 	static ID3D11InputLayout  *s_pInputLayoutCompressed = NULL;
 	static ID3D11Buffer       *s_pRingVB = NULL;
@@ -101,6 +107,10 @@ namespace
 	static ID3D11Buffer       *s_pFanIB = NULL;
 	static ID3D11Buffer       *s_pVSCB = NULL;
 	static ID3D11Buffer       *s_pPSCB = NULL;
+	static ID3D11Buffer       *s_pShaderCB = NULL;
+	static C4JShaderFrameParams s_shaderFrameParams = {};
+	static bool                 s_shaderParamsDirty = true;
+	static int                  s_shaderMode = C4J_SHADER_MODE_OFF;
 	static ID3D11SamplerState *s_pSamplers[4] = { NULL, NULL, NULL, NULL };
 
 	static std::unordered_map<uint32_t, ID3D11BlendState*>        s_blendCache;
@@ -168,11 +178,13 @@ namespace
 		"};\n"
 		"struct PS_IN\n"
 		"{\n"
-		"    float4 pos     : SV_POSITION;\n"
-		"    float4 uv      : TEXCOORD0;\n"
-		"    float2 lightUV : TEXCOORD1;\n"
-		"    float  fogDist : TEXCOORD2;\n"
-		"    float4 col     : COLOR0;\n"
+		"    float4 pos      : SV_POSITION;\n"
+		"    float4 uv       : TEXCOORD0;\n"
+		"    float2 lightUV  : TEXCOORD1;\n"
+		"    float  fogDist  : TEXCOORD2;\n"
+		"    float3 viewPos  : TEXCOORD3;\n"
+		"    float3 worldPos : TEXCOORD4;\n"
+		"    float4 col      : COLOR0;\n"
 		"};\n"
 		"float3 ApplyLighting(float3 viewNormal)\n"
 		"{\n"
@@ -195,6 +207,8 @@ namespace
 		"    output.pos = mul(u_WVP, pos4);\n"
 		"    output.pos.z = output.pos.z * 0.5f + output.pos.w * 0.5f;\n"
 		"    float4 viewPos = mul(u_MV, pos4);\n"
+		"    output.viewPos = viewPos.xyz;\n"
+		"    output.worldPos = pos4.xyz;\n"
 		"    output.fogDist = length(viewPos.xyz);\n"
 		"    if (u_UseTexGen != 0)\n"
 		"    {\n"
@@ -252,6 +266,8 @@ namespace
 		"    output.pos = mul(u_WVP, pos4);\n"
 		"    output.pos.z = output.pos.z * 0.5f + output.pos.w * 0.5f;\n"
 		"    float4 viewPos = mul(u_MV, pos4);\n"
+		"    output.viewPos = viewPos.xyz;\n"
+		"    output.worldPos = pos4.xyz;\n"
 		"    output.fogDist = length(viewPos.xyz);\n"
 		"    float2 uv = float2(input.b.xy) / 8192.0f;\n"
 		"    if (uv.x > 1.0f && uv.x <= 2.0f) uv.x -= 1.0f;\n"
@@ -264,6 +280,70 @@ namespace
 		"    float b = float(col16 & 31u) / 31.0f;\n"
 		"    output.col = float4(r, g, b, 1.0f);\n"
 		"    return output;\n"
+		"}\n";
+
+	static const char *s_hlslPSVanilla =
+		"Texture2D g_Texture  : register(t0);\n"
+		"Texture2D g_Lightmap : register(t1);\n"
+		"SamplerState g_Sampler      : register(s0);\n"
+		"SamplerState g_LightSampler : register(s1);\n"
+		"cbuffer PSParams : register(b0)\n"
+		"{\n"
+		"    float4 u_StateColor;\n"
+		"    int    u_HasTexture;\n"
+		"    int    u_HasLightmap;\n"
+		"    int    u_AlphaFunc;\n"
+		"    float  u_AlphaCutoff;\n"
+		"    float4 u_FogColor;\n"
+		"    int    u_FogMode;\n"
+		"    float  u_FogNear;\n"
+		"    float  u_FogFar;\n"
+		"    float  u_FogDensity;\n"
+		"    int    u_UseProjection;\n"
+		"    float3 u_Pad;\n"
+		"};\n"
+		"struct PS_IN\n"
+		"{\n"
+		"    float4 pos      : SV_POSITION;\n"
+		"    float4 uv       : TEXCOORD0;\n"
+		"    float2 lightUV  : TEXCOORD1;\n"
+		"    float  fogDist  : TEXCOORD2;\n"
+		"    float3 viewPos  : TEXCOORD3;\n"
+		"    float3 worldPos : TEXCOORD4;\n"
+		"    float4 col      : COLOR0;\n"
+		"};\n"
+		"bool PassAlphaTest(float a)\n"
+		"{\n"
+		"    if (u_AlphaFunc == 5) return a >  u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 7) return a >= u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 2) return a <  u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 4) return a <= u_AlphaCutoff;\n"
+		"    if (u_AlphaFunc == 3) return abs(a - u_AlphaCutoff) < 0.001f;\n"
+		"    if (u_AlphaFunc == 6) return abs(a - u_AlphaCutoff) >= 0.001f;\n"
+		"    if (u_AlphaFunc == 1) return false;\n"
+		"    return true;\n"
+		"}\n"
+		"float4 PSMain(PS_IN input) : SV_TARGET\n"
+		"{\n"
+		"    float4 finalCol = input.col * u_StateColor;\n"
+		"    if (u_HasTexture != 0)\n"
+		"    {\n"
+		"        float2 texUV = (u_UseProjection != 0 && abs(input.uv.w) > 1e-5f) ? (input.uv.xy / input.uv.w) : input.uv.xy;\n"
+		"        finalCol *= g_Texture.Sample(g_Sampler, texUV);\n"
+		"    }\n"
+		"    if (u_HasLightmap != 0)\n"
+		"    {\n"
+		"        finalCol.rgb *= g_Lightmap.Sample(g_LightSampler, input.lightUV).rgb;\n"
+		"    }\n"
+		"    if (u_AlphaFunc != 8 && !PassAlphaTest(finalCol.a)) discard;\n"
+		"    if (u_FogColor.w > 0.5f)\n"
+		"    {\n"
+		"        float fogFactor = (u_FogMode == 2)\n"
+		"            ? exp(-u_FogDensity * input.fogDist)\n"
+		"            : (u_FogFar - input.fogDist) / max(u_FogFar - u_FogNear, 0.0001f);\n"
+		"        finalCol.rgb = lerp(u_FogColor.rgb, finalCol.rgb, saturate(fogFactor));\n"
+		"    }\n"
+		"    return finalCol;\n"
 		"}\n";
 
 	static const char *s_hlslPS =
@@ -286,13 +366,25 @@ namespace
 		"    int    u_UseProjection;\n"
 		"    float3 u_Pad;\n"
 		"};\n"
+		"cbuffer ShaderFrameParams : register(b1)\n"
+		"{\n"
+		"    float4 u_SunDir;\n"
+		"    float4 u_CameraPos;\n"
+		"    float4 u_SkyColor;\n"
+		"    float4 u_ShaderFogColor;\n"
+		"    float4 u_WorldMeta;\n"
+		"    float4 u_WaterTint;\n"
+		"    float4 u_TorchTint;\n"
+		"};\n"
 		"struct PS_IN\n"
 		"{\n"
-		"    float4 pos     : SV_POSITION;\n"
-		"    float4 uv      : TEXCOORD0;\n"
-		"    float2 lightUV : TEXCOORD1;\n"
-		"    float  fogDist : TEXCOORD2;\n"
-		"    float4 col     : COLOR0;\n"
+		"    float4 pos      : SV_POSITION;\n"
+		"    float4 uv       : TEXCOORD0;\n"
+		"    float2 lightUV  : TEXCOORD1;\n"
+		"    float  fogDist  : TEXCOORD2;\n"
+		"    float3 viewPos  : TEXCOORD3;\n"
+		"    float3 worldPos : TEXCOORD4;\n"
+		"    float4 col      : COLOR0;\n"
 		"};\n"
 		"bool PassAlphaTest(float a)\n"
 		"{\n"
@@ -304,6 +396,11 @@ namespace
 		"    if (u_AlphaFunc == 6) return abs(a - u_AlphaCutoff) >= 0.001f;\n"
 		"    if (u_AlphaFunc == 1) return false;\n"
 		"    return true;\n"
+		"}\n"
+		"float3 ToneMapFast(float3 c)\n"
+		"{\n"
+		"    float lum = dot(c, float3(0.299f, 0.587f, 0.114f));\n"
+		"    return saturate(c * (1.07f / (1.0f + 0.16f * lum)));\n"
 		"}\n"
 		"float4 PSMain(PS_IN input) : SV_TARGET\n"
 		"{\n"
@@ -322,6 +419,43 @@ namespace
 		"    if (u_AlphaFunc != 8 && !PassAlphaTest(finalCol.a))\n"
 		"    {\n"
 		"        discard;\n"
+		"    }\n"
+		"    if (u_HasLightmap != 0)\n"
+		"    {\n"
+		"        float lmBlock = saturate((input.lightUV.x - 0.03125f) * 1.07f);\n"
+		"        float lmSky   = saturate((input.lightUV.y - 0.03125f) * 1.07f);\n"
+		"        float dayFac  = saturate(u_SunDir.w);\n"
+		"        float rainFac = saturate(u_SkyColor.w);\n"
+		"        float3 surfN = cross(ddx(input.worldPos), ddy(input.worldPos));\n"
+		"        surfN *= rsqrt(max(dot(surfN, surfN), 1e-10f));\n"
+		"        float3 lightDirW = u_SunDir.xyz;\n"
+		"        float ndl = abs(dot(surfN, lightDirW)) * 0.65f + 0.35f;\n"
+		"        float sunBounce = (0.88f + 0.22f * ndl) * (1.0f - 0.40f * rainFac);\n"
+		"        float3 sunTint = lerp(float3(0.76f, 0.84f, 1.04f), float3(1.06f, 1.01f, 0.94f), dayFac);\n"
+		"        float3 skyAmb = lerp(float3(1.0f, 1.0f, 1.0f), sunTint * sunBounce, lmSky * lmSky);\n"
+		"        finalCol.rgb *= skyAmb;\n"
+		"        float torchPow = (lmBlock * lmBlock) * u_TorchTint.w;\n"
+		"        finalCol.rgb += finalCol.rgb * u_TorchTint.rgb * torchPow;\n"
+		"#ifndef C4J_OPAQUE_ONLY\n"
+		"        [branch]\n"
+		"        if (finalCol.a > 0.15f && finalCol.a < 0.92f && u_HasTexture != 0)\n"
+		"        {\n"
+		"            float3 viewN = cross(ddx(input.viewPos), ddy(input.viewPos));\n"
+		"            viewN *= rsqrt(max(dot(viewN, viewN), 1e-10f));\n"
+		"            if (viewN.z < 0.0f) viewN = -viewN;\n"
+		"            float3 viewDir = normalize(-input.viewPos);\n"
+		"            float om = 1.0f - saturate(dot(viewN, viewDir));\n"
+		"            float fresnel = om * om * om;\n"
+		"            float timeSec = u_CameraPos.w;\n"
+		"            float wave = 0.5f + 0.5f * sin(timeSec * 2.4f + input.worldPos.x * 1.9f + input.worldPos.z * 1.5f);\n"
+		"            float3 reflCol = lerp(u_WaterTint.rgb, u_SkyColor.rgb, 0.65f);\n"
+		"            finalCol.rgb = lerp(finalCol.rgb, reflCol, fresnel * 0.48f * lmSky);\n"
+		"            float s = saturate(dot(reflect(-float3(0.2f, 0.85f, 0.48f), viewN), viewDir));\n"
+		"            float s2 = s * s; float s4 = s2 * s2; float s8 = s4 * s4; float s16 = s8 * s8;\n"
+		"            finalCol.rgb += sunTint * (s16 * (0.4f + 0.6f * wave) * 0.45f * lmSky * (1.0f - rainFac));\n"
+		"        }\n"
+		"#endif\n"
+		"        finalCol.rgb = ToneMapFast(finalCol.rgb);\n"
 		"    }\n"
 		"    if (u_FogColor.w > 0.5f)\n"
 		"    {\n"
@@ -364,6 +498,7 @@ namespace
 		s_cachedDS = NULL;
 		s_cachedRasterKey = ~0ULL;
 		s_cachedRS = NULL;
+		s_cachedPS = NULL;
 		s_lastConstsValid = false;
 	}
 
@@ -631,13 +766,28 @@ namespace
 		if (FAILED(hr)) { if (pErrBlob) pErrBlob->Release(); pVSStdBlob->Release(); return false; }
 		if (pErrBlob) { pErrBlob->Release(); pErrBlob = NULL; }
 
-		hr = D3DCompile(s_hlslPS, strlen(s_hlslPS), "PSMain", NULL, NULL, "PSMain", "ps_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pPSBlob, &pErrBlob);
+		ID3DBlob *pPSVanillaBlob = NULL;
+		hr = D3DCompile(s_hlslPSVanilla, strlen(s_hlslPSVanilla), "PSVanilla", NULL, NULL, "PSMain", "ps_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pPSVanillaBlob, &pErrBlob);
 		if (FAILED(hr)) { if (pErrBlob) pErrBlob->Release(); pVSStdBlob->Release(); pVSCompBlob->Release(); return false; }
+		if (pErrBlob) { pErrBlob->Release(); pErrBlob = NULL; }
+
+		ID3DBlob *pPSOpaqueBlob = NULL;
+		const D3D_SHADER_MACRO opaqueMacros[] = { { "C4J_OPAQUE_ONLY", "1" }, { NULL, NULL } };
+		hr = D3DCompile(s_hlslPS, strlen(s_hlslPS), "PSOpaque", opaqueMacros, NULL, "PSMain", "ps_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pPSOpaqueBlob, &pErrBlob);
+		if (FAILED(hr)) { if (pErrBlob) pErrBlob->Release(); pVSStdBlob->Release(); pVSCompBlob->Release(); pPSVanillaBlob->Release(); return false; }
+		if (pErrBlob) { pErrBlob->Release(); pErrBlob = NULL; }
+
+		hr = D3DCompile(s_hlslPS, strlen(s_hlslPS), "PSMain", NULL, NULL, "PSMain", "ps_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pPSBlob, &pErrBlob);
+		if (FAILED(hr)) { if (pErrBlob) pErrBlob->Release(); pVSStdBlob->Release(); pVSCompBlob->Release(); pPSVanillaBlob->Release(); pPSOpaqueBlob->Release(); return false; }
 		if (pErrBlob) { pErrBlob->Release(); pErrBlob = NULL; }
 
 		s_pDevice->CreateVertexShader(pVSStdBlob->GetBufferPointer(), pVSStdBlob->GetBufferSize(), NULL, &s_pVSStandard);
 		s_pDevice->CreateVertexShader(pVSCompBlob->GetBufferPointer(), pVSCompBlob->GetBufferSize(), NULL, &s_pVSCompressed);
+		s_pDevice->CreatePixelShader(pPSVanillaBlob->GetBufferPointer(), pPSVanillaBlob->GetBufferSize(), NULL, &s_pPSVanilla);
+		s_pDevice->CreatePixelShader(pPSOpaqueBlob->GetBufferPointer(), pPSOpaqueBlob->GetBufferSize(), NULL, &s_pPSOpaque);
 		s_pDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), NULL, &s_pPS);
+		pPSVanillaBlob->Release();
+		pPSOpaqueBlob->Release();
 
 		D3D11_INPUT_ELEMENT_DESC stdLayout[] =
 		{
@@ -682,6 +832,14 @@ namespace
 		psCbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 		s_pDevice->CreateBuffer(&psCbDesc, NULL, &s_pPSCB);
 
+		D3D11_BUFFER_DESC shCbDesc = {};
+		shCbDesc.ByteWidth = (UINT)((sizeof(C4JShaderFrameParams) + 15u) & ~15u);
+		shCbDesc.Usage = D3D11_USAGE_DYNAMIC;
+		shCbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+		shCbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		s_pDevice->CreateBuffer(&shCbDesc, NULL, &s_pShaderCB);
+		s_shaderParamsDirty = true;
+
 		{
 			const UINT maxQuads = 65536;
 			std::vector<uint32_t> indices(maxQuads * 6);
@@ -723,11 +881,13 @@ namespace
 		for (int i = 0; i < 4; ++i)
 		{
 			D3D11_SAMPLER_DESC sdesc = {};
-			sdesc.Filter = (i >= 2) ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_MIP_POINT;
+			const bool linear = (i >= 2);
+			sdesc.Filter = linear ? D3D11_FILTER_MIN_MAG_MIP_LINEAR : D3D11_FILTER_MIN_MAG_POINT_MIP_LINEAR;
 			sdesc.AddressU = (i & 1) ? D3D11_TEXTURE_ADDRESS_CLAMP : D3D11_TEXTURE_ADDRESS_WRAP;
 			sdesc.AddressV = sdesc.AddressU;
 			sdesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-			sdesc.MaxLOD = D3D11_FLOAT32_MAX;
+			sdesc.MipLODBias = linear ? 0.0f : -1.0f;
+			sdesc.MaxLOD = linear ? D3D11_FLOAT32_MAX : 2.0f;
 			s_pDevice->CreateSamplerState(&sdesc, &s_pSamplers[i]);
 		}
 
@@ -849,23 +1009,54 @@ namespace
 		}
 		s_lastConstsValid = true;
 
+		if (s_shaderParamsDirty && s_pShaderCB)
+		{
+			D3D11_MAPPED_SUBRESOURCE mapped;
+			if (SUCCEEDED(s_pContext->Map(s_pShaderCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped)))
+			{
+				memcpy(mapped.pData, &s_shaderFrameParams, sizeof(s_shaderFrameParams));
+				s_pContext->Unmap(s_pShaderCB, 0);
+				s_shaderParamsDirty = false;
+			}
+		}
+
 		const bool isCompressed = (vType == 1);
+		const bool inWorldPass = (s_shaderFrameParams.worldMeta[3] > 0.5f);
+		const bool useVanillaPS = (!inWorldPass || s_shaderMode == C4J_SHADER_MODE_OFF || pLightSRV == NULL);
+		const bool useCustom = (!useVanillaPS && s_shaderMode == C4J_SHADER_MODE_CUSTOM && s_pCustomPS != NULL);
+		ID3D11VertexShader *activeVS = isCompressed
+			? ((useCustom && s_pCustomVSCompressed) ? s_pCustomVSCompressed : s_pVSCompressed)
+			: ((useCustom && s_pCustomVSStandard) ? s_pCustomVSStandard : s_pVSStandard);
+		ID3D11PixelShader  *activePS = useVanillaPS
+			? s_pPSVanilla
+			: (useCustom ? s_pCustomPS : (blendEnable ? s_pPS : s_pPSOpaque));
 		UINT stride = isCompressed ? 16u : 32u;
 
 		if (!s_cacheValid)
 		{
 			s_pContext->IASetInputLayout(isCompressed ? s_pInputLayoutCompressed : s_pInputLayoutStandard);
-			s_pContext->VSSetShader(isCompressed ? s_pVSCompressed : s_pVSStandard, NULL, 0);
-			s_pContext->PSSetShader(s_pPS, NULL, 0);
-			s_pContext->VSSetConstantBuffers(0, 1, &s_pVSCB);
-			s_pContext->PSSetConstantBuffers(0, 1, &s_pPSCB);
+			s_pContext->VSSetShader(activeVS, NULL, 0);
+			s_pContext->PSSetShader(activePS, NULL, 0);
+			ID3D11Buffer *vsCBs[2] = { s_pVSCB, s_pShaderCB };
+			ID3D11Buffer *psCBs[2] = { s_pPSCB, s_pShaderCB };
+			s_pContext->VSSetConstantBuffers(0, 2, vsCBs);
+			s_pContext->PSSetConstantBuffers(0, 2, psCBs);
 			s_cachedCompressed = isCompressed;
+			s_cachedPS = activePS;
 		}
-		else if (s_cachedCompressed != isCompressed)
+		else
 		{
-			s_pContext->IASetInputLayout(isCompressed ? s_pInputLayoutCompressed : s_pInputLayoutStandard);
-			s_pContext->VSSetShader(isCompressed ? s_pVSCompressed : s_pVSStandard, NULL, 0);
-			s_cachedCompressed = isCompressed;
+			if (s_cachedCompressed != isCompressed)
+			{
+				s_pContext->IASetInputLayout(isCompressed ? s_pInputLayoutCompressed : s_pInputLayoutStandard);
+				s_pContext->VSSetShader(activeVS, NULL, 0);
+				s_cachedCompressed = isCompressed;
+			}
+			if (s_cachedPS != activePS)
+			{
+				s_pContext->PSSetShader(activePS, NULL, 0);
+				s_cachedPS = activePS;
+			}
 		}
 
 		if (!s_cacheValid || s_cachedVB != pVB || s_cachedVBStride != stride || s_cachedVBOffset != vbOffsetBytes)
@@ -1136,10 +1327,16 @@ namespace
 		if (s_pFanIB)  { s_pFanIB->Release();  s_pFanIB = NULL; }
 		if (s_pVSCB)   { s_pVSCB->Release();   s_pVSCB = NULL; }
 		if (s_pPSCB)   { s_pPSCB->Release();   s_pPSCB = NULL; }
+		if (s_pShaderCB) { s_pShaderCB->Release(); s_pShaderCB = NULL; }
 		if (s_pInputLayoutStandard)   { s_pInputLayoutStandard->Release(); s_pInputLayoutStandard = NULL; }
 		if (s_pInputLayoutCompressed) { s_pInputLayoutCompressed->Release(); s_pInputLayoutCompressed = NULL; }
+		if (s_pCustomVSStandard)   { s_pCustomVSStandard->Release(); s_pCustomVSStandard = NULL; }
+		if (s_pCustomVSCompressed) { s_pCustomVSCompressed->Release(); s_pCustomVSCompressed = NULL; }
+		if (s_pCustomPS)           { s_pCustomPS->Release(); s_pCustomPS = NULL; }
 		if (s_pVSStandard)   { s_pVSStandard->Release(); s_pVSStandard = NULL; }
 		if (s_pVSCompressed) { s_pVSCompressed->Release(); s_pVSCompressed = NULL; }
+		if (s_pPSVanilla)    { s_pPSVanilla->Release(); s_pPSVanilla = NULL; }
+		if (s_pPSOpaque)     { s_pPSOpaque->Release(); s_pPSOpaque = NULL; }
 		if (s_pPS)           { s_pPS->Release(); s_pPS = NULL; }
 		ReleaseBackbufferTargets();
 		if (s_pSwapChain1) { s_pSwapChain1->Release(); s_pSwapChain1 = NULL; }
@@ -1935,6 +2132,113 @@ namespace
 		return ok;
 	}
 
+	static void DX11_ShaderSetFrameParams(const C4JShaderFrameParams *params)
+	{
+		if (!params) return;
+		std::lock_guard<std::recursive_mutex> lock(s_d3dMutex);
+		if (memcmp(&s_shaderFrameParams, params, sizeof(C4JShaderFrameParams)) != 0)
+		{
+			s_shaderFrameParams = *params;
+			s_shaderParamsDirty = true;
+		}
+	}
+
+	static void DX11_ShaderClearCustomProgram(void)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_d3dMutex);
+		if (s_pCustomVSStandard)   { s_pCustomVSStandard->Release(); s_pCustomVSStandard = NULL; }
+		if (s_pCustomVSCompressed) { s_pCustomVSCompressed->Release(); s_pCustomVSCompressed = NULL; }
+		if (s_pCustomPS)           { s_pCustomPS->Release(); s_pCustomPS = NULL; }
+		InvalidateStateCache();
+	}
+
+	static int DX11_ShaderLoadCustomProgram(const C4JShaderProgramDesc *desc, char *errBuf, size_t errBufLen)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_d3dMutex);
+		if (!s_pDevice || !desc || !desc->hlslSource || desc->hlslSource[0] == '\0')
+		{
+			if (errBuf && errBufLen > 0) snprintf(errBuf, errBufLen, "Missing world_dx.hlsl for DX11");
+			return 0;
+		}
+
+		ID3DBlob *pVSStdBlob = NULL, *pVSCompBlob = NULL, *pPSBlob = NULL, *pErrBlob = NULL;
+		const size_t srcLen = strlen(desc->hlslSource);
+
+		auto copyErr = [&](const char *stage)
+		{
+			if (errBuf && errBufLen > 0)
+			{
+				if (pErrBlob && pErrBlob->GetBufferPointer())
+					snprintf(errBuf, errBufLen, "DX11 %s: %.*s", stage, (int)pErrBlob->GetBufferSize(), (const char*)pErrBlob->GetBufferPointer());
+				else
+					snprintf(errBuf, errBufLen, "DX11 %s compile failed", stage);
+			}
+			if (pErrBlob) { pErrBlob->Release(); pErrBlob = NULL; }
+		};
+
+		if (FAILED(D3DCompile(desc->hlslSource, srcLen, "world_dx.hlsl", NULL, NULL, "PSMain", "ps_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pPSBlob, &pErrBlob)))
+		{
+			copyErr("PSMain");
+			return 0;
+		}
+		if (pErrBlob) { pErrBlob->Release(); pErrBlob = NULL; }
+
+		/* Custom VS entries are optional; fall back to built-in VS if omitted */
+		D3DCompile(desc->hlslSource, srcLen, "world_dx.hlsl", NULL, NULL, "VSMainStandard", "vs_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pVSStdBlob, &pErrBlob);
+		if (pErrBlob) { pErrBlob->Release(); pErrBlob = NULL; }
+		D3DCompile(desc->hlslSource, srcLen, "world_dx.hlsl", NULL, NULL, "VSMainCompressed", "vs_4_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &pVSCompBlob, &pErrBlob);
+		if (pErrBlob) { pErrBlob->Release(); pErrBlob = NULL; }
+
+		ID3D11VertexShader *newVSStd = NULL, *newVSCmp = NULL;
+		ID3D11PixelShader  *newPS = NULL;
+		HRESULT hr3 = s_pDevice->CreatePixelShader(pPSBlob->GetBufferPointer(), pPSBlob->GetBufferSize(), NULL, &newPS);
+		if (pVSStdBlob)
+		{
+			s_pDevice->CreateVertexShader(pVSStdBlob->GetBufferPointer(), pVSStdBlob->GetBufferSize(), NULL, &newVSStd);
+			pVSStdBlob->Release();
+		}
+		if (pVSCompBlob)
+		{
+			s_pDevice->CreateVertexShader(pVSCompBlob->GetBufferPointer(), pVSCompBlob->GetBufferSize(), NULL, &newVSCmp);
+			pVSCompBlob->Release();
+		}
+		pPSBlob->Release();
+
+		if (FAILED(hr3) || !newPS)
+		{
+			if (newVSStd) newVSStd->Release();
+			if (newVSCmp) newVSCmp->Release();
+			if (newPS) newPS->Release();
+			if (errBuf && errBufLen > 0) snprintf(errBuf, errBufLen, "DX11 CreatePixelShader failed");
+			return 0;
+		}
+
+		if (s_pCustomVSStandard) s_pCustomVSStandard->Release();
+		if (s_pCustomVSCompressed) s_pCustomVSCompressed->Release();
+		if (s_pCustomPS) s_pCustomPS->Release();
+		s_pCustomVSStandard = newVSStd;
+		s_pCustomVSCompressed = newVSCmp;
+		s_pCustomPS = newPS;
+		InvalidateStateCache();
+		return 1;
+	}
+
+	static void DX11_ShaderSetMode(int mode)
+	{
+		std::lock_guard<std::recursive_mutex> lock(s_d3dMutex);
+		if (mode < C4J_SHADER_MODE_OFF || mode > C4J_SHADER_MODE_CUSTOM) mode = C4J_SHADER_MODE_OFF;
+		if (s_shaderMode != mode)
+		{
+			s_shaderMode = mode;
+			InvalidateStateCache();
+		}
+	}
+
+	static int DX11_ShaderGetMode(void)
+	{
+		return s_shaderMode;
+	}
+
 	static const C4JRenderBackendAPI s_dx11API =
 	{
 		sizeof(C4JRenderBackendAPI),
@@ -2044,7 +2348,12 @@ namespace
 		DX11_GDrawSetViewport4J,
 		DX11_GDrawWrappedTextureCreate,
 		DX11_GDrawWrappedTextureDestroy,
-		DX11_CaptureBackBufferRGBA
+		DX11_CaptureBackBufferRGBA,
+		DX11_ShaderSetFrameParams,
+		DX11_ShaderLoadCustomProgram,
+		DX11_ShaderClearCustomProgram,
+		DX11_ShaderSetMode,
+		DX11_ShaderGetMode
 	};
 }
 

@@ -8,6 +8,7 @@
 #include "..\..\PlayerList.h"
 #include "..\..\Options.h"
 #include "..\..\UserData_Info.h"
+#include "..\..\ShaderManager.h"
 
 #if defined(_WINDOWS64)
 #include "..\..\CustomGenericBackground.h"
@@ -33,6 +34,7 @@ namespace
 		eSettingsUICustomSlider_UISizeSplitscreen,
 		eSettingsUICustomSlider_Renderer,
 		eSettingsUICustomSlider_Vsync,
+		eSettingsUICustomSlider_Shaders,
 		eSettingsUICustomSlider_Count
 	};
 
@@ -49,10 +51,10 @@ namespace
 	const float kSettingsUIPanelHeight = 560.0f;
 	const float kSettingsUITitleScale = 3.0f;
 	const float kSettingsUISliderXInset = 140.0f;
-	const float kSettingsUISliderStartYOffset = 92.0f;
+	const float kSettingsUISliderStartYOffset = 84.0f;
 	const float kSettingsUISliderWidth = 640.0f;
-	const float kSettingsUISliderHeight = 36.0f;
-	const float kSettingsUISliderGap = 14.0f;
+	const float kSettingsUISliderHeight = 35.0f;
+	const float kSettingsUISliderGap = 11.0f;
 	const int kSettingsUIRenderDistanceMin = 2;
 	const int kSettingsUIRenderDistanceDefault = 18;
 	const int kSettingsUIRenderDistanceMax = 32;
@@ -125,6 +127,11 @@ namespace
 			return 3;
 		case eSettingsUICustomSlider_Vsync:
 			return 1;
+		case eSettingsUICustomSlider_Shaders:
+		{
+			const std::vector<ShaderManager::PackEntry> &packs = ShaderManager::GetAvailablePacks();
+			return (packs.size() > 0) ? (int)packs.size() : 1;
+		}
 		default:
 			return 1;
 		}
@@ -202,6 +209,23 @@ namespace
 		if(slider == eSettingsUICustomSlider_Vsync)
 		{
 			return RenderManager.IsVsyncEnabled() ? 1 : 0;
+		}
+		if(slider == eSettingsUICustomSlider_Shaders)
+		{
+			if(!ShaderManager::IsEnabled())
+			{
+				return 0;
+			}
+			const std::vector<ShaderManager::PackEntry> &packs = ShaderManager::GetAvailablePacks();
+			const std::wstring active = ShaderManager::GetActivePackId();
+			for(size_t i = 0; i < packs.size(); ++i)
+			{
+				if(packs[i].id == active)
+				{
+					return (int)(i + 1);
+				}
+			}
+			return 1;
 		}
 
 		const int settingId = GetSettingsUIGameSetting(slider);
@@ -372,6 +396,29 @@ namespace
 			}
 			return;
 		}
+		if(slider == eSettingsUICustomSlider_Shaders)
+		{
+			if(value <= 0)
+			{
+				if(ShaderManager::IsEnabled())
+				{
+					ShaderManager::SetEnabled(false);
+				}
+				return;
+			}
+			const std::vector<ShaderManager::PackEntry> &packs = ShaderManager::GetAvailablePacks();
+			const size_t idx = (size_t)(value - 1);
+			const std::wstring targetPack = (idx < packs.size()) ? packs[idx].id : L"Default";
+			if(!ShaderManager::IsEnabled())
+			{
+				ShaderManager::SetEnabled(true);
+			}
+			if(ShaderManager::GetActivePackId() != targetPack)
+			{
+				ShaderManager::SelectPack(targetPack);
+			}
+			return;
+		}
 
 		const int settingId = GetSettingsUIGameSetting(slider);
 		if(settingId < 0)
@@ -433,6 +480,18 @@ namespace
 		if(slider == eSettingsUICustomSlider_Vsync)
 		{
 			_snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"VSync: %ls", (value != 0) ? L"Activado" : L"Desactivado");
+			return std::wstring(buffer);
+		}
+		if(slider == eSettingsUICustomSlider_Shaders)
+		{
+			if(value <= 0)
+			{
+				return L"Shaders: Desactivado";
+			}
+			const std::vector<ShaderManager::PackEntry> &packs = ShaderManager::GetAvailablePacks();
+			const size_t idx = (size_t)(value - 1);
+			const std::wstring packLabel = (idx < packs.size()) ? packs[idx].displayName : L"Default (LegacyCraft)";
+			_snwprintf_s(buffer, _countof(buffer), _TRUNCATE, L"Shaders: %ls", packLabel.c_str());
 			return std::wstring(buffer);
 		}
 
@@ -582,6 +641,7 @@ UIScene_SettingsUIMenu::UIScene_SettingsUIMenu(int iPad, void *initData, UILayer
 		removeControl(&m_checkboxShowSplitscreenGamertags, false);
 		removeControl(&m_sliderUISize, false);
 		removeControl(&m_sliderUISizeSplitscreen, false);
+		ShaderManager::RefreshPackList();
 		InvalidateSettingsUILayout();
 	}
 #endif
@@ -627,6 +687,7 @@ void UIScene_SettingsUIMenu::handleReload()
 		removeControl(&m_checkboxShowSplitscreenGamertags, false);
 		removeControl(&m_sliderUISize, false);
 		removeControl(&m_sliderUISizeSplitscreen, false);
+		ShaderManager::RefreshPackList();
 		InvalidateSettingsUILayout();
 	}
 #endif
@@ -779,9 +840,6 @@ void UIScene_SettingsUIMenu::handleInput(int iPad, int key, bool repeat, bool pr
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		sendInputToMovie(key, repeat, pressed, released);
 		break;
 	case ACTION_MENU_UP:

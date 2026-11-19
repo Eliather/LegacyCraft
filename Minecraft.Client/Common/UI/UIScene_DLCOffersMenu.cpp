@@ -2,7 +2,7 @@
 #include "UI.h"
 #include "UIScene_DLCOffersMenu.h"
 #include "..\..\..\Minecraft.World\StringHelpers.h"
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 #include "Common\Network\Sony\SonyHttp.h"
 #endif
 
@@ -20,7 +20,7 @@ UIScene_DLCOffersMenu::UIScene_DLCOffersMenu(int iPad, void *initData, UILayer *
 	m_iProductInfoIndex=param->iType;
 	m_iCurrentDLC=0;
 	m_iTotalDLC=0;
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 	m_pvProductInfo=NULL;
 #endif
 	m_bAddAllDLCButtons=true;
@@ -61,11 +61,8 @@ UIScene_DLCOffersMenu::UIScene_DLCOffersMenu(int iPad, void *initData, UILayer *
 
 #endif
 
-#ifdef __ORBIS__
-	//sceNpCommerceShowPsStoreIcon(SCE_NP_COMMERCE_PS_STORE_ICON_CENTER);
-#endif
 
-#if ( defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ )
+#if defined(__PSVITA__)
 	addTimer( PLAYER_ONLINE_TIMER_ID, PLAYER_ONLINE_TIMER_TIME );
 #endif
 
@@ -82,7 +79,7 @@ UIScene_DLCOffersMenu::~UIScene_DLCOffersMenu()
 
 void UIScene_DLCOffersMenu::handleTimerComplete(int id)
 {
-#if ( defined __PS3__ || defined __ORBIS__  || defined __PSVITA__)
+#if defined(__PSVITA__)
 	switch(id)
 	{
 	case PLAYER_ONLINE_TIMER_ID:
@@ -105,9 +102,7 @@ int UIScene_DLCOffersMenu::ExitDLCOffersMenu(void *pParam,int iPad,C4JStorage::E
 {
 	UIScene_DLCOffersMenu* pClass = (UIScene_DLCOffersMenu*)pParam;
 
-#ifdef __ORBIS__
-	sceNpCommerceHidePsStoreIcon();
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	sceNpCommerce2HidePsStoreIcon();
 #endif
 	ui.NavigateToHomeMenu();//iPad,eUIScene_MainMenu);
@@ -151,9 +146,6 @@ void UIScene_DLCOffersMenu::handleInput(int iPad, int key, bool repeat, bool pre
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		sendInputToMovie(key, repeat, pressed, released);
 		break;
 	case ACTION_MENU_UP:
@@ -223,7 +215,7 @@ void UIScene_DLCOffersMenu::handlePress(F64 controlId, F64 childId)
 	{
 	case eControl_OffersList:
 		{
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 			// buy the DLC
 
 			vector<SonyCommerce::ProductInfo >::iterator it = m_pvProductInfo->begin();
@@ -235,21 +227,6 @@ void UIScene_DLCOffersMenu::handlePress(F64 controlId, F64 childId)
 
 			SonyCommerce::ProductInfo info = *it;
 
-#ifdef __PS3__
-			// is the item purchasable?
-			if(info.purchasabilityFlag==1) 
-			{
-				// can be bought
-				app.Checkout(info.skuId);
-			}
-			else
-			{
-				if((info.annotation & (SCE_NP_COMMERCE2_SKU_ANN_PURCHASED_CANNOT_PURCHASE_AGAIN | SCE_NP_COMMERCE2_SKU_ANN_PURCHASED_CAN_PURCHASE_AGAIN))!=0)
-				{
- 					app.DownloadAlreadyPurchased(info.skuId);
-				}
-			}
-#else // __ORBIS__
 			// is the item purchasable?
 			if(info.purchasabilityFlag==SCE_TOOLKIT_NP_COMMERCE_NOT_PURCHASED) 
 			{
@@ -260,7 +237,6 @@ void UIScene_DLCOffersMenu::handlePress(F64 controlId, F64 childId)
 			{
 				app.DownloadAlreadyPurchased(info.skuId);
 			}
-#endif // __PS3__
 #elif defined _XBOX_ONE
 			int iIndex = (int)childId;
 			StorageManager.InstallOffer(1,StorageManager.GetOffer(iIndex).wszProductID,NULL,NULL);
@@ -305,7 +281,7 @@ void UIScene_DLCOffersMenu::handleFocusChange(F64 controlId, F64 childId)
 	}*/
 #endif
 
-#if defined __PSVITA__ || defined __ORBIS__
+#if defined(__PSVITA__)
 	if(m_pvProductInfo)
 	{	
 		m_bIsSelected = true;
@@ -335,7 +311,7 @@ void UIScene_DLCOffersMenu::tick()
 {
 	UIScene::tick();
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 
 	if(m_bAddAllDLCButtons)
 	{
@@ -379,25 +355,6 @@ void UIScene_DLCOffersMenu::tick()
 
 				bool bDLCIsAvailable=false;
 
-#ifdef __PS3__
-				// is the item purchasable?
-				if(info.purchasabilityFlag==1) 
-				{
-					// can be bought
-					app.DebugPrintf("Adding DLC (%s) - not bought\n",teststring.c_str());
-					m_buttonListOffers.addItem(teststring,false,i);
-					bDLCIsAvailable=true;
-				}
-				else
-				{
-					if((info.annotation & (SCE_NP_COMMERCE2_SKU_ANN_PURCHASED_CANNOT_PURCHASE_AGAIN | SCE_NP_COMMERCE2_SKU_ANN_PURCHASED_CAN_PURCHASE_AGAIN))!=0)
-					{
-						app.DebugPrintf("Adding DLC (%s) - bought\n",teststring.c_str());
-						m_buttonListOffers.addItem(teststring,true,i);
-						bDLCIsAvailable=true;
-					}
-				}
-#else // __ORBIS__
 				// is the item purchasable?
 				if(info.purchasabilityFlag==SCE_TOOLKIT_NP_COMMERCE_NOT_PURCHASED) 
 				{
@@ -410,7 +367,6 @@ void UIScene_DLCOffersMenu::tick()
 					m_buttonListOffers.addItem(teststring,true,i);
 					bDLCIsAvailable=true;
 				}
-#endif // __PS3__
 
 				// set the other details for the first item
 				if(bDLCIsAvailable && (bFirstItemSet==false))
@@ -441,19 +397,6 @@ void UIScene_DLCOffersMenu::tick()
 						PBYTE pbImageData;
 						int iImageDataBytes=0;
 						bool bDeleteData;
-#ifdef __ORBIS__
-						// check the local files first
-						SONYDLC *pSONYDLCInfo=app.GetSONYDLCInfoFromKeyname(info.productId);
-
-						// does the DLC info have an image?
-						if(pSONYDLCInfo->dwImageBytes!=0)
-						{ 
-							pbImageData=pSONYDLCInfo->pbImageData;
-							iImageDataBytes=pSONYDLCInfo->dwImageBytes;
-							bDeleteData=false; // we'll clean up the local LDC images
-						}	
-						else
-#endif					
 						if(info.imageUrl[0]!=0)
 						{
 							SonyHttp::getDataFromURL(info.imageUrl,(void **)&pbImageData,&iImageDataBytes);
@@ -573,19 +516,6 @@ void UIScene_DLCOffersMenu::tick()
 				PBYTE pbImageData;
 				int iImageDataBytes=0;
 				bool bDeleteData;
-#ifdef __ORBIS__
-				// check the local files first
-				SONYDLC *pSONYDLCInfo=app.GetSONYDLCInfoFromKeyname(info.productId);
-
-				// does the DLC info have an image?
-				if(pSONYDLCInfo->dwImageBytes!=0)
-				{ 
-					pbImageData=pSONYDLCInfo->pbImageData;
-					iImageDataBytes=pSONYDLCInfo->dwImageBytes;
-					bDeleteData=false; // we'll clean up the local LDC images
-				}				
-				else
-#endif
 				{
 					SonyHttp::getDataFromURL(info.imageUrl,(void **)&pbImageData,&iImageDataBytes);
 					bDeleteData=true;
@@ -904,20 +834,3 @@ void UIScene_DLCOffersMenu::HandleDLCLicenseChange()
 }
 #endif // _XBOX_ONE
 
-#ifdef __PS3__
-void UIScene_DLCOffersMenu::HandleDLCInstalled()
-{
-	app.DebugPrintf(4,"UIScene_DLCOffersMenu::HandleDLCInstalled\n");
-
-// 	m_buttonListOffers.clearList();
-// 	m_bAddAllDLCButtons=true;
-// 	m_bProductInfoShown=false;
-}
-
-// void UIScene_DLCOffersMenu::HandleDLCMountingComplete()
-// {	
-//	app.DebugPrintf(4,"UIScene_SkinSelectMenu::HandleDLCMountingComplete\n");
-//}
-
-
-#endif

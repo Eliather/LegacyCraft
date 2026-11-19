@@ -110,16 +110,6 @@ SCreditTextItemDef UIScene_Credits::gs_aCreditDefs[MAX_CREDIT_STRINGS] =
 	{ L"Anthony Kent",									NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },
 #ifdef _XBOX
  // credits are in the XUI file
-#elif defined(__PS3__)
-// font credits
-	{ L"",												NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-	{ L"%ls",											IDS_DYNAFONT,					NO_TRANSLATED_STRING,eLargeText },
-
-#elif defined(__ORBIS__)
-// font credits
-	{ L"",												NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-	{ L"%ls",											IDS_DYNAFONT,					NO_TRANSLATED_STRING,eLargeText },
-
 #elif defined(_DURANGO)
 	{ L"",												NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
 	{ L"",												NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
@@ -466,25 +456,11 @@ SCreditTextItemDef UIScene_Credits::gs_aCreditDefs[MAX_CREDIT_STRINGS] =
 	{ L"",													NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
 	{ L"",													CREDIT_ICON,					eCreditIcon_Iggy,eSmallText },	// extra blank line
 	{ L"Uses Iggy.",										NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-#ifdef __PS3__
-	{ L"Copyright (C) 2009-2013 by RAD Game Tools, Inc.",	NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-#else
 	{ L"Copyright (C) 2009-2014 by RAD Game Tools, Inc.",	NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-#endif
 	{ L"",													NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
 	{ L"",													CREDIT_ICON,					eCreditIcon_Miles,eSmallText },	// extra blank line
 	{ L"Uses Miles Sound System.",							NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-#ifdef __PS3__
-	{ L"Copyright (C) 1991-2013 by RAD Game Tools, Inc.",	NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-#else
 	{ L"Copyright (C) 1991-2014 by RAD Game Tools, Inc.",	NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-#endif
-#ifdef __PS3__
-	{ L"",													NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-	{ L"",													CREDIT_ICON,					eCreditIcon_Dolby,eSmallText },	// extra blank line
-	{ L"Dolby and the double-D symbol",						NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-	{ L"are trademarks of Dolby Laboratories.",				NO_TRANSLATED_STRING,			NO_TRANSLATED_STRING,eSmallText },	// extra blank line
-#endif
 #endif
 };
 
@@ -627,9 +603,6 @@ void UIScene_Credits::handleInput(int iPad, int key, bool repeat, bool pressed, 
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_UP:
 	case ACTION_MENU_DOWN:
 		sendInputToMovie(key, repeat, pressed, released);

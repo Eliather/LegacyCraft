@@ -325,13 +325,6 @@ int MinecraftServer::runPostUpdate(void* lpParam)
 		server->m_postProcessRequests.pop_back();
 		LeaveCriticalSection(&server->m_postProcessCS);
 		request.chunkSource->postProcess(request.chunkSource, request.x, request.z );
-#ifdef __PS3__
-#ifndef _CONTENT_PACKAGE
-		if((server->m_postProcessRequests.size() % 10) == 0)
-			printf("processing request %00d\n", server->m_postProcessRequests.size());
-#endif
-		Sleep(1);
-#endif
 		EnterCriticalSection(&server->m_postProcessCS);
 	}
 	LeaveCriticalSection(&server->m_postProcessCS);
@@ -877,9 +870,6 @@ void MinecraftServer::stopServer()
 {
 
 	// 4J-PB - need to halt the rendering of the data, since we're about to remove it
-#ifdef __PS3__
-	if( ShutdownManager::ShouldRun(ShutdownManager::eServerThread )	)		// This thread will take itself out if we are shutting down
-#endif
 	{
 		Minecraft::GetInstance()->gameRenderer->DisableUpdateThread();
 	}
@@ -898,7 +888,7 @@ void MinecraftServer::stopServer()
 	if((m_bPrimaryPlayerSignedOut==false) && ProfileManager.IsSignedIn(ProfileManager.GetPrimaryPad()))
 #endif
 	{
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 		// Always save on exit! Except if saves are disabled.
 		if(!saveOnExitAnswered()) m_saveOnExit = true;
 #endif
@@ -935,7 +925,7 @@ void MinecraftServer::stopServer()
 
 	// On Durango/Orbis, we need to wait for all the asynchronous saving processes to complete before destroying the levels, as that will ultimately delete
 	// the directory level storage & therefore the ConsoleSaveSplit instance, which needs to be around until all the sub files have completed saving.
-#if defined(_DURANGO) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 	while(StorageManager.GetSaveState() != C4JStorage::ESaveGame_Idle )
 	{
 		Sleep(10);
@@ -953,10 +943,6 @@ void MinecraftServer::stopServer()
 		}
 	}
 
-#if defined(__PS3__) || defined(__ORBIS__)
-	// Clear the update flags as it's possible they could be out of sync, causing a crash when starting a new world after the first new level ticks
-	// Fix for PS3 #1538 - [IN GAME] If the user 'Exit without saving' from inside the Nether or The End, the title can hang when loading back into the save.
-#endif
 
 	delete connection;
 	connection = NULL;
@@ -1200,7 +1186,7 @@ void MinecraftServer::run(__int64 seed, void *lpParameter)
 				switch(eAction)
 				{
 				case eXuiServerAction_AutoSaveGame:
-#if defined(_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 					{
 						PIXBeginNamedEvent(0,"Autosave");
 
@@ -1576,9 +1562,6 @@ void MinecraftServer::handleConsoleInputs()
 
 void MinecraftServer::main(__int64 seed, void *lpParameter)
 {
-#if __PS3__
-	ShutdownManager::HasStarted(ShutdownManager::eServerThread );
-#endif
 	server = new MinecraftServer();
 	server->run(seed, lpParameter);
 	delete server;

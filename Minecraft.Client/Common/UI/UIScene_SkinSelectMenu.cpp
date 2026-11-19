@@ -12,9 +12,7 @@
 #endif
 #endif
 #include "..\..\..\Minecraft.World\StringHelpers.h"
-#ifdef __ORBIS__
-#include <error_dialog.h>
-#elif defined __PSVITA__
+#if defined __PSVITA__
 #include <message_dialog.h>
 #endif
 
@@ -222,9 +220,6 @@ UIScene_SkinSelectMenu::UIScene_SkinSelectMenu(int iPad, void *initData, UILayer
 
 	m_labelSelected.init( app.GetString( IDS_SELECTED ) );
 
-#ifdef __ORBIS__
-	m_bErrorDialogRunning=false;
-#endif
 
 	m_bIgnoreInput=false;
 	m_bNoSkinsToShow = false;
@@ -377,20 +372,6 @@ void UIScene_SkinSelectMenu::tick()
 	// check for new DLC installed
 
 	// check for the patch error dialog
-#ifdef __ORBIS__
-
-	// process the error dialog (for a patch being available)
-	if(m_bErrorDialogRunning)
-	{	
-		SceErrorDialogStatus stat = sceErrorDialogUpdateStatus();
-		if( stat == SCE_ERROR_DIALOG_STATUS_FINISHED ) 
-		{
-			sceErrorDialogTerminate();
-			m_bErrorDialogRunning=false;
-		}
-	}
-
-#endif
 }
 
 void UIScene_SkinSelectMenu::render(S32 width, S32 height, C4JRender::eViewportType viewport)
@@ -472,11 +453,120 @@ void UIScene_SkinSelectMenu::handleInput(int iPad, int key, bool repeat, bool pr
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		if(pressed)
 		{
+#if defined(_WINDOWS64)
+			if(!Mouse::isGrabbed() && Mouse::isButtonPressed(0))
+			{
+				const float screenW = ui.getScreenWidth();
+				const float screenH = ui.getScreenHeight();
+				if(screenW > 0.0f && screenH > 0.0f)
+				{
+					const float normX = (float)Mouse::getX() / screenW;
+					const float normY = (float)Mouse::getY() / screenH;
+
+					Minecraft *minecraft = Minecraft::GetInstance();
+					if(minecraft != NULL && minecraft->width_phys > 0 && minecraft->height_phys > 0)
+					{
+						const float physX = normX * (float)minecraft->width_phys;
+						const float physY = normY * (float)minecraft->height_phys;
+						if(physX >= m_slimSkinBackground.GetX() &&
+						   physX <= (m_slimSkinBackground.GetX() + m_slimSkinBackground.GetWidth()) &&
+						   physY >= m_slimSkinBackground.GetY() &&
+						   physY <= (m_slimSkinBackground.GetY() + m_slimSkinBackground.GetHeight()))
+						{
+							handled = true;
+							break;
+						}
+					}
+
+					// Top pack tabs: click left/right tab to switch skin packs
+					if(normY >= 0.05f && normY <= 0.17f)
+					{
+						if(normX >= 0.07f && normX < 0.355f)
+						{
+							ui.PlayUISFX(eSFX_Scroll);
+							DWORD startingIndex = m_packIndex;
+							m_packIndex = getPreviousPackIndex(m_packIndex);
+							if(startingIndex != m_packIndex)
+							{
+								handlePackIndexChanged();
+							}
+						}
+						else if(normX > 0.645f && normX <= 0.93f)
+						{
+							ui.PlayUISFX(eSFX_Scroll);
+							DWORD startingIndex = m_packIndex;
+							m_packIndex = getNextPackIndex(m_packIndex);
+							if(startingIndex != m_packIndex)
+							{
+								handlePackIndexChanged();
+							}
+						}
+						handled = true;
+						break;
+					}
+
+					// Carousel area: click left/right of the center skin to scroll like a list
+					if(normY > 0.17f && normY <= 0.82f)
+					{
+						if(normX < 0.41f)
+						{
+							const bool hasSkins = !m_bNoSkinsToShow && !(m_packIndex == SKIN_SELECT_PACK_FAVORITES && app.GetPlayerFavoriteSkinsCount(iPad) == 0);
+							if(hasSkins)
+							{
+								if(m_currentNavigation != eSkinNavigation_Skin)
+								{
+									m_currentNavigation = eSkinNavigation_Skin;
+									sendInputToMovie(ACTION_MENU_DOWN, false, true, false);
+								}
+								if(!m_bAnimatingMove)
+								{
+									ui.PlayUISFX(eSFX_Scroll);
+									m_skinIndex = getPreviousSkinIndex(m_skinIndex);
+									m_bSlidingSkins = true;
+									m_bAnimatingMove = true;
+									m_characters[eCharacter_Current].SetFacing(UIControl_PlayerSkinPreview::e_SkinPreviewFacing_Left, true);
+									m_characters[eCharacter_Previous1].SetFacing(UIControl_PlayerSkinPreview::e_SkinPreviewFacing_Forward, true);
+									sendInputToMovie(ACTION_MENU_RIGHT, false, true, false);
+								}
+							}
+							handled = true;
+							break;
+						}
+						else if(normX > 0.59f)
+						{
+							const bool hasSkins = !m_bNoSkinsToShow && !(m_packIndex == SKIN_SELECT_PACK_FAVORITES && app.GetPlayerFavoriteSkinsCount(iPad) == 0);
+							if(hasSkins)
+							{
+								if(m_currentNavigation != eSkinNavigation_Skin)
+								{
+									m_currentNavigation = eSkinNavigation_Skin;
+									sendInputToMovie(ACTION_MENU_DOWN, false, true, false);
+								}
+								if(!m_bAnimatingMove)
+								{
+									ui.PlayUISFX(eSFX_Scroll);
+									m_skinIndex = getNextSkinIndex(m_skinIndex);
+									m_bSlidingSkins = true;
+									m_bAnimatingMove = true;
+									m_characters[eCharacter_Current].SetFacing(UIControl_PlayerSkinPreview::e_SkinPreviewFacing_Right, true);
+									m_characters[eCharacter_Next1].SetFacing(UIControl_PlayerSkinPreview::e_SkinPreviewFacing_Forward, true);
+									sendInputToMovie(ACTION_MENU_LEFT, false, true, false);
+								}
+							}
+							handled = true;
+							break;
+						}
+					}
+					else
+					{
+						handled = true;
+						break;
+					}
+				}
+			}
+#endif
 			ui.AnimateKeyPress(iPad, key, repeat, pressed, released);
 			// if the profile data has been changed, then force a profile write
 			// It seems we're allowed to break the 5 minute rule if it's the result of a user action
@@ -529,53 +619,9 @@ void UIScene_SkinSelectMenu::handleInput(int iPad, int key, bool repeat, bool pr
 						)
 					{
 						// 4J-PB - check for a patch
-#ifdef __ORBIS__
-						// 4J-PB - Check if there is a patch for the game
-						int errorCode = ProfileManager.getNPAvailability(ProfileManager.GetPrimaryPad());
-
-						bool bPatchAvailable;
-						switch(errorCode)
-						{
-						case SCE_NP_ERROR_LATEST_PATCH_PKG_EXIST:
-						case SCE_NP_ERROR_LATEST_PATCH_PKG_DOWNLOADED:
-							bPatchAvailable=true;
-							break;
-						default:
-							bPatchAvailable=false;
-							break;
-						}
-
-						if(bPatchAvailable)
-						{
-							int32_t ret=sceErrorDialogInitialize();
-							m_bErrorDialogRunning=true;
-							if (  ret==SCE_OK ) 
-							{
-								SceErrorDialogParam param;
-								sceErrorDialogParamInitialize( &param );
-								// 4J-PB - We want to display the option to get the patch now
-								param.errorCode = SCE_NP_ERROR_LATEST_PATCH_PKG_DOWNLOADED;//pClass->m_errorCode;
-								ret = sceUserServiceGetInitialUser( &param.userId );
-								if ( ret == SCE_OK ) 
-								{
-									ret=sceErrorDialogOpen( &param );
-									break;
-								}
-							}
-						}
-#endif
 
 						// no
 						UINT uiIDA[1] = { IDS_OK };
-#ifdef __ORBIS__
-						// Check if PSN is unavailable because of age restriction
-						int npAvailability = ProfileManager.getNPAvailability(iPad);
-						if (npAvailability == SCE_NP_ERROR_AGE_RESTRICTION)
-						{
-							ui.RequestMessageBox(IDS_ONLINE_SERVICE_TITLE, IDS_CONTENT_RESTRICTION, uiIDA, 1, iPad, NULL, NULL, app.GetStringTable());
-						}
-						else
-#endif
 						// We need to upsell the full version
 						if(ProfileManager.IsGuest(iPad))
 						{
@@ -607,7 +653,7 @@ void UIScene_SkinSelectMenu::handleInput(int iPad, int key, bool repeat, bool pr
 							TelemetryManager->RecordUpsellPresented(iPad, eSet_UpsellID_Skin_DLC, ullOfferID_Full & 0xFFFFFFFF);
 #endif
 							bool bContentRestricted=false;
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 							ProfileManager.GetChatAndContentRestrictions(m_iPad,true,NULL,&bContentRestricted,NULL);
 #endif
 							if(bContentRestricted)
@@ -621,7 +667,7 @@ void UIScene_SkinSelectMenu::handleInput(int iPad, int key, bool repeat, bool pr
 							else
 							{
 								// 4J-PB - need to check for an empty store
-#if defined __ORBIS__ || defined __PSVITA__ || defined __PS3__
+#if defined(__PSVITA__)
 								if(app.CheckForEmptyStore(iPad)==false)
 #endif
 								{
@@ -895,13 +941,6 @@ void UIScene_SkinSelectMenu::InputActionOK(unsigned int iPad)
 						// can't buy
 						ui.RequestMessageBox(IDS_PRO_GUESTPROFILE_TITLE, IDS_PRO_GUESTPROFILE_TEXT, uiIDA, 1,iPad,NULL,NULL,app.GetStringTable(),NULL,0,false);
 					}
-#if defined(__PS3__) || defined(__ORBIS__)
-					// are we online?
-					else if(!ProfileManager.IsSignedInLive(iPad))
-					{
-						showNotOnlineDialog(iPad);
-					}
-#endif
 					else
 					{
 						// upsell
@@ -922,7 +961,7 @@ void UIScene_SkinSelectMenu::InputActionOK(unsigned int iPad)
 						SentientManager.RecordUpsellPresented(iPad, eSet_UpsellID_Skin_DLC, ullOfferID_Full & 0xFFFFFFFF);
 #endif
 						bool bContentRestricted=false;
-#if defined(__PS3__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 						ProfileManager.GetChatAndContentRestrictions(m_iPad,true,NULL,&bContentRestricted,NULL);
 #endif
 						if(bContentRestricted)
@@ -937,7 +976,7 @@ void UIScene_SkinSelectMenu::InputActionOK(unsigned int iPad)
 						else
 						{	
 							// 4J-PB - need to check for an empty store
-#if defined __ORBIS__ || defined __PSVITA__ || defined __PS3__
+#if defined(__PSVITA__)
 							if(app.CheckForEmptyStore(iPad)==false)
 #endif
 							{
@@ -998,9 +1037,7 @@ void UIScene_SkinSelectMenu::customDraw(IggyCustomDrawCallbackRegion *region)
 
 		//app.DebugPrintf("Scissor x0= %d, y0= %d, x1= %d, y1= %d\n", region->scissor_x0, region->scissor_y0, region->scissor_x1, region->scissor_y1);
 		//app.DebugPrintf("Stencil mask= %d, stencil ref= %d, stencil write= %d\n", region->stencil_func_mask, region->stencil_func_ref, region->stencil_write_mask);
-#ifdef __PS3__
-		if(region->stencil_func_ref != 0) RenderManager.StateSetStencil(GL_EQUAL,region->stencil_func_ref,region->stencil_func_mask);
-#elif __PSVITA__
+#if __PSVITA__
 		// AP - make sure the skins are only drawn inside the smokey panel
 		if(region->stencil_func_ref != 0) RenderManager.StateSetStencil(SCE_GXM_STENCIL_FUNC_EQUAL,region->stencil_func_mask,region->stencil_write_mask);
 #else
@@ -1928,14 +1965,8 @@ void UIScene_SkinSelectMenu::HandleDLCMountingComplete()
 void UIScene_SkinSelectMenu::showNotOnlineDialog(int iPad)
 {
 	// need to be signed in to live. get them to sign in to online
-#if defined(__PS3__)
-	SQRNetworkManager_PS3::AttemptPSNSignIn(NULL, this);		
-
-#elif defined(__PSVITA__)
+#if defined(__PSVITA__)
 	SQRNetworkManager_Vita::AttemptPSNSignIn(NULL, this);		
-
-#elif defined(__ORBIS__)
-	SQRNetworkManager_Orbis::AttemptPSNSignIn(NULL, this, false, iPad);
 
 #elif defined(_DURANGO)
 
@@ -1955,7 +1986,7 @@ int UIScene_SkinSelectMenu::UnlockSkinReturned(void *pParam,int iPad,C4JStorage:
 	{
 		if (ProfileManager.IsSignedInLive(iPad))
 		{
-#if defined(__PS3__) || defined(__ORBIS__) || defined __PSVITA__
+#if defined(__PSVITA__)
 			// need to get info on the pack to see if the user has already downloaded it
 
 			// retrieve the store name for the skin pack
@@ -1981,14 +2012,10 @@ int UIScene_SkinSelectMenu::UnlockSkinReturned(void *pParam,int iPad,C4JStorage:
 				memset(chKeyName, 0, sizeof(chKeyName));
 				strncpy(chKeyName, pSONYDLCInfo->chDLCKeyname, 16);
 
-#ifdef __ORBIS__
-				strcpy(chName, chKeyName);
-#else
 				sprintf(chName,"%s-%s",app.GetCommerceCategory(),chKeyName);
-#endif
 				app.GetDLCSkuIDFromProductList(chName,chSkuID);
 
-#if defined __ORBIS__ || defined __PSVITA__ || defined __PS3__
+#if defined(__PSVITA__)
 				if (app.CheckForEmptyStore(iPad) == false)
 #endif
 				{	

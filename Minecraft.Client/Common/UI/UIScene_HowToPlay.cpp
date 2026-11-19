@@ -138,13 +138,7 @@ void UIScene_HowToPlay::updateTooltips()
 	int iPage = ( int )( m_eCurrPage );
 
 	int firstPage = eHowToPlay_WhatsNew;
-#ifdef __PS3__
-	// If it's the blu ray, or the first Japanese digital game, there's no What's New until the first patch, which will take this line out
-	if(StorageManager.GetBootTypeDisc() || (app.GetProductSKU()==e_sku_SCEJ))
-	{
-		++firstPage;
-	}
-#elif defined(__ORBIS__) || defined(_DURANGO) || defined(__PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 	// No What's New for the first PS4 and Xbox One builds
 	if(true)
 	{
@@ -191,9 +185,6 @@ void UIScene_HowToPlay::handleInput(int iPad, int key, bool repeat, bool pressed
 		}
 		break;
 	case ACTION_MENU_A:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		if(pressed)
 		{
 			// Next page
@@ -212,18 +203,7 @@ void UIScene_HowToPlay::handleInput(int iPad, int key, bool repeat, bool pressed
 			// Previous page
 			int iPrevPage = ( int )( m_eCurrPage ) - 1;
 
-#ifdef __PS3__
-			// If it's the blu ray, or the first Japanese digital game, there's no What's New until the first patch, which will take this line out
-			if(StorageManager.GetBootTypeDisc() || (app.GetProductSKU()==e_sku_SCEJ))
-			{
-				if ( iPrevPage >= 0 && !((iPrevPage==eHowToPlay_WhatsNew))) 
-				{
-					StartPage( ( EHowToPlayPage )( iPrevPage ) );
-					ui.PlayUISFX(eSFX_Press);
-				}
-			}
-			else
-#elif defined(__ORBIS__) || defined(_DURANGO) || defined(__PSVITA__)
+#if defined(_DURANGO) || defined(__PSVITA__)
 			// No What's New for the first PS4 and Xbox One builds
 			if(true)
 			{

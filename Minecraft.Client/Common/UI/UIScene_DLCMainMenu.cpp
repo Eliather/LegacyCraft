@@ -1,8 +1,5 @@
 #include "stdafx.h"
 #include "UI.h"
-#if defined(__PS3__) || defined(__ORBIS__)
-#include "Common\Network\Sony\SonyCommerce.h"
-#endif
 #include "UIScene_DLCMainMenu.h"
 
 #define PLAYER_ONLINE_TIMER_ID 0
@@ -18,12 +15,12 @@ UIScene_DLCMainMenu::UIScene_DLCMainMenu(int iPad, void *initData, UILayer *pare
 	m_labelOffers.init(app.GetString(IDS_DOWNLOADABLE_CONTENT_OFFERS));
 	m_buttonListOffers.init(eControl_OffersList);
 
-#if defined _XBOX_ONE || defined __ORBIS__
+#if defined(_XBOX_ONE)
 	// load any local DLC images
 	app.LoadLocalDLCImages();
 #endif
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 	// show a timer on this menu
 	m_Timer.setVisible(true);
 
@@ -53,13 +50,11 @@ UIScene_DLCMainMenu::UIScene_DLCMainMenu(int iPad, void *initData, UILayer *pare
 	
 	TelemetryManager->RecordMenuShown(iPad, eUIScene_DLCMainMenu, 0);
 
-#ifdef __ORBIS__
-	sceNpCommerceShowPsStoreIcon(SCE_NP_COMMERCE_PS_STORE_ICON_RIGHT);
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	sceNpCommerce2ShowPsStoreIcon(SCE_NP_COMMERCE2_ICON_DISP_RIGHT);
 #endif
 
-#if ( defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ )
+#if defined(__PSVITA__)
 	addTimer( PLAYER_ONLINE_TIMER_ID, PLAYER_ONLINE_TIMER_TIME );
 #endif
 }
@@ -68,7 +63,7 @@ UIScene_DLCMainMenu::~UIScene_DLCMainMenu()
 {
 	// Alert the app the we no longer want to be informed of ethernet connections
 	app.SetLiveLinkRequired( false );
-#if defined _XBOX_ONE || defined __ORBIS__
+#if defined(_XBOX_ONE)
 	app.FreeLocalDLCImages();
 #endif
 }
@@ -93,18 +88,13 @@ void UIScene_DLCMainMenu::handleInput(int iPad, int key, bool repeat, bool press
 	case ACTION_MENU_CANCEL:
 		if(pressed)
 		{
-#ifdef __ORBIS__
-			sceNpCommerceHidePsStoreIcon();
-#elif defined __PSVITA__
+#if defined __PSVITA__
 			sceNpCommerce2HidePsStoreIcon();
 #endif
 			navigateBack();
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 		sendInputToMovie(key, repeat, pressed, released);
 		break;
 	case ACTION_MENU_UP:
@@ -144,7 +134,7 @@ void UIScene_DLCMainMenu::handlePress(F64 controlId, F64 childId)
 
 void UIScene_DLCMainMenu::handleTimerComplete(int id)
 {
-#if ( defined __PS3__ || defined __ORBIS__  || defined __PSVITA__)
+#if defined(__PSVITA__)
 	switch(id)
 	{
 	case PLAYER_ONLINE_TIMER_ID:
@@ -167,9 +157,7 @@ int UIScene_DLCMainMenu::ExitDLCMainMenu(void *pParam,int iPad,C4JStorage::EMess
 {
 	UIScene_DLCMainMenu* pClass = (UIScene_DLCMainMenu*)pParam;
 
-#ifdef __ORBIS__
-	sceNpCommerceHidePsStoreIcon();
-#elif defined __PSVITA__
+#if defined __PSVITA__
 	sceNpCommerce2HidePsStoreIcon();
 #endif
 	pClass->navigateBack();
@@ -186,7 +174,7 @@ void UIScene_DLCMainMenu::handleGainFocus(bool navBack)
 	if(navBack)
 	{
 		// add the timer back in
-#if ( defined __PS3__ || defined __ORBIS__ || defined __PSVITA__ )
+#if defined(__PSVITA__)
 		addTimer( PLAYER_ONLINE_TIMER_ID, PLAYER_ONLINE_TIMER_TIME );
 #endif
 	}
@@ -196,7 +184,7 @@ void UIScene_DLCMainMenu::tick()
 {
 	UIScene::tick();
 
-#if defined(__PS3__) || defined(__ORBIS__) || defined (__PSVITA__)
+#if defined(__PSVITA__)
 	if((m_bCategoriesShown==false) && (app.GetCommerceCategoriesRetrieved()))
 	{
 		// disable the timer display on this menu
@@ -225,16 +213,12 @@ void UIScene_DLCMainMenu::tick()
 		}
 		else
 		{
-#if defined __ORBIS__ || defined __PSVITA__ || defined __PS3__
+#if defined(__PSVITA__)
 			app.CheckForEmptyStore(ProfileManager.GetPrimaryPad());
 #endif
 			// need to display text to say no downloadable content available yet
 			m_labelOffers.setLabel(app.GetString(IDS_NO_DLCCATEGORIES));
 
-#ifdef __ORBIS__
-			// 4J-JEV: TRC Requirement (R4055), need to display this system message.
-			ProfileManager.DisplaySystemMessage( SCE_MSG_DIALOG_SYSMSG_TYPE_TRC_EMPTY_STORE, ProfileManager.GetPrimaryPad() );
-#endif
 		}
 
 	}

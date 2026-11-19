@@ -1213,8 +1213,6 @@ ConsoleSaveFileSplit::~ConsoleSaveFileSplit()
 	// Make sure we don't have any thumbnail data still waiting round - we can't need it now we've destroyed the save file anyway
 #if defined _XBOX || defined _WINDOWS64
 	app.GetSaveThumbnail(NULL,NULL);
-#elif defined __PS3__
-	app.GetSaveThumbnail(NULL,NULL, NULL,NULL);
 #endif
 
 	for(AUTO_VAR(it,regionFiles.begin()); it != regionFiles.end(); it++ )
@@ -2039,8 +2037,6 @@ void ConsoleSaveFileSplit::Flush(bool autosave, bool updateThumbnail)
 
 #if ( defined _XBOX || defined _DURANGO || defined _WINDOWS64 )
 			app.GetSaveThumbnail(&pbThumbnailData,&dwThumbnailDataSize);
-#elif ( defined __PS3__ || defined __ORBIS__ )
-			app.GetSaveThumbnail(&pbThumbnailData,&dwThumbnailDataSize,&pbDataSaveImage,&dwDataSizeSaveImage);
 #endif
 
 			BYTE bTextMetadata[88];
@@ -2210,20 +2206,6 @@ vector<FileEntry *> *ConsoleSaveFileSplit::getRegionFilesByDimension(unsigned in
 	return files;
 }
 
-#if defined(__PS3__) || defined(__ORBIS__)
-wstring ConsoleSaveFileSplit::getPlayerDataFilenameForLoad(const PlayerUID& pUID)
-{
-	return header.getPlayerDataFilenameForLoad( pUID );
-}
-wstring ConsoleSaveFileSplit::getPlayerDataFilenameForSave(const PlayerUID& pUID)
-{
-	return header.getPlayerDataFilenameForSave( pUID );
-}
-vector<FileEntry *> *ConsoleSaveFileSplit::getValidPlayerDatFiles()
-{
-	return header.getValidPlayerDatFiles();
-}
-#endif
 
 int ConsoleSaveFileSplit::getSaveVersion()
 {

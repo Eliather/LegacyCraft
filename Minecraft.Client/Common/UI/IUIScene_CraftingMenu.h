@@ -69,6 +69,7 @@ protected:
 	int m_iIngredientsC;
 	bool m_bIgnoreKeyPresses;
 	bool m_bSplitscreen;
+	bool m_bFilterCraftableOnly;
 
 	eTutorial_State m_previousTutorialState;
 

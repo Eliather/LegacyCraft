@@ -1,6 +1,9 @@
 #include "stdafx.h"
 #include "UI.h"
 #include "UIScene_LaunchMoreOptionsMenu.h"
+#ifdef _WINDOWS64
+#include "..\..\CustomTextInputModal.h"
+#endif
 
 #define GAME_CREATE_ONLINE_TIMER_ID 0
 #define GAME_CREATE_ONLINE_TIMER_TIME 100
@@ -124,6 +127,10 @@ UIScene_LaunchMoreOptionsMenu::UIScene_LaunchMoreOptionsMenu(int iPad, void *ini
 
 	m_bIgnoreInput = false;
 	m_tabIndex = 0;
+#ifdef _WINDOWS64
+	m_wasMouseLeftDown = false;
+	updateTabMouseVisibility();
+#endif
 }
 
 void UIScene_LaunchMoreOptionsMenu::updateTooltips()
@@ -186,16 +193,113 @@ void UIScene_LaunchMoreOptionsMenu::tick()
 
 		m_bMultiplayerAllowed = bMultiplayerAllowed;
 	}
+
+#ifdef _WINDOWS64
+	if(hasFocus(m_iPad) && !m_bIgnoreInput && m_loadedResolution == eSceneResolution_1080 &&
+	   m_params != NULL && m_params->bGenerateOptions && !Mouse::isGrabbed())
+	{
+		const bool isLeftDown = Mouse::isButtonDown(0) || Mouse::isButtonPressed(0);
+		const bool clicked = isLeftDown && !m_wasMouseLeftDown;
+		m_wasMouseLeftDown = isLeftDown;
+
+		if(clicked)
+		{
+			const float screenW = ui.getScreenWidth();
+			const float screenH = ui.getScreenHeight();
+			const S32 sceneW = getRenderWidth();
+			const S32 sceneH = getRenderHeight();
+			if(screenW > 0.0f && screenH > 0.0f && sceneW > 0 && sceneH > 0)
+			{
+				const S32 localX = (S32)(((float)Mouse::getX() * (float)sceneW) / screenW);
+				const S32 localY = (S32)(((float)Mouse::getY() * (float)sceneH) / screenH);
+
+				auto hitTabLabel = [&](UIControl_Label &label) -> bool
+				{
+					label.UpdateControl();
+					const S32 lx1 = label.getXPos() - 28;
+					const S32 ly1 = label.getYPos() - 16;
+					const S32 lx2 = label.getXPos() + label.getWidth() + 28;
+					const S32 ly2 = label.getYPos() + label.getHeight() + 16;
+					return (localX >= lx1 && localX <= lx2 && localY >= ly1 && localY <= ly2);
+				};
+
+				bool switchTab = false;
+				if(hitTabLabel(m_labelWorldOptions) && m_tabIndex != 0)
+				{
+					m_tabIndex = 0;
+					switchTab = true;
+				}
+				else if(hitTabLabel(m_labelGameOptions) && m_tabIndex != 1)
+				{
+					m_tabIndex = 1;
+					switchTab = true;
+				}
+
+				if(switchTab)
+				{
+					ui.PlayUISFX(eSFX_Scroll);
+					updateTooltips();
+					updateTabMouseVisibility();
+					IggyDataValue result;
+					IggyPlayerCallMethodRS(getMovie(), &result, IggyPlayerRootPath(getMovie()), m_funcChangeTab, 0, NULL);
+				}
+			}
+		}
+	}
+	else
+	{
+		m_wasMouseLeftDown = Mouse::isButtonDown(0) || Mouse::isButtonPressed(0);
+	}
+#endif
 }
+
+UIControl *UIScene_LaunchMoreOptionsMenu::GetMainPanel()
+{
+	if(m_loadedResolution == eSceneResolution_1080)
+	{
+		const bool showWorldOptions = (m_params != NULL && m_params->bGenerateOptions) && (m_tabIndex == 0);
+		return showWorldOptions ? &m_worldOptions : &m_gameOptions;
+	}
+	return NULL;
+}
+
+#ifdef _WINDOWS64
+void UIScene_LaunchMoreOptionsMenu::updateTabMouseVisibility()
+{
+	if(m_loadedResolution != eSceneResolution_1080) return;
+
+	const bool showWorldOptions = (m_params != NULL && m_params->bGenerateOptions) && (m_tabIndex == 0);
+
+	m_editSeed.setHidden(!showWorldOptions);
+	m_sliderWorldSize.setHidden(!showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_Structures].setHidden(!showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_BonusChest].setHidden(!showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_FlatWorld].setHidden(!showWorldOptions);
+
+	m_checkboxes[eLaunchCheckbox_Online].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_InviteOnly].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_AllowFoF].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_PVP].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_TrustSystem].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_FireSpreads].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_TNT].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_HostPrivileges].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_ResetNether].setHidden(showWorldOptions);
+	m_checkboxes[eLaunchCheckbox_DisableSaving].setHidden(showWorldOptions);
+}
+#endif
 
 void UIScene_LaunchMoreOptionsMenu::handleDestroy()
 {
+#ifdef _WINDOWS64
+	CustomTextInputModal::ForceCloseForParam(this);
+#endif
 #ifdef __PSVITA__
 	app.DebugPrintf("missing InputManager.DestroyKeyboard on Vita !!!!!!\n");
 #endif
 
 	// so shut down the keyboard if it is displayed
-#if ( defined __PS3__ || defined __ORBIS__ || defined _DURANGO)
+#if defined(_DURANGO)
 	InputManager.DestroyKeyboard();
 #endif
 }
@@ -217,8 +321,28 @@ void UIScene_LaunchMoreOptionsMenu::handleInput(int iPad, int key, bool repeat, 
 		}
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
+#ifdef _WINDOWS64
+		if(pressed && !Mouse::isGrabbed() && Mouse::isButtonPressed(0))
+		{
+			const int focusId = getControlFocus();
+			if(focusId >= 0 && focusId < eLaunchCheckboxes_Count)
+			{
+				if(m_checkboxes[focusId].IsEnabled())
+				{
+					const bool newChecked = !m_checkboxes[focusId].IsChecked();
+					m_checkboxes[focusId].TouchSetCheckbox(newChecked);
+					handleCheckboxToggled((F64)focusId, newChecked);
+				}
+				handled = true;
+				break;
+			}
+			else if(focusId == eControl_EditSeed)
+			{
+				handlePress(eControl_EditSeed, 0);
+				handled = true;
+				break;
+			}
+		}
 #endif
 		// 4J-JEV: Inform user why their game must be offline.
 #if defined _XBOX_ONE
@@ -250,6 +374,9 @@ void UIScene_LaunchMoreOptionsMenu::handleInput(int iPad, int key, bool repeat, 
 			// Toggle tab index
 			m_tabIndex = m_tabIndex == 0 ? 1 : 0;
 			updateTooltips();
+#ifdef _WINDOWS64
+			updateTabMouseVisibility();
+#endif
 			IggyDataValue result;
 			IggyResult out = IggyPlayerCallMethodRS ( getMovie() , &result, IggyPlayerRootPath( getMovie() ), m_funcChangeTab , 0 , NULL );
 		}
@@ -414,6 +541,51 @@ int UIScene_LaunchMoreOptionsMenu::KeyboardCompleteSeedCallback(LPVOID lpParam,b
 	return 0;
 }
 
+#ifdef _WINDOWS64
+namespace
+{
+	bool IsAcceptedMoreOptionsSeedChar(wchar_t ch)
+	{
+		return (ch >= 32 && ch <= 126);
+	}
+
+	const wchar_t *GetMoreOptionsSeedHintText()
+	{
+		switch(XGetLanguage())
+		{
+		case XC_LANGUAGE_SPANISH:
+			return L"Opcional (dejar vacio para aleatoria)";
+		case XC_LANGUAGE_FRENCH:
+			return L"Optionnel (vide = aleatoire)";
+		case XC_LANGUAGE_GERMAN:
+			return L"Optional (leer = zufallig)";
+		case XC_LANGUAGE_ITALIAN:
+			return L"Opzionale (vuoto = casuale)";
+		case XC_LANGUAGE_PORTUGUESE:
+		case MINECRAFT_LANGUAGE_BRAZILIAN:
+			return L"Opcional (vazio = aleatoria)";
+		default:
+			return L"Optional (leave blank for random)";
+		}
+	}
+}
+
+void UIScene_LaunchMoreOptionsMenu::ModalCompleteSeedCallback(void *lpParam, bool confirmed, const std::wstring &text)
+{
+	UIScene_LaunchMoreOptionsMenu *pClass = (UIScene_LaunchMoreOptionsMenu *)lpParam;
+	if(pClass == NULL) return;
+	pClass->m_bIgnoreInput = false;
+	if(confirmed)
+	{
+		pClass->m_editSeed.setLabel(text);
+		if(pClass->m_params != NULL)
+		{
+			pClass->m_params->seed = text;
+		}
+	}
+}
+#endif
+
 void UIScene_LaunchMoreOptionsMenu::handlePress(F64 controlId, F64 childId)
 {
 	if(m_bIgnoreInput) return;
@@ -422,22 +594,22 @@ void UIScene_LaunchMoreOptionsMenu::handlePress(F64 controlId, F64 childId)
 	{
 	case eControl_EditSeed:
 		{
-			m_bIgnoreInput=true;
-#ifdef __PS3__
-			int language = XGetLanguage();
-			switch(language)
-			{
-			case XC_LANGUAGE_JAPANESE:
-			case XC_LANGUAGE_KOREAN:
-			case XC_LANGUAGE_TCHINESE:
-				InputManager.RequestKeyboard(app.GetString(IDS_CREATE_NEW_WORLD_SEED),m_editSeed.getLabel(),(DWORD)0,60,&UIScene_LaunchMoreOptionsMenu::KeyboardCompleteSeedCallback,this,C_4JInput::EKeyboardMode_Default);
-				break;
-			default:
-				// 4J Stu - Use a different keyboard for non-asian languages so we don't have prediction on
-				InputManager.RequestKeyboard(app.GetString(IDS_CREATE_NEW_WORLD_SEED),m_editSeed.getLabel(),(DWORD)0,60,&UIScene_LaunchMoreOptionsMenu::KeyboardCompleteSeedCallback,this,C_4JInput::EKeyboardMode_Alphabet_Extended);
-				break;
-			}
+#ifdef _WINDOWS64
+			CustomTextInputModal::Params modalParams;
+			const wchar_t *seedTitle = app.GetString(IDS_CREATE_NEW_WORLD_SEED);
+			modalParams.title = (seedTitle != NULL && seedTitle[0] != 0) ? seedTitle : L"Seed";
+			modalParams.initialText = (m_params != NULL) ? m_params->seed : m_editSeed.getLabel();
+			modalParams.hintText = GetMoreOptionsSeedHintText();
+			modalParams.minLength = 0;
+			modalParams.maxLength = 60;
+			modalParams.charFilter = &IsAcceptedMoreOptionsSeedChar;
+			modalParams.completeFunc = &UIScene_LaunchMoreOptionsMenu::ModalCompleteSeedCallback;
+			modalParams.completeParam = this;
+
+			m_bIgnoreInput = true;
+			CustomTextInputModal::Open(modalParams);
 #else
+			m_bIgnoreInput=true;
 			InputManager.RequestKeyboard(app.GetString(IDS_CREATE_NEW_WORLD_SEED),m_editSeed.getLabel(),(DWORD)0,60,&UIScene_LaunchMoreOptionsMenu::KeyboardCompleteSeedCallback,this,C_4JInput::EKeyboardMode_Default);
 #endif
 		}

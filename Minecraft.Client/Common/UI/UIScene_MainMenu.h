@@ -49,7 +49,7 @@ private:
 	bool m_bIgnorePress;
 	bool m_bTrialVersion;
 	bool m_bLoadTrialOnNetworkManagerReady;
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__)
+#if defined(__PSVITA__)
 	bool m_bLaunchFullVersionPurchase;
 #endif
 
@@ -80,7 +80,7 @@ private:
 		eAction_RunAchievements,
 		eAction_RunHelpAndOptions,
 		eAction_RunUnlockOrDLC,
-#if defined(__PS3__)|| defined(__PSVITA__) || defined(__ORBIS__)
+#if defined(__PSVITA__)
 		eAction_RunLeaderboardsPSN,
 		eAction_RunGamePSN,
 		eAction_RunUnlockOrDLCPSN,
@@ -95,9 +95,7 @@ public:
 	virtual ~UIScene_MainMenu();
 
 	// Returns true if this scene has focus for the pad passed in
-#ifndef __PS3__
 	virtual bool hasFocus(int iPad) { return bHasFocus; }
-#endif
 	
 	virtual void updateTooltips();
 	virtual void updateComponents();
@@ -144,19 +142,13 @@ private:
 	static int Achievements_SignInReturned(void *pParam,bool bContinue,int iPad);
 	static int MustSignInReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
 
-#if defined(__PS3__) || defined(__PSVITA__) || defined(__ORBIS__)
+#if defined(__PSVITA__)
 	static int MustSignInReturnedPSN(void *pParam,int iPad,C4JStorage::EMessageResult result);
 #endif
 	static int Leaderboards_SignInReturned(void* pParam, bool bContinue, int iPad);
 	static int UnlockFullGame_SignInReturned(void *pParam,bool bContinue,int iPad);
 	static int ExitGameReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
 
-#ifdef __ORBIS__
-	static void RefreshChatAndContentRestrictionsReturned_PlayGame(void *pParam);
-	static void RefreshChatAndContentRestrictionsReturned_Leaderboards(void *pParam);
-
-	static int PlayOfflineReturned(void *pParam, int iPad, C4JStorage::EMessageResult result);
-#endif
 
 #ifdef _DURANGO
 	static int XboxHelp_SignInReturned(void *pParam, bool bContinue, int iPad);
@@ -166,10 +158,4 @@ private:
 	static int SelectNetworkModeReturned(void *pParam,int iPad,C4JStorage::EMessageResult result);
 #endif
 
-#ifdef __ORBIS__
-	//EPatchCheck m_ePatchCheckState;
-	bool m_bRunGameChosen;
-	int32_t m_errorCode;
-	bool m_bErrorDialogRunning;
-#endif
 };

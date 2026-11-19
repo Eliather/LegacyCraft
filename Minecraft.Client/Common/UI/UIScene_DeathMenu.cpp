@@ -73,9 +73,6 @@ void UIScene_DeathMenu::handleInput(int iPad, int key, bool repeat, bool pressed
 		handled = true;
 		break;
 	case ACTION_MENU_OK:
-#ifdef __ORBIS__
-	case ACTION_MENU_TOUCHPAD_PRESS:
-#endif
 	case ACTION_MENU_UP:
 	case ACTION_MENU_DOWN:
 		sendInputToMovie(key, repeat, pressed, released);
@@ -115,7 +112,7 @@ void UIScene_DeathMenu::handlePress(F64 controlId, F64 childId)
 					}
 					TelemetryManager->RecordLevelExit(m_iPad, eSen_LevelExitStatus_Failed);
 					
-#if defined (_XBOX_ONE) || defined(__ORBIS__)
+#if defined(_XBOX_ONE)
 					if(g_NetworkManager.IsHost() && StorageManager.GetSaveDisabled())
 					{
 						uiIDA[0]=IDS_CONFIRM_CANCEL;

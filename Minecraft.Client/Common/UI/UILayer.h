@@ -13,11 +13,7 @@ private:
 	vector<UIScene *> m_scenesToDelete; // A list of scenes to delete
 	vector<UIScene *> m_scenesToDestroy; // A list of scenes where we want to dump the swf
 
-#ifdef __ORBIS__
-	unordered_map<EUIScene,std::pair<int,bool>,std::hash<int>> m_componentRefCount;
-#else
 	unordered_map<EUIScene,pair<int,bool> > m_componentRefCount;
-#endif
 
 public:
 	bool m_hasFocus; // True if the layer "has focus", should be the only layer in the group

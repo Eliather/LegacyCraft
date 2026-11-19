@@ -83,7 +83,7 @@ private:
 		void writeMappings(DataOutputStream *dos);
 		void readMappings(DataInputStream *dis);
 	};
-#if defined(__PS3__) || defined(__ORBIS__) || defined(__PSVITA__) || defined(_DURANGO)
+#if defined(__PSVITA__) || defined(_DURANGO)
 	unordered_map<PlayerUID, PlayerMappings, PlayerUID::Hash> m_playerMappings;
 #else
 	unordered_map<PlayerUID, PlayerMappings> m_playerMappings;

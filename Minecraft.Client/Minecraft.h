@@ -204,9 +204,6 @@ public:
 private:
 	void checkGlError(const wstring& string);
 
-#ifdef __ORBIS__
-	PsPlusUpsellWrapper *m_pPsPlusUpsell;
-#endif
 
 public:
 	void destroy();
@@ -341,7 +338,4 @@ public:
 	unsigned int getCurrentTexturePackId();
 	ColourTable *getColourTable();
 
-#if defined __ORBIS__
-	static int MustSignInReturnedPSN(void *pParam, int iPad, C4JStorage::EMessageResult result);
-#endif
 };
